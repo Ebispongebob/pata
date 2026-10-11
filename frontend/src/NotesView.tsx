@@ -226,7 +226,7 @@ function NoteEditor({ noteId, onBack, onNoteUpdated }: NoteEditorProps) {
     }
   }, [noteId, isDirty, onNoteUpdated]);
 
-  // Debounced auto-save (1.5s as per D19)
+  // Debounced auto-save (0.5s as per D19)
   const triggerDebouncedSave = useCallback(() => {
     if (hasConflictRef.current) return;
     setSaveStatus('unsaved');
@@ -236,7 +236,7 @@ function NoteEditor({ noteId, onBack, onNoteUpdated }: NoteEditorProps) {
     debounceTimerRef.current = window.setTimeout(() => {
       debounceTimerRef.current = null;
       doSave();
-    }, 1500);
+    }, 500);
   }, [doSave]);
 
   useEffect(() => {
@@ -413,7 +413,7 @@ function NoteEditor({ noteId, onBack, onNoteUpdated }: NoteEditorProps) {
   // Window beforeunload flush
   useEffect(() => {
     const handleBeforeUnload = () => {
-      // shortcut: 导航切走时 best-effort flush,关窗/极速切换仍可能丢 ≤1.5s 输入,实机走查评估
+      // shortcut: 导航切走时 best-effort flush,关窗/极速切换仍可能丢 ≤0.5s 输入,实机走查评估
       // 注：beforeunload 异步 IPC 关窗由于浏览器生命周期与 IPC 异步性亦可能丢失未保存数据，接受现状，不实现 Go 退出钩子
       if (debounceTimerRef.current) {
         window.clearTimeout(debounceTimerRef.current);
@@ -433,7 +433,7 @@ function NoteEditor({ noteId, onBack, onNoteUpdated }: NoteEditorProps) {
 
   useEffect(() => {
     return () => {
-      // shortcut: 导航切走时 best-effort flush,关窗/极速切换仍可能丢 ≤1.5s 输入,实机走查评估
+      // shortcut: 导航切走时 best-effort flush,关窗/极速切换仍可能丢 ≤0.5s 输入,实机走查评估
       // 注：beforeunload 异步 IPC 关窗由于浏览器生命周期与 IPC 异步性亦可能丢失未保存数据，接受现状，不实现 Go 退出钩子
       if (debounceTimerRef.current) {
         window.clearTimeout(debounceTimerRef.current);
