@@ -59,6 +59,8 @@ interface TasksViewProps {
   onSelectVault: () => void;
   onRescanVault: () => void;
   vaultBusy?: boolean;
+  focusTaskId?: string | null;
+  onClearFocusTask?: () => void;
 }
 
 export function TasksView({
@@ -66,11 +68,21 @@ export function TasksView({
   onSelectVault,
   onRescanVault,
   vaultBusy = false,
+  focusTaskId,
+  onClearFocusTask,
 }: TasksViewProps) {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(false);
   const [listError, setListError] = useState<string | null>(null);
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
+
+  // Consume focusTaskId from parent navigation
+  useEffect(() => {
+    if (focusTaskId) {
+      setSelectedTaskId(focusTaskId);
+      onClearFocusTask?.();
+    }
+  }, [focusTaskId, onClearFocusTask]);
 
   // Quick create state
   const [quickTitle, setQuickTitle] = useState('');

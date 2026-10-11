@@ -1078,3 +1078,324 @@ func TestVaultService_DayPlan_SameTaskMultiDayDueUnchanged(t *testing.T) {
 		t.Fatalf("Task.Due was modified! Expected 2026-10-30, got %v", taskFetched.Due)
 	}
 }
+
+func TestVaultService_GetDayTimeline_ValidationAndClosedVault(t *testing.T) {
+	sClosed := &VaultService{}
+	if _, err := sClosed.GetDayTimeline("2026-10-11"); err == nil {
+		t.Fatalf("expected error on closed vault for GetDayTimeline")
+	}
+
+	vaultDir := t.TempDir()
+	s := &VaultService{}
+	if _, err := s.openVault(vaultDir); err != nil {
+		t.Fatalf("openVault failed: %v", err)
+	}
+	defer func() {
+		if s.stopWatcher != nil {
+			s.stopWatcher()
+		}
+	}()
+
+	if _, err := s.GetDayTimeline("invalid-date"); err == nil {
+		t.Fatalf("expected error on invalid date for GetDayTimeline")
+	}
+
+	// Empty timeline for non-existent date
+	items, err := s.GetDayTimeline("2026-10-11")
+	if err != nil {
+		t.Fatalf("GetDayTimeline failed: %v", err)
+	}
+	if len(items) != 0 {
+		t.Fatalf("expected empty items, got %d", len(items))
+	}
+}
+
+func TestVaultService_DayTimeline_IndependenceAndAcceptanceCriteria(t *testing.T) {
+	vaultDir := t.TempDir()
+	s := &VaultService{}
+	if _, err := s.openVault(vaultDir); err != nil {
+		t.Fatalf("openVault failed: %v", err)
+	}
+	defer func() {
+		if s.stopWatcher != nil {
+			s.stopWatcher()
+		}
+	}()
+
+	todayStr := time.Now().In(time.Local).Format("2006-01-02")
+
+	// 1. 带 task_id 的 Memo 在 ListMemosByTask 与 GetDayTimeline 返回同一 ID (同一源文件)
+	due := "2026-10-31"
+	task, err := s.CreateTask(CreateTaskInput{
+		Title: "待关联任务",
+		Due:   &due,
+	})
+	if err != nil {
+		t.Fatalf("CreateTask failed: %v", err)
+	}
+
+	memoAssoc, err := s.CreateMemo(CreateMemoInput{
+		Body:   "这是关联评论",
+		TaskID: task.ID,
+		Tags:   []string{"tag1"},
+	})
+	if err != nil {
+		t.Fatalf("CreateMemo assoc failed: %v", err)
+	}
+
+	// Check ListMemosByTask
+	taskMemos := s.vault.Index.ListMemosByTask(task.ID)
+	if len(taskMemos) != 1 || taskMemos[0].ID != memoAssoc.ID {
+		t.Fatalf("ListMemosByTask mismatch: expected ID %s, got %+v", memoAssoc.ID, taskMemos)
+	}
+
+	// Check GetDayTimeline
+	timelineToday, err := s.GetDayTimeline(todayStr)
+	if err != nil {
+		t.Fatalf("GetDayTimeline failed: %v", err)
+	}
+	var foundAssoc *TimelineItem
+	for i := range timelineToday {
+		if timelineToday[i].Kind == "memo" && timelineToday[i].Memo != nil && timelineToday[i].Memo.ID == memoAssoc.ID {
+			foundAssoc = &timelineToday[i]
+			break
+		}
+	}
+	if foundAssoc == nil {
+		t.Fatalf("associated memo not found in today's timeline")
+	}
+	if foundAssoc.TaskID != task.ID || foundAssoc.TaskTitle != task.Title {
+		t.Fatalf("associated memo TaskID/TaskTitle mismatch: %+v", foundAssoc)
+	}
+	if foundAssoc.Memo.ID != taskMemos[0].ID {
+		t.Fatalf("memo ID mismatch between Task details and Timeline: %s vs %s", foundAssoc.Memo.ID, taskMemos[0].ID)
+	}
+
+	// 2. 无标题/标签/任务的独立 Memo 可保存且出现在当日时间线
+	memoIndep, err := s.CreateMemo(CreateMemoInput{
+		Body: "纯独立便签正文，无标题无标签无任务",
+	})
+	if err != nil {
+		t.Fatalf("CreateMemo independent failed: %v", err)
+	}
+	if memoIndep.TaskID != "" || len(memoIndep.Tags) != 0 {
+		t.Fatalf("unexpected fields in independent memo: %+v", memoIndep)
+	}
+
+	timelineToday2, err := s.GetDayTimeline(todayStr)
+	if err != nil {
+		t.Fatalf("GetDayTimeline failed: %v", err)
+	}
+	var foundIndep *TimelineItem
+	for i := range timelineToday2 {
+		if timelineToday2[i].Kind == "memo" && timelineToday2[i].Memo != nil && timelineToday2[i].Memo.ID == memoIndep.ID {
+			foundIndep = &timelineToday2[i]
+			break
+		}
+	}
+	if foundIndep == nil {
+		t.Fatalf("independent memo not found in today's timeline")
+	}
+	if foundIndep.TaskID != "" || foundIndep.TaskTitle != "" {
+		t.Fatalf("independent memo should have empty task fields, got: %+v", foundIndep)
+	}
+
+	// 3. 任务完成(无 Memo)当日时间线出现 completion 项
+	// 完成 -> 重开 -> 再完成，两个完成日各有事件
+	date1 := "2026-10-15"
+	date2 := "2026-10-16"
+	t1, err := time.ParseInLocation("2006-01-02 15:04:05", "2026-10-15 10:00:00", time.Local)
+	if err != nil {
+		t.Fatalf("parse time 1 failed: %v", err)
+	}
+	tReopen, err := time.ParseInLocation("2006-01-02 15:04:05", "2026-10-15 16:00:00", time.Local)
+	if err != nil {
+		t.Fatalf("parse time reopen failed: %v", err)
+	}
+	t2, err := time.ParseInLocation("2006-01-02 15:04:05", "2026-10-16 11:30:00", time.Local)
+	if err != nil {
+		t.Fatalf("parse time 2 failed: %v", err)
+	}
+
+	multiCompTask, err := s.CreateTask(CreateTaskInput{
+		Title: "多次完成任务",
+	})
+	if err != nil {
+		t.Fatalf("CreateTask multiComp failed: %v", err)
+	}
+
+	// Directly set status events to simulate completed -> reopened -> completed across 2 days
+	multiCompTask.StatusEvents = []markdown.StatusEvent{
+		{Action: markdown.StatusEventActionCompleted, At: t1},
+		{Action: markdown.StatusEventActionReopened, At: tReopen},
+		{Action: markdown.StatusEventActionCompleted, At: t2},
+	}
+	multiCompTask.Status = markdown.TaskStatusDone
+	multiPath := s.vault.ResolveEntityPath(multiCompTask)
+	var multiBaseline *markdown.FileBaseline
+	if b, ok := s.vault.Index.GetBaseline(multiPath); ok {
+		multiBaseline = &b
+	}
+	if _, err := s.vault.SaveEntity(multiCompTask, multiBaseline); err != nil {
+		t.Fatalf("SaveEntity multiCompTask failed: %v", err)
+	}
+
+	// Check date1 timeline
+	tlDate1, err := s.GetDayTimeline(date1)
+	if err != nil {
+		t.Fatalf("GetDayTimeline date1 failed: %v", err)
+	}
+	var foundComp1 bool
+	for _, item := range tlDate1 {
+		if item.Kind == "completion" && item.TaskID == multiCompTask.ID {
+			foundComp1 = true
+			if !item.Time.Equal(t1) {
+				t.Fatalf("expected completion time %v, got %v", t1, item.Time)
+			}
+		}
+	}
+	if !foundComp1 {
+		t.Fatalf("expected completion event on date1 timeline")
+	}
+
+	// Check date2 timeline
+	tlDate2, err := s.GetDayTimeline(date2)
+	if err != nil {
+		t.Fatalf("GetDayTimeline date2 failed: %v", err)
+	}
+	var foundComp2 bool
+	for _, item := range tlDate2 {
+		if item.Kind == "completion" && item.TaskID == multiCompTask.ID {
+			foundComp2 = true
+			if !item.Time.Equal(t2) {
+				t.Fatalf("expected completion time %v, got %v", t2, item.Time)
+			}
+		}
+	}
+	if !foundComp2 {
+		t.Fatalf("expected completion event on date2 timeline")
+	}
+
+	// 4. 完成任务不改变 DayPlan 成员与 due (三者独立)
+	dueBefore := "2026-10-28"
+	indepTask, err := s.CreateTask(CreateTaskInput{
+		Title: "三者独立性测试任务",
+		Due:   &dueBefore,
+	})
+	if err != nil {
+		t.Fatalf("CreateTask indepTask failed: %v", err)
+	}
+	planDate := "2026-10-20"
+	plan, err := s.SaveDayPlan(planDate, []string{indepTask.ID})
+	if err != nil {
+		t.Fatalf("SaveDayPlan failed: %v", err)
+	}
+	if len(plan.TaskIDs) != 1 || plan.TaskIDs[0] != indepTask.ID {
+		t.Fatalf("plan does not contain task: %+v", plan)
+	}
+
+	// Mark task completed
+	_, err = s.SetTaskStatus(indepTask.ID, markdown.TaskStatusDone)
+	if err != nil {
+		t.Fatalf("SetTaskStatus done failed: %v", err)
+	}
+
+	// Check DayPlan: still contains indepTask.ID
+	planAfter, err := s.GetDayPlan(planDate)
+	if err != nil {
+		t.Fatalf("GetDayPlan after completion failed: %v", err)
+	}
+	if len(planAfter.TaskIDs) != 1 || planAfter.TaskIDs[0] != indepTask.ID {
+		t.Fatalf("DayPlan was altered by task completion! Got: %+v", planAfter)
+	}
+
+	// Check Task: Due is STILL 2026-10-28!
+	taskAfter, err := s.GetTask(indepTask.ID)
+	if err != nil {
+		t.Fatalf("GetTask after completion failed: %v", err)
+	}
+	if taskAfter.Due == nil || *taskAfter.Due != "2026-10-28" {
+		t.Fatalf("Task.Due was altered by task completion! Got: %v", taskAfter.Due)
+	}
+
+	// Check Completion fact in today's timeline
+	tlTodayAfter, err := s.GetDayTimeline(todayStr)
+	if err != nil {
+		t.Fatalf("GetDayTimeline today failed: %v", err)
+	}
+	var foundIndepComp bool
+	for _, it := range tlTodayAfter {
+		if it.Kind == "completion" && it.TaskID == indepTask.ID {
+			foundIndepComp = true
+			break
+		}
+	}
+	if !foundIndepComp {
+		t.Fatalf("completed indepTask missing from today's timeline")
+	}
+}
+
+func TestVaultService_GetDayTimeline_TimezoneBucketing(t *testing.T) {
+	vaultDir := t.TempDir()
+	s := &VaultService{}
+	if _, err := s.openVault(vaultDir); err != nil {
+		t.Fatalf("openVault failed: %v", err)
+	}
+	defer func() {
+		if s.stopWatcher != nil {
+			s.stopWatcher()
+		}
+	}()
+
+	// Construct timestamps in local timezone:
+	// Day 1 at 23:30 vs Day 2 at 00:10
+	day1Str := "2026-10-22"
+	day2Str := "2026-10-23"
+
+	t1, err := time.ParseInLocation("2006-01-02 15:04:05", "2026-10-22 23:30:00", time.Local)
+	if err != nil {
+		t.Fatalf("parse t1 failed: %v", err)
+	}
+	t2, err := time.ParseInLocation("2006-01-02 15:04:05", "2026-10-23 00:10:00", time.Local)
+	if err != nil {
+		t.Fatalf("parse t2 failed: %v", err)
+	}
+
+	memo1 := &markdown.Memo{
+		Type:      markdown.EntityTypeMemo,
+		ID:        "m-bucket-day1",
+		CreatedAt: t1,
+		Body:      "第 1 天深夜 23:30 便签",
+	}
+	if _, err := s.vault.SaveEntity(memo1, nil); err != nil {
+		t.Fatalf("SaveEntity memo1 failed: %v", err)
+	}
+
+	memo2 := &markdown.Memo{
+		Type:      markdown.EntityTypeMemo,
+		ID:        "m-bucket-day2",
+		CreatedAt: t2,
+		Body:      "第 2 天凌晨 00:10 便签",
+	}
+	if _, err := s.vault.SaveEntity(memo2, nil); err != nil {
+		t.Fatalf("SaveEntity memo2 failed: %v", err)
+	}
+
+	// Query day 1
+	tl1, err := s.GetDayTimeline(day1Str)
+	if err != nil {
+		t.Fatalf("GetDayTimeline day1 failed: %v", err)
+	}
+	if len(tl1) != 1 || tl1[0].Memo == nil || tl1[0].Memo.ID != "m-bucket-day1" {
+		t.Fatalf("Day 1 timeline mismatch: expected [m-bucket-day1], got %+v", tl1)
+	}
+
+	// Query day 2
+	tl2, err := s.GetDayTimeline(day2Str)
+	if err != nil {
+		t.Fatalf("GetDayTimeline day2 failed: %v", err)
+	}
+	if len(tl2) != 1 || tl2[0].Memo == nil || tl2[0].Memo.ID != "m-bucket-day2" {
+		t.Fatalf("Day 2 timeline mismatch: expected [m-bucket-day2], got %+v", tl2)
+	}
+}

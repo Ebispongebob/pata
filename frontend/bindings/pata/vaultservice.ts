@@ -8,7 +8,7 @@
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wailsio/runtime";
+import { Call as $Call, CancellablePromise as $CancellablePromise, Create as $Create } from "@wailsio/runtime";
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
@@ -22,14 +22,18 @@ import * as $models from "./models.js";
  * CreateMemo creates a new Memo, writes it safely as Markdown, and updates the index.
  */
 export function CreateMemo(input: $models.CreateMemoInput): $CancellablePromise<markdown$0.Memo | null> {
-    return $Call.ByID(1514226879, input);
+    return $Call.ByID(1514226879, input).then(($result: any) => {
+        return $$createType1($result);
+    });
 }
 
 /**
  * CreateTask creates a new Task, writes it safely as Markdown, and updates the index.
  */
 export function CreateTask(input: $models.CreateTaskInput): $CancellablePromise<markdown$0.Task | null> {
-    return $Call.ByID(3901450400, input);
+    return $Call.ByID(3901450400, input).then(($result: any) => {
+        return $$createType3($result);
+    });
 }
 
 /**
@@ -43,42 +47,63 @@ export function DeleteTask(id: string): $CancellablePromise<void> {
  * GetDayPlan returns the DayPlan for a date. If no plan exists, an empty DayPlan is returned without error.
  */
 export function GetDayPlan(date: string): $CancellablePromise<markdown$0.DayPlan | null> {
-    return $Call.ByID(2499050296, date);
+    return $Call.ByID(2499050296, date).then(($result: any) => {
+        return $$createType5($result);
+    });
+}
+
+/**
+ * GetDayTimeline returns daily timeline items (memos and task completion events) for a given date YYYY-MM-DD in local timezone.
+ */
+export function GetDayTimeline(date: string): $CancellablePromise<$models.TimelineItem[]> {
+    return $Call.ByID(2161441604, date).then(($result: any) => {
+        return $$createType7($result);
+    });
 }
 
 /**
  * GetMemo returns a memo by its ID.
  */
 export function GetMemo(id: string): $CancellablePromise<markdown$0.Memo | null> {
-    return $Call.ByID(780043581, id);
+    return $Call.ByID(780043581, id).then(($result: any) => {
+        return $$createType1($result);
+    });
 }
 
 /**
  * GetTask returns a task by its ID.
  */
 export function GetTask(id: string): $CancellablePromise<markdown$0.Task | null> {
-    return $Call.ByID(1057197746, id);
+    return $Call.ByID(1057197746, id).then(($result: any) => {
+        return $$createType3($result);
+    });
 }
 
 /**
  * GetVaultStatus is cheap and callable before any vault is opened.
  */
 export function GetVaultStatus(): $CancellablePromise<$models.VaultStatus> {
-    return $Call.ByID(540011935);
+    return $Call.ByID(540011935).then(($result: any) => {
+        return $$createType8($result);
+    });
 }
 
 /**
  * ListMemosByTask returns all memos associated with taskID from the vault index, oldest first.
  */
-export function ListMemosByTask(taskID: string): $CancellablePromise<(markdown$0.Memo | null)[] | null> {
-    return $Call.ByID(2666858332, taskID);
+export function ListMemosByTask(taskID: string): $CancellablePromise<(markdown$0.Memo | null)[]> {
+    return $Call.ByID(2666858332, taskID).then(($result: any) => {
+        return $$createType9($result);
+    });
 }
 
 /**
  * ListTasks returns all tasks from the vault index, newest first.
  */
-export function ListTasks(): $CancellablePromise<(markdown$0.Task | null)[] | null> {
-    return $Call.ByID(1611157941);
+export function ListTasks(): $CancellablePromise<(markdown$0.Task | null)[]> {
+    return $Call.ByID(1611157941).then(($result: any) => {
+        return $$createType10($result);
+    });
 }
 
 /**
@@ -91,8 +116,10 @@ export function RescanVault(): $CancellablePromise<void> {
 /**
  * SaveDayPlan creates or updates a DayPlan for a date with an ordered list of task IDs.
  */
-export function SaveDayPlan(date: string, taskIDs: string[] | null): $CancellablePromise<markdown$0.DayPlan | null> {
-    return $Call.ByID(1580712949, date, taskIDs);
+export function SaveDayPlan(date: string, taskIDs: string[]): $CancellablePromise<markdown$0.DayPlan | null> {
+    return $Call.ByID(1580712949, date, taskIDs).then(($result: any) => {
+        return $$createType5($result);
+    });
 }
 
 /**
@@ -100,26 +127,47 @@ export function SaveDayPlan(date: string, taskIDs: string[] | null): $Cancellabl
  * and opens it. Cancel returns the unchanged status.
  */
 export function SelectVaultDirectory(): $CancellablePromise<$models.VaultStatus> {
-    return $Call.ByID(2534227418);
+    return $Call.ByID(2534227418).then(($result: any) => {
+        return $$createType8($result);
+    });
 }
 
 /**
  * SetTaskStatus toggles or updates the status of a Task with completion/reopen event semantics.
  */
 export function SetTaskStatus(id: string, status: markdown$0.TaskStatus): $CancellablePromise<markdown$0.Task | null> {
-    return $Call.ByID(1569318832, id, status);
+    return $Call.ByID(1569318832, id, status).then(($result: any) => {
+        return $$createType3($result);
+    });
 }
 
 /**
  * UpdateMemo updates an existing Memo's body and tags while preserving its creation timestamp.
  */
 export function UpdateMemo(input: $models.UpdateMemoInput): $CancellablePromise<markdown$0.Memo | null> {
-    return $Call.ByID(971500362, input);
+    return $Call.ByID(971500362, input).then(($result: any) => {
+        return $$createType1($result);
+    });
 }
 
 /**
  * UpdateTask updates an existing Task, safely writes changes to Markdown, and preserves unknown frontmatter.
  */
 export function UpdateTask(input: $models.UpdateTaskInput): $CancellablePromise<markdown$0.Task | null> {
-    return $Call.ByID(12384053, input);
+    return $Call.ByID(12384053, input).then(($result: any) => {
+        return $$createType3($result);
+    });
 }
+
+// Private type creation functions
+const $$createType0 = markdown$0.Memo.createFrom;
+const $$createType1 = $Create.Nullable($$createType0);
+const $$createType2 = markdown$0.Task.createFrom;
+const $$createType3 = $Create.Nullable($$createType2);
+const $$createType4 = markdown$0.DayPlan.createFrom;
+const $$createType5 = $Create.Nullable($$createType4);
+const $$createType6 = $models.TimelineItem.createFrom;
+const $$createType7 = $Create.Array($$createType6);
+const $$createType8 = $models.VaultStatus.createFrom;
+const $$createType9 = $Create.Array($$createType1);
+const $$createType10 = $Create.Array($$createType3);

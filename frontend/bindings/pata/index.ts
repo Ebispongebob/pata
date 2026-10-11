@@ -6,9 +6,10 @@ export {
     VaultService
 };
 
-export type {
+export {
     CreateMemoInput,
     CreateTaskInput,
+    TimelineItem,
     UpdateMemoInput,
     UpdateTaskInput,
     VaultStatus

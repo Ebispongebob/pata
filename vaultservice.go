@@ -7,6 +7,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -66,6 +67,15 @@ type UpdateMemoInput struct {
 	ID   string   `json:"id"`
 	Body string   `json:"body"`
 	Tags []string `json:"tags,omitempty"`
+}
+
+// TimelineItem represents an aggregated item in the day timeline (memo or completion).
+type TimelineItem struct {
+	Kind      string         `json:"kind"` // "memo" | "completion"
+	Time      time.Time      `json:"time"`
+	Memo      *markdown.Memo `json:"memo,omitempty"`
+	TaskID    string         `json:"task_id,omitempty"`
+	TaskTitle string         `json:"task_title,omitempty"`
 }
 
 // EventVaultChanged is emitted to the Wails frontend when a vault entity is created, modified, or deleted.
@@ -614,6 +624,125 @@ func dayPlanBaseline(v *markdown.Vault, plan *markdown.DayPlan) *markdown.FileBa
 		return &b
 	}
 	return nil
+}
+
+// GetDayTimeline returns daily timeline items (memos and task completion events) for a given date YYYY-MM-DD in local timezone.
+func (s *VaultService) GetDayTimeline(date string) ([]TimelineItem, error) {
+	s.mu.Lock()
+	v := s.vault
+	s.mu.Unlock()
+	if v == nil {
+		return nil, fmt.Errorf("尚未打开 Vault")
+	}
+
+	trimmedDate := strings.TrimSpace(date)
+	if _, err := time.Parse("2006-01-02", trimmedDate); err != nil {
+		return nil, fmt.Errorf("无效的日期格式: %s (必须为 YYYY-MM-DD)", date)
+	}
+
+	var items []TimelineItem
+	tasks := v.Index.ListTasks()
+	taskMap := make(map[string]*markdown.Task, len(tasks))
+	for _, t := range tasks {
+		taskMap[t.ID] = t
+	}
+
+	// 1. Task completions: StatusEvents with action=completed whose local date matches
+	for _, t := range tasks {
+		for _, ev := range t.StatusEvents {
+			if ev.Action == markdown.StatusEventActionCompleted {
+				localDate := ev.At.In(time.Local).Format("2006-01-02")
+				if localDate == trimmedDate {
+					items = append(items, TimelineItem{
+						Kind:      "completion",
+						Time:      ev.At,
+						TaskID:    t.ID,
+						TaskTitle: t.Title,
+					})
+				}
+			}
+		}
+	}
+
+	// 2. Memos: created_at local date matches
+	allMemos := s.getAllMemos(v)
+	for _, m := range allMemos {
+		localDate := m.CreatedAt.In(time.Local).Format("2006-01-02")
+		if localDate == trimmedDate {
+			var taskTitle string
+			if m.TaskID != "" {
+				if parent, ok := taskMap[m.TaskID]; ok {
+					taskTitle = parent.Title
+				} else if parent, ok := v.Index.GetTask(m.TaskID); ok {
+					taskTitle = parent.Title
+				}
+			}
+			items = append(items, TimelineItem{
+				Kind:      "memo",
+				Time:      m.CreatedAt,
+				Memo:      m,
+				TaskID:    m.TaskID,
+				TaskTitle: taskTitle,
+			})
+		}
+	}
+
+	// Sort descending by Time (newest -> oldest)
+	sort.Slice(items, func(i, j int) bool {
+		if items[i].Time.Equal(items[j].Time) {
+			if items[i].Kind != items[j].Kind {
+				return items[i].Kind < items[j].Kind
+			}
+			if items[i].Memo != nil && items[j].Memo != nil {
+				return items[i].Memo.ID > items[j].Memo.ID
+			}
+			return items[i].TaskID > items[j].TaskID
+		}
+		return items[i].Time.After(items[j].Time)
+	})
+
+	if items == nil {
+		return []TimelineItem{}, nil
+	}
+	return items, nil
+}
+
+// getAllMemos retrieves clones of all memos across the vault (independent, task-associated, and dangling).
+func (s *VaultService) getAllMemos(v *markdown.Vault) []*markdown.Memo {
+	seen := make(map[string]bool)
+	var allMemos []*markdown.Memo
+
+	// 1. Independent memos (TaskID == "")
+	for _, m := range v.Index.ListMemosByTask("") {
+		if !seen[m.ID] {
+			seen[m.ID] = true
+			allMemos = append(allMemos, m)
+		}
+	}
+
+	// 2. Memos associated with active tasks
+	for _, t := range v.Index.ListTasks() {
+		for _, m := range v.Index.ListMemosByTask(t.ID) {
+			if !seen[m.ID] {
+				seen[m.ID] = true
+				allMemos = append(allMemos, m)
+			}
+		}
+	}
+
+	// 3. Memos referencing missing/deleted tasks (dangling refs)
+	for _, d := range v.Index.ListDanglingReferences() {
+		if d.SourceType == markdown.EntityTypeMemo {
+			if !seen[d.SourceID] {
+				if m, ok := v.Index.GetMemo(d.SourceID); ok {
+					seen[d.SourceID] = true
+					allMemos = append(allMemos, m)
+				}
+			}
+		}
+	}
+
+	return allMemos
 }
 
 func (s *VaultService) dispatchEvent(name string, data any) {

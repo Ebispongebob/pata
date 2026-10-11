@@ -3,61 +3,244 @@
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
+import { Create as $Create } from "@wailsio/runtime";
+
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
 import * as markdown$0 from "./internal/storage/markdown/models.js";
 
 /**
  * CreateMemoInput defines parameters for creating a new Memo.
  */
-export interface CreateMemoInput {
+export class CreateMemoInput {
     "body": string;
     "task_id"?: string;
-    "tags"?: string[] | null;
+    "tags"?: string[];
+
+    /** Creates a new CreateMemoInput instance. */
+    constructor($$source: Partial<CreateMemoInput> = {}) {
+        if (!("body" in $$source)) {
+            this["body"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new CreateMemoInput instance from a string or object.
+     */
+    static createFrom($$source: any = {}): CreateMemoInput {
+        const $$createField2_0 = $$createType0;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("tags" in $$parsedSource) {
+            $$parsedSource["tags"] = $$createField2_0($$parsedSource["tags"]);
+        }
+        return new CreateMemoInput($$parsedSource as Partial<CreateMemoInput>);
+    }
 }
 
 /**
  * CreateTaskInput defines parameters for creating a new Task.
  */
-export interface CreateTaskInput {
+export class CreateTaskInput {
     "title": string;
     "status"?: markdown$0.TaskStatus;
     "priority"?: markdown$0.TaskPriority;
     "due"?: string | null;
-    "tags"?: string[] | null;
-    "note_ids"?: string[] | null;
+    "tags"?: string[];
+    "note_ids"?: string[];
     "body"?: string;
+
+    /** Creates a new CreateTaskInput instance. */
+    constructor($$source: Partial<CreateTaskInput> = {}) {
+        if (!("title" in $$source)) {
+            this["title"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new CreateTaskInput instance from a string or object.
+     */
+    static createFrom($$source: any = {}): CreateTaskInput {
+        const $$createField4_0 = $$createType0;
+        const $$createField5_0 = $$createType0;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("tags" in $$parsedSource) {
+            $$parsedSource["tags"] = $$createField4_0($$parsedSource["tags"]);
+        }
+        if ("note_ids" in $$parsedSource) {
+            $$parsedSource["note_ids"] = $$createField5_0($$parsedSource["note_ids"]);
+        }
+        return new CreateTaskInput($$parsedSource as Partial<CreateTaskInput>);
+    }
+}
+
+/**
+ * TimelineItem represents an aggregated item in the day timeline (memo or completion).
+ */
+export class TimelineItem {
+    /**
+     * "memo" | "completion"
+     */
+    "kind": string;
+    "time": string;
+    "memo"?: markdown$0.Memo | null;
+    "task_id"?: string;
+    "task_title"?: string;
+
+    /** Creates a new TimelineItem instance. */
+    constructor($$source: Partial<TimelineItem> = {}) {
+        if (!("kind" in $$source)) {
+            this["kind"] = "";
+        }
+        if (!("time" in $$source)) {
+            this["time"] = "0001-01-01T00:00:00.000Z";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new TimelineItem instance from a string or object.
+     */
+    static createFrom($$source: any = {}): TimelineItem {
+        const $$createField2_0 = $$createType2;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("memo" in $$parsedSource) {
+            $$parsedSource["memo"] = $$createField2_0($$parsedSource["memo"]);
+        }
+        return new TimelineItem($$parsedSource as Partial<TimelineItem>);
+    }
 }
 
 /**
  * UpdateMemoInput defines parameters for updating an existing Memo.
  */
-export interface UpdateMemoInput {
+export class UpdateMemoInput {
     "id": string;
     "body": string;
-    "tags"?: string[] | null;
+    "tags"?: string[];
+
+    /** Creates a new UpdateMemoInput instance. */
+    constructor($$source: Partial<UpdateMemoInput> = {}) {
+        if (!("id" in $$source)) {
+            this["id"] = "";
+        }
+        if (!("body" in $$source)) {
+            this["body"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new UpdateMemoInput instance from a string or object.
+     */
+    static createFrom($$source: any = {}): UpdateMemoInput {
+        const $$createField2_0 = $$createType0;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("tags" in $$parsedSource) {
+            $$parsedSource["tags"] = $$createField2_0($$parsedSource["tags"]);
+        }
+        return new UpdateMemoInput($$parsedSource as Partial<UpdateMemoInput>);
+    }
 }
 
 /**
  * UpdateTaskInput defines parameters for updating an existing Task.
  * Note: tags, note_ids, and body follow full-replacement semantics (not partial patch).
  */
-export interface UpdateTaskInput {
+export class UpdateTaskInput {
     "id": string;
     "title": string;
     "status": markdown$0.TaskStatus;
     "priority": markdown$0.TaskPriority;
     "due": string | null;
-    "tags"?: string[] | null;
-    "note_ids"?: string[] | null;
+    "tags"?: string[];
+    "note_ids"?: string[];
     "body": string;
+
+    /** Creates a new UpdateTaskInput instance. */
+    constructor($$source: Partial<UpdateTaskInput> = {}) {
+        if (!("id" in $$source)) {
+            this["id"] = "";
+        }
+        if (!("title" in $$source)) {
+            this["title"] = "";
+        }
+        if (!("status" in $$source)) {
+            this["status"] = markdown$0.TaskStatus.$zero;
+        }
+        if (!("priority" in $$source)) {
+            this["priority"] = markdown$0.TaskPriority.$zero;
+        }
+        if (!("due" in $$source)) {
+            this["due"] = null;
+        }
+        if (!("body" in $$source)) {
+            this["body"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new UpdateTaskInput instance from a string or object.
+     */
+    static createFrom($$source: any = {}): UpdateTaskInput {
+        const $$createField5_0 = $$createType0;
+        const $$createField6_0 = $$createType0;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("tags" in $$parsedSource) {
+            $$parsedSource["tags"] = $$createField5_0($$parsedSource["tags"]);
+        }
+        if ("note_ids" in $$parsedSource) {
+            $$parsedSource["note_ids"] = $$createField6_0($$parsedSource["note_ids"]);
+        }
+        return new UpdateTaskInput($$parsedSource as Partial<UpdateTaskInput>);
+    }
 }
 
 /**
  * VaultStatus reports whether a vault is configured/open for the UI.
  */
-export interface VaultStatus {
+export class VaultStatus {
     "configured": boolean;
     "path": string;
     "open": boolean;
     "taskCount": number;
     "error"?: string;
+
+    /** Creates a new VaultStatus instance. */
+    constructor($$source: Partial<VaultStatus> = {}) {
+        if (!("configured" in $$source)) {
+            this["configured"] = false;
+        }
+        if (!("path" in $$source)) {
+            this["path"] = "";
+        }
+        if (!("open" in $$source)) {
+            this["open"] = false;
+        }
+        if (!("taskCount" in $$source)) {
+            this["taskCount"] = 0;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new VaultStatus instance from a string or object.
+     */
+    static createFrom($$source: any = {}): VaultStatus {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new VaultStatus($$parsedSource as Partial<VaultStatus>);
+    }
 }
+
+// Private type creation functions
+const $$createType0 = $Create.Array($Create.Any);
+const $$createType1 = markdown$0.Memo.createFrom;
+const $$createType2 = $Create.Nullable($$createType1);

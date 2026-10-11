@@ -17,16 +17,32 @@ import {
   AlertCircle,
   RefreshCw,
   FolderOpen,
+  FileText,
+  Send,
+  ExternalLink,
 } from 'lucide-react';
 import * as VaultService from '../bindings/pata/vaultservice';
 import { Task, TaskStatus, TaskPriority } from '../bindings/pata/internal/storage/markdown/models';
-import { VaultStatus, CreateTaskInput } from '../bindings/pata/models';
+import { VaultStatus, CreateTaskInput, TimelineItem, CreateMemoInput } from '../bindings/pata/models';
 
 interface TodayViewProps {
   vaultStatus: VaultStatus | null;
   onSelectVault: () => void;
   onRescanVault: () => void;
   vaultBusy?: boolean;
+  onOpenTask?: (taskID: string) => void;
+}
+
+function formatTimelineTime(isoString: string): string {
+  if (!isoString) return '';
+  try {
+    const d = new Date(isoString);
+    if (isNaN(d.getTime())) return isoString;
+    const pad = (n: number) => n.toString().padStart(2, '0');
+    return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  } catch {
+    return isoString;
+  }
 }
 
 function getLocalDateStr(d: Date = new Date()): string {
@@ -54,6 +70,7 @@ export function TodayView({
   onSelectVault,
   onRescanVault,
   vaultBusy = false,
+  onOpenTask,
 }: TodayViewProps) {
   const todayStr = useMemo(() => getLocalDateStr(), []);
   const [selectedDate, setSelectedDate] = useState<string>(todayStr);
@@ -61,12 +78,18 @@ export function TodayView({
   const [tasks, setTasks] = useState<Task[]>([]);
   const [dayPlanTaskIds, setDayPlanTaskIds] = useState<string[]>([]);
   const [yesterdayTaskIds, setYesterdayTaskIds] = useState<string[]>([]);
+  const [timelineItems, setTimelineItems] = useState<TimelineItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [noticeMsg, setNoticeMsg] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [rescanLoading, setRescanLoading] = useState(false);
+
+  // Quick memo state
+  const [quickMemoBody, setQuickMemoBody] = useState('');
+  const [creatingMemo, setCreatingMemo] = useState(false);
+  const [memoError, setMemoError] = useState<string | null>(null);
 
   // Auto-dismiss notice after 5 seconds
   useEffect(() => {
@@ -84,12 +107,13 @@ export function TodayView({
   const [quickCreating, setQuickCreating] = useState(false);
   const [removeConfirmId, setRemoveConfirmId] = useState<string | null>(null);
 
-  // Load all tasks and day plan for current selectedDate
+  // Load all tasks, day plan, and timeline for current selectedDate
   const loadData = useCallback(async () => {
     if (!vaultStatus?.open) {
       setTasks([]);
       setDayPlanTaskIds([]);
       setYesterdayTaskIds([]);
+      setTimelineItems([]);
       setError(null);
       return;
     }
@@ -97,14 +121,16 @@ export function TodayView({
     setLoading(true);
     setError(null);
     try {
-      const [allTasksRes, planRes] = await Promise.all([
+      const [allTasksRes, planRes, timelineRes] = await Promise.all([
         VaultService.ListTasks(),
         VaultService.GetDayPlan(selectedDate),
+        VaultService.GetDayTimeline(selectedDate),
       ]);
 
       const validTasks = (allTasksRes ?? []).filter((t): t is Task => t !== null);
       setTasks(validTasks);
       setDayPlanTaskIds((planRes?.task_ids ?? []).filter((id): id is string => typeof id === 'string'));
+      setTimelineItems((timelineRes ?? []).filter((item): item is TimelineItem => item !== null));
 
       // If looking at today, fetch yesterday's plan for uncompleted candidates
       if (selectedDate === todayStr) {
@@ -125,11 +151,36 @@ export function TodayView({
   useEffect(() => {
     setNoticeMsg(null);
     setSaveError(null);
+    setMemoError(null);
   }, [selectedDate]);
 
   useEffect(() => {
     loadData();
   }, [loadData]);
+
+  // Quick memo creation handler
+  const handleCreateQuickMemo = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    const body = quickMemoBody.trim();
+    if (!body) return;
+
+    setCreatingMemo(true);
+    setMemoError(null);
+    try {
+      const input: CreateMemoInput = {
+        body,
+        tags: [],
+      };
+      await VaultService.CreateMemo(input);
+      setQuickMemoBody('');
+      await loadData();
+    } catch (err: any) {
+      console.error('Failed to create memo:', err);
+      setMemoError(err?.message || String(err));
+    } finally {
+      setCreatingMemo(false);
+    }
+  };
 
   // Subscribe to external vault changes
   useEffect(() => {
@@ -745,6 +796,13 @@ export function TodayView({
                   </div>
 
                   <div className="flex items-center space-x-1 shrink-0">
+                    {/* Footnote for historical date */}
+                    {!isToday && (
+                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-stone-100 dark:bg-stone-800 text-stone-400 dark:text-stone-500 font-normal">
+                        当前状态
+                      </span>
+                    )}
+
                     {/* Priority Badge */}
                     <span
                       className={`text-[10px] font-mono px-1.5 py-0.5 rounded font-medium ${
@@ -798,6 +856,185 @@ export function TodayView({
         <div className="text-[11px] text-stone-400 leading-relaxed pt-1">
           提示：将任务加入今日计划仅作为当天的执行安排，不会改变任务的实际截止日期（due）。
         </div>
+      </section>
+
+      {/* Section B: Today Timeline (今日记录时间线) */}
+      <section className="space-y-3 pt-5 border-t border-stone-200/80 dark:border-stone-800">
+        <div className="flex items-center justify-between text-xs">
+          <div className="flex items-center space-x-2">
+            <h2 className="text-sm font-semibold text-stone-900 dark:text-stone-100">
+              {isToday ? '今日记录' : '当日记录'}
+            </h2>
+            <span className="text-xs font-mono text-stone-400">
+              {timelineItems.length}
+            </span>
+          </div>
+          <span className="text-[11px] text-stone-400">
+            按发生时间汇聚便签与任务完成事件
+          </span>
+        </div>
+
+        {/* Quick Memo Input Bar */}
+        <div className="space-y-2">
+          <div className="flex items-center gap-2 p-1.5 rounded-xl border border-stone-200 dark:border-stone-800 bg-white dark:bg-stone-950 shadow-2xs focus-within:ring-2 focus-within:ring-emerald-600 focus-within:border-transparent transition">
+            <textarea
+              value={quickMemoBody}
+              onChange={(e) => setQuickMemoBody(e.target.value)}
+              onKeyDown={(e) => {
+                if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+                  e.preventDefault();
+                  handleCreateQuickMemo();
+                }
+              }}
+              placeholder="记录一句话便签（⌘+Enter 快捷发送）..."
+              rows={1}
+              disabled={creatingMemo}
+              className="flex-1 px-2.5 py-1 text-xs bg-transparent text-stone-900 dark:text-stone-100 placeholder-stone-400 focus:outline-hidden resize-none min-h-[34px] max-h-32 leading-relaxed"
+            />
+            <button
+              type="button"
+              onClick={() => handleCreateQuickMemo()}
+              disabled={creatingMemo || !quickMemoBody.trim()}
+              className="flex items-center space-x-1 px-3 py-1.5 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-medium transition disabled:opacity-40 shrink-0 shadow-2xs"
+              title="发送便签 (⌘+Enter)"
+            >
+              <Send className="w-3.5 h-3.5" />
+              <span>{creatingMemo ? '发送中' : '发送'}</span>
+            </button>
+          </div>
+
+          {!isToday && (
+            <div className="text-[11px] text-stone-400 dark:text-stone-500 px-1">
+              提示：记录将按当前时间记入今天
+            </div>
+          )}
+
+          {memoError && (
+            <div className="p-2.5 rounded-lg border border-rose-200 dark:border-rose-900/60 bg-rose-50/80 dark:bg-rose-950/40 text-rose-800 dark:text-rose-200 text-xs flex items-center justify-between">
+              <div className="flex items-center space-x-2">
+                <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+                <span>便签保存失败: {memoError}</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setMemoError(null)}
+                className="text-rose-600 hover:text-rose-800 p-0.5 rounded transition"
+                title="关闭错误提示"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* Timeline Items List */}
+        {timelineItems.length === 0 ? (
+          <div className="py-8 text-center rounded-xl border border-dashed border-stone-200 dark:border-stone-800 bg-white/40 dark:bg-stone-950/20 text-xs text-stone-400 space-y-1">
+            <Clock className="w-7 h-7 text-stone-300 dark:text-stone-700 mx-auto" />
+            <div className="font-medium text-stone-500 dark:text-stone-400">
+              该日期暂无记录
+            </div>
+            <div className="text-[11px] text-stone-400">
+              输入的便签与当日任务完成事件将在此按时间倒序展示
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {timelineItems.map((item, idx) => {
+              const timeDisplay = formatTimelineTime(item.time);
+              if (item.kind === 'completion') {
+                return (
+                  <div
+                    key={`comp-${item.task_id}-${item.time}-${idx}`}
+                    className="flex items-center justify-between p-3 rounded-xl border border-emerald-200/80 dark:border-emerald-900/40 bg-emerald-50/40 dark:bg-emerald-950/20 text-xs gap-3"
+                  >
+                    <div className="flex items-center space-x-2.5 min-w-0">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                      <span className="font-medium text-stone-900 dark:text-stone-100 shrink-0">
+                        完成任务
+                      </span>
+                      {item.task_title ? (
+                        <button
+                          type="button"
+                          onClick={() => item.task_id && onOpenTask?.(item.task_id)}
+                          className="flex items-center space-x-1 px-2 py-0.5 rounded bg-emerald-100/80 dark:bg-emerald-900/60 hover:bg-emerald-200 dark:hover:bg-emerald-800/80 text-emerald-800 dark:text-emerald-200 text-[11px] font-medium transition truncate max-w-xs"
+                          title="在 Tasks 中查看任务详情"
+                        >
+                          <span className="truncate">「{item.task_title}」</span>
+                          <ExternalLink className="w-2.5 h-2.5 shrink-0 opacity-70" />
+                        </button>
+                      ) : (
+                        item.task_id && (
+                          <span className="font-mono text-[11px] text-stone-400 truncate">
+                            {item.task_id}
+                          </span>
+                        )
+                      )}
+                    </div>
+                    <span className="font-mono text-[11px] text-stone-400 shrink-0">
+                      {timeDisplay}
+                    </span>
+                  </div>
+                );
+              }
+
+              // Memo item
+              return (
+                <div
+                  key={`memo-${item.memo?.id ?? idx}-${item.time}`}
+                  className="p-3.5 rounded-xl border border-stone-200 dark:border-stone-800 bg-white dark:bg-stone-950 shadow-2xs space-y-2"
+                >
+                  <div className="flex items-center justify-between text-xs gap-2">
+                    <div className="flex items-center space-x-2 min-w-0">
+                      <FileText className="w-3.5 h-3.5 text-stone-400 shrink-0" />
+                      {item.task_id ? (
+                        item.task_title ? (
+                          <button
+                            type="button"
+                            onClick={() => onOpenTask?.(item.task_id!)}
+                            className="flex items-center space-x-1 px-2 py-0.5 rounded bg-stone-100 dark:bg-stone-800 hover:bg-stone-200 dark:hover:bg-stone-700 text-stone-700 dark:text-stone-300 text-[11px] font-medium transition truncate max-w-xs"
+                            title="关联任务，点击在 Tasks 中打开"
+                          >
+                            <span className="text-stone-400">任务:</span>
+                            <span className="truncate font-semibold">{item.task_title}</span>
+                            <ExternalLink className="w-2.5 h-2.5 shrink-0 opacity-70" />
+                          </button>
+                        ) : (
+                          <span className="flex items-center space-x-1 px-2 py-0.5 rounded bg-stone-100/70 dark:bg-stone-800/50 text-stone-400 text-[11px] max-w-xs truncate font-mono">
+                            <span className="truncate">{item.task_id}</span>
+                            <span className="text-[10px] text-rose-500/80 shrink-0 font-normal">(任务已删除)</span>
+                          </span>
+                        )
+                      ) : (
+                        <span className="text-[11px] text-stone-400 font-mono">独立便签</span>
+                      )}
+                      {item.memo?.tags && item.memo.tags.length > 0 && (
+                        <span className="hidden sm:inline-flex items-center gap-1">
+                          {item.memo.tags.map((tag) => (
+                            <span
+                              key={tag}
+                              className="text-[10px] px-1 py-0.2 rounded bg-stone-100 dark:bg-stone-800 text-stone-500 font-mono"
+                            >
+                              #{tag}
+                            </span>
+                          ))}
+                        </span>
+                      )}
+                    </div>
+
+                    <span className="font-mono text-[11px] text-stone-400 shrink-0">
+                      {timeDisplay}
+                    </span>
+                  </div>
+
+                  <div className="text-xs text-stone-800 dark:text-stone-200 whitespace-pre-wrap break-words leading-relaxed pl-5.5">
+                    {item.memo?.body}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </section>
 
       {/* Task Picker Modal */}
