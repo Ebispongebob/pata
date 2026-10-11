@@ -11,12 +11,12 @@
 
 ## 本阶段完成标准
 
-- [ ] macOS 可启动应用，离线可访问用户选择的 Vault。
-- [ ] 实机验证标题栏/窗口行为、系统深浅色、缩放、侧边栏收起；记录系统/Wails 版本及结果；Liquid Glass 不强制。
-- [ ] 新建/编辑 Task 写入真实 Markdown，重新启动内容仍正确。
-- [ ] Task 属性合法校验、未知 Frontmatter 字段保留。
-- [ ] 外部文本编辑器改动可被感知，存在冲突时不覆盖。
-- [ ] 任务管理与 UI/Wails 代码解耦，CLI 不属于本阶段工作。
+- [x] macOS 可启动应用，离线可访问用户选择的 Vault。（`wails3 task build` 产出 bin/pata.app；冒烟验证启动存活）
+- [x] 实机验证标题栏/窗口行为、系统深浅色、缩放、侧边栏收起；记录系统/Wails 版本及结果；Liquid Glass 不强制。（见 [spike-desktop-result.md](spike-desktop-result.md)）
+- [x] 新建/编辑 Task 写入真实 Markdown，重新启动内容仍正确。（单测模拟重扫；实机手动回归待用户一次性走查）
+- [x] Task 属性合法校验、未知 Frontmatter 字段保留。（测试覆盖）
+- [x] 外部文本编辑器改动可被感知，存在冲突时不覆盖。（fsnotify→vault:changed 事件+ConflictError 拒绝覆盖；单测覆盖，实机走查同上）
+- [x] 任务管理与 UI/Wails 代码解耦，CLI 不属于本阶段工作。（internal/storage/markdown 无 Wails 依赖；未引入 CLI）
 
 ## 应用架构与技术路线
 

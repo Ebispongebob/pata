@@ -29,4 +29,4 @@
 
 ## 当前状态
 
-阶段 1 设计已基本完成（待真实用户确认）。阶段 2 进行中：桌面 Spike（P2-001）与 Markdown 存储核心 Spike（P2-002，`spikes/storage/`）已交付验收，剩余 Vault 选择、扫描/索引接入 Go Core、Tasks 管理与外部修改感知的实装（见 [02-foundation/proposal](02-foundation/proposal.md) 实施顺序 2–5）。阶段 3–5 尚未开始。
+阶段 1 设计已基本完成（待真实用户确认）。阶段 2 已完成：桌面 Spike（P2-001）、存储核心（P2-002，`internal/storage/markdown`）、单 Vault 接入与 Tasks 管理闭环、外部修改感知与冲突提示（P2-003/P2-004）；完成标准已勾选，仅剩用户实机手动走查一次。阶段 3–5 尚未开始。
