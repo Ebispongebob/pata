@@ -5,6 +5,7 @@ export {
     DayPlan,
     EntityType,
     Memo,
+    Note,
     StatusEvent,
     StatusEventAction,
     Task,

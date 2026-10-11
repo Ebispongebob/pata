@@ -193,3 +193,71 @@ func TestListMemosByTask(t *testing.T) {
 		t.Fatalf("expected non-nil empty slice for non-existent task, got %v", empty)
 	}
 }
+
+func TestListNotes(t *testing.T) {
+	idx := NewMemoryIndex()
+
+	// 1. Empty index returns empty slice
+	empty := idx.ListNotes()
+	if empty == nil || len(empty) != 0 {
+		t.Fatalf("expected non-nil empty slice for empty index, got %v", empty)
+	}
+
+	t1 := time.Date(2026, 10, 11, 10, 0, 0, 0, time.UTC)
+	t2 := time.Date(2026, 10, 11, 11, 0, 0, 0, time.UTC)
+	t3 := time.Date(2026, 10, 11, 12, 0, 0, 0, time.UTC)
+
+	note1 := &Note{
+		Type:      EntityTypeNote,
+		ID:        "n-001",
+		Title:     "旧笔记",
+		Tags:      []string{"tag1"},
+		CreatedAt: t1,
+		UpdatedAt: t1,
+		Body:      "正文1",
+	}
+	note2 := &Note{
+		Type:      EntityTypeNote,
+		ID:        "n-002",
+		Title:     "最新修改笔记",
+		Tags:      []string{"tag2"},
+		CreatedAt: t1,
+		UpdatedAt: t3,
+		Body:      "正文2",
+	}
+	note3 := &Note{
+		Type:      EntityTypeNote,
+		ID:        "n-003",
+		Title:     "中间修改笔记",
+		Tags:      []string{"tag3"},
+		CreatedAt: t2,
+		UpdatedAt: t2,
+		Body:      "正文3",
+	}
+
+	idx.PutEntity("/vault/notes/n-001.md", note1, FileBaseline{})
+	idx.PutEntity("/vault/notes/n-002.md", note2, FileBaseline{})
+	idx.PutEntity("/vault/notes/n-003.md", note3, FileBaseline{})
+
+	// 2. Sort check (UpdatedAt descending: n-002 (t3), n-003 (t2), n-001 (t1))
+	notes := idx.ListNotes()
+	if len(notes) != 3 {
+		t.Fatalf("expected 3 notes, got %d", len(notes))
+	}
+	if notes[0].ID != "n-002" || notes[1].ID != "n-003" || notes[2].ID != "n-001" {
+		t.Fatalf("expected order [n-002, n-003, n-001], got [%s, %s, %s]", notes[0].ID, notes[1].ID, notes[2].ID)
+	}
+
+	// 3. Clone isolation check: mutating the returned slice/elements doesn't affect index
+	notes[0].Title = "被篡改的标题"
+	notes[0].Tags[0] = "mutated-tag"
+	notes[0].Body = "被篡改的正文"
+
+	reloaded, ok := idx.GetNote("n-002")
+	if !ok {
+		t.Fatalf("GetNote n-002 failed")
+	}
+	if reloaded.Title != "最新修改笔记" || reloaded.Tags[0] != "tag2" || reloaded.Body != "正文2" {
+		t.Fatalf("index entity was mutated through returned ListNotes clone: %+v", reloaded)
+	}
+}

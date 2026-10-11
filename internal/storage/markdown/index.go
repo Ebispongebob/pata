@@ -152,6 +152,23 @@ func (idx *MemoryIndex) GetNote(id string) (*Note, bool) {
 	return n.Clone().(*Note), true
 }
 
+// ListNotes returns clones of all notes sorted by UpdatedAt descending.
+func (idx *MemoryIndex) ListNotes() []*Note {
+	idx.mu.RLock()
+	notes := make([]*Note, 0, len(idx.notes))
+	for _, n := range idx.notes {
+		notes = append(notes, n.Clone().(*Note))
+	}
+	idx.mu.RUnlock()
+	sort.Slice(notes, func(i, j int) bool {
+		if notes[i].UpdatedAt.Equal(notes[j].UpdatedAt) {
+			return notes[i].ID < notes[j].ID
+		}
+		return notes[i].UpdatedAt.After(notes[j].UpdatedAt)
+	})
+	return notes
+}
+
 // GetDayPlan returns a clone of the DayPlan for a date.
 func (idx *MemoryIndex) GetDayPlan(date string) (*DayPlan, bool) {
 	idx.mu.RLock()

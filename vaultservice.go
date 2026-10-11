@@ -69,6 +69,22 @@ type UpdateMemoInput struct {
 	Tags []string `json:"tags,omitempty"`
 }
 
+// CreateNoteInput defines parameters for creating a new Note.
+type CreateNoteInput struct {
+	Title string   `json:"title"`
+	Tags  []string `json:"tags,omitempty"`
+	Body  string   `json:"body,omitempty"`
+}
+
+// UpdateNoteInput defines parameters for updating an existing Note.
+// Note: tags and body follow full-replacement semantics (not partial patch).
+type UpdateNoteInput struct {
+	ID    string   `json:"id"`
+	Title string   `json:"title"`
+	Tags  []string `json:"tags,omitempty"`
+	Body  string   `json:"body"`
+}
+
 // TimelineItem represents an aggregated item in the day timeline (memo or completion).
 type TimelineItem struct {
 	Kind      string         `json:"kind"` // "memo" | "completion"
@@ -535,6 +551,133 @@ func (s *VaultService) UpdateMemo(input UpdateMemoInput) (*markdown.Memo, error)
 // memoBaseline looks up the baseline for a memo directly from the memory index.
 func memoBaseline(v *markdown.Vault, memo *markdown.Memo) *markdown.FileBaseline {
 	path := v.ResolveEntityPath(memo)
+	if b, ok := v.Index.GetBaseline(path); ok {
+		return &b
+	}
+	return nil
+}
+
+// ListNotes returns all notes from the vault index, newest updated first.
+func (s *VaultService) ListNotes() ([]*markdown.Note, error) {
+	s.mu.Lock()
+	v := s.vault
+	s.mu.Unlock()
+	if v == nil {
+		return nil, fmt.Errorf("尚未打开 Vault")
+	}
+	return v.Index.ListNotes(), nil
+}
+
+// GetNote returns a note by its ID.
+func (s *VaultService) GetNote(id string) (*markdown.Note, error) {
+	s.mu.Lock()
+	v := s.vault
+	s.mu.Unlock()
+	if v == nil {
+		return nil, fmt.Errorf("尚未打开 Vault")
+	}
+
+	trimmedID := strings.TrimSpace(id)
+	if trimmedID == "" {
+		return nil, fmt.Errorf("笔记 ID 不能为空")
+	}
+
+	note, ok := v.Index.GetNote(trimmedID)
+	if !ok {
+		return nil, fmt.Errorf("笔记不存在: %s", trimmedID)
+	}
+	return note, nil
+}
+
+// CreateNote creates a new Note, writes it safely as Markdown, and updates the index.
+func (s *VaultService) CreateNote(input CreateNoteInput) (*markdown.Note, error) {
+	s.mu.Lock()
+	v := s.vault
+	s.mu.Unlock()
+	if v == nil {
+		return nil, fmt.Errorf("尚未打开 Vault")
+	}
+
+	title := strings.TrimSpace(input.Title)
+	if title == "" {
+		return nil, fmt.Errorf("笔记标题不能为空")
+	}
+
+	var tags []string
+	for _, tag := range input.Tags {
+		cleaned := strings.TrimSpace(strings.TrimPrefix(tag, "#"))
+		if cleaned != "" {
+			tags = append(tags, cleaned)
+		}
+	}
+
+	now := time.Now()
+	note := &markdown.Note{
+		Type:      markdown.EntityTypeNote,
+		ID:        markdown.GenerateEntityID(markdown.EntityTypeNote),
+		Title:     title,
+		Tags:      tags,
+		CreatedAt: now,
+		UpdatedAt: now,
+		Body:      input.Body,
+	}
+
+	if _, err := v.SaveEntity(note, nil); err != nil {
+		return nil, err
+	}
+
+	return note, nil
+}
+
+// UpdateNote updates an existing Note, safely writes changes to Markdown, and preserves unknown frontmatter.
+func (s *VaultService) UpdateNote(input UpdateNoteInput) (*markdown.Note, error) {
+	s.mu.Lock()
+	v := s.vault
+	s.mu.Unlock()
+	if v == nil {
+		return nil, fmt.Errorf("尚未打开 Vault")
+	}
+
+	trimmedID := strings.TrimSpace(input.ID)
+	if trimmedID == "" {
+		return nil, fmt.Errorf("笔记 ID 不能为空")
+	}
+
+	title := strings.TrimSpace(input.Title)
+	if title == "" {
+		return nil, fmt.Errorf("笔记标题不能为空")
+	}
+
+	existing, ok := v.Index.GetNote(trimmedID)
+	if !ok {
+		return nil, fmt.Errorf("笔记不存在: %s", trimmedID)
+	}
+
+	var tags []string
+	for _, tag := range input.Tags {
+		cleaned := strings.TrimSpace(strings.TrimPrefix(tag, "#"))
+		if cleaned != "" {
+			tags = append(tags, cleaned)
+		}
+	}
+
+	now := time.Now()
+	existing.Title = title
+	existing.Tags = tags
+	existing.Body = input.Body
+	existing.UpdatedAt = now
+
+	baseline := noteBaseline(v, existing)
+	if _, err := v.SaveEntity(existing, baseline); err != nil {
+		return nil, err
+	}
+
+	return existing, nil
+}
+
+// noteBaseline looks up the baseline for a note directly from the memory index.
+func noteBaseline(v *markdown.Vault, note *markdown.Note) *markdown.FileBaseline {
+	path := v.ResolveEntityPath(note)
 	if b, ok := v.Index.GetBaseline(path); ok {
 		return &b
 	}

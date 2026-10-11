@@ -8,9 +8,11 @@ export {
 
 export {
     CreateMemoInput,
+    CreateNoteInput,
     CreateTaskInput,
     TimelineItem,
     UpdateMemoInput,
+    UpdateNoteInput,
     UpdateTaskInput,
     VaultStatus
 } from "./models.js";

@@ -107,6 +107,55 @@ export class Memo {
 }
 
 /**
+ * Note represents a markdown note.
+ */
+export class Note {
+    "type": EntityType;
+    "id": string;
+    "title": string;
+    "tags"?: string[];
+    "created_at": string;
+    "updated_at": string;
+    "body": string;
+
+    /** Creates a new Note instance. */
+    constructor($$source: Partial<Note> = {}) {
+        if (!("type" in $$source)) {
+            this["type"] = EntityType.$zero;
+        }
+        if (!("id" in $$source)) {
+            this["id"] = "";
+        }
+        if (!("title" in $$source)) {
+            this["title"] = "";
+        }
+        if (!("created_at" in $$source)) {
+            this["created_at"] = "0001-01-01T00:00:00.000Z";
+        }
+        if (!("updated_at" in $$source)) {
+            this["updated_at"] = "0001-01-01T00:00:00.000Z";
+        }
+        if (!("body" in $$source)) {
+            this["body"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new Note instance from a string or object.
+     */
+    static createFrom($$source: any = {}): Note {
+        const $$createField3_0 = $$createType0;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("tags" in $$parsedSource) {
+            $$parsedSource["tags"] = $$createField3_0($$parsedSource["tags"]);
+        }
+        return new Note($$parsedSource as Partial<Note>);
+    }
+}
+
+/**
  * StatusEvent records completion and reopen events.
  */
 export class StatusEvent {

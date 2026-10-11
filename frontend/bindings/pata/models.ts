@@ -40,6 +40,36 @@ export class CreateMemoInput {
 }
 
 /**
+ * CreateNoteInput defines parameters for creating a new Note.
+ */
+export class CreateNoteInput {
+    "title": string;
+    "tags"?: string[];
+    "body"?: string;
+
+    /** Creates a new CreateNoteInput instance. */
+    constructor($$source: Partial<CreateNoteInput> = {}) {
+        if (!("title" in $$source)) {
+            this["title"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new CreateNoteInput instance from a string or object.
+     */
+    static createFrom($$source: any = {}): CreateNoteInput {
+        const $$createField1_0 = $$createType0;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("tags" in $$parsedSource) {
+            $$parsedSource["tags"] = $$createField1_0($$parsedSource["tags"]);
+        }
+        return new CreateNoteInput($$parsedSource as Partial<CreateNoteInput>);
+    }
+}
+
+/**
  * CreateTaskInput defines parameters for creating a new Task.
  */
 export class CreateTaskInput {
@@ -145,6 +175,44 @@ export class UpdateMemoInput {
             $$parsedSource["tags"] = $$createField2_0($$parsedSource["tags"]);
         }
         return new UpdateMemoInput($$parsedSource as Partial<UpdateMemoInput>);
+    }
+}
+
+/**
+ * UpdateNoteInput defines parameters for updating an existing Note.
+ * Note: tags and body follow full-replacement semantics (not partial patch).
+ */
+export class UpdateNoteInput {
+    "id": string;
+    "title": string;
+    "tags"?: string[];
+    "body": string;
+
+    /** Creates a new UpdateNoteInput instance. */
+    constructor($$source: Partial<UpdateNoteInput> = {}) {
+        if (!("id" in $$source)) {
+            this["id"] = "";
+        }
+        if (!("title" in $$source)) {
+            this["title"] = "";
+        }
+        if (!("body" in $$source)) {
+            this["body"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new UpdateNoteInput instance from a string or object.
+     */
+    static createFrom($$source: any = {}): UpdateNoteInput {
+        const $$createField2_0 = $$createType0;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("tags" in $$parsedSource) {
+            $$parsedSource["tags"] = $$createField2_0($$parsedSource["tags"]);
+        }
+        return new UpdateNoteInput($$parsedSource as Partial<UpdateNoteInput>);
     }
 }
 

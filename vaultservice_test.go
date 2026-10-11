@@ -1399,3 +1399,336 @@ func TestVaultService_GetDayTimeline_TimezoneBucketing(t *testing.T) {
 		t.Fatalf("Day 2 timeline mismatch: expected [m-bucket-day2], got %+v", tl2)
 	}
 }
+
+func TestVaultService_NoteCRUDAndValidation(t *testing.T) {
+	sClosed := &VaultService{}
+	if _, err := sClosed.ListNotes(); err == nil {
+		t.Fatalf("expected error on closed vault for ListNotes")
+	}
+	if _, err := sClosed.GetNote("n-1"); err == nil {
+		t.Fatalf("expected error on closed vault for GetNote")
+	}
+	if _, err := sClosed.CreateNote(CreateNoteInput{Title: "标题"}); err == nil {
+		t.Fatalf("expected error on closed vault for CreateNote")
+	}
+	if _, err := sClosed.UpdateNote(UpdateNoteInput{ID: "n-1", Title: "标题"}); err == nil {
+		t.Fatalf("expected error on closed vault for UpdateNote")
+	}
+
+	vaultDir := t.TempDir()
+	s := &VaultService{}
+	if _, err := s.openVault(vaultDir); err != nil {
+		t.Fatalf("openVault failed: %v", err)
+	}
+	defer func() {
+		if s.stopWatcher != nil {
+			s.stopWatcher()
+		}
+	}()
+
+	// 1. Validation: empty title
+	if _, err := s.CreateNote(CreateNoteInput{Title: "   "}); err == nil {
+		t.Fatalf("expected error for empty title on CreateNote")
+	}
+	if _, err := s.UpdateNote(UpdateNoteInput{ID: "n-1", Title: "   "}); err == nil {
+		t.Fatalf("expected error for empty title on UpdateNote")
+	}
+
+	// 2. Validation: empty ID
+	if _, err := s.GetNote("   "); err == nil {
+		t.Fatalf("expected error for empty ID on GetNote")
+	}
+	if _, err := s.UpdateNote(UpdateNoteInput{ID: "   ", Title: "新标题"}); err == nil {
+		t.Fatalf("expected error for empty ID on UpdateNote")
+	}
+
+	// 3. Non-existent note
+	if _, err := s.GetNote("n-ghost-999"); err == nil || !strings.Contains(err.Error(), "笔记不存在: n-ghost-999") {
+		t.Fatalf("expected '笔记不存在: n-ghost-999', got: %v", err)
+	}
+	if _, err := s.UpdateNote(UpdateNoteInput{ID: "n-ghost-999", Title: "新标题"}); err == nil || !strings.Contains(err.Error(), "笔记不存在: n-ghost-999") {
+		t.Fatalf("expected '笔记不存在: n-ghost-999', got: %v", err)
+	}
+
+	// 4. Create Note with empty body and optional tags (with '#' prefix to be stripped)
+	created, err := s.CreateNote(CreateNoteInput{
+		Title: "  架构设计决策记录  ",
+		Tags:  []string{"#架构", "ADR"},
+		Body:  "",
+	})
+	if err != nil {
+		t.Fatalf("CreateNote failed: %v", err)
+	}
+	if !strings.HasPrefix(created.ID, "n-") {
+		t.Fatalf("expected note ID prefix 'n-', got %s", created.ID)
+	}
+	if created.Title != "架构设计决策记录" {
+		t.Fatalf("title not trimmed properly: %q", created.Title)
+	}
+	if len(created.Tags) != 2 || created.Tags[0] != "架构" || created.Tags[1] != "ADR" {
+		t.Fatalf("tags not cleaned properly: %v", created.Tags)
+	}
+	if created.Body != "" {
+		t.Fatalf("expected empty body, got: %q", created.Body)
+	}
+	if created.CreatedAt.IsZero() || created.UpdatedAt.IsZero() {
+		t.Fatalf("timestamps not initialized: created=%v, updated=%v", created.CreatedAt, created.UpdatedAt)
+	}
+
+	// 5. Verify file on disk in notes/ directory
+	notePath := s.vault.ResolveEntityPath(created)
+	if !strings.Contains(notePath, filepath.Join(vaultDir, "notes")) {
+		t.Fatalf("expected note path to be under notes/, got: %s", notePath)
+	}
+	diskData, err := os.ReadFile(notePath)
+	if err != nil {
+		t.Fatalf("read created note file failed: %v", err)
+	}
+	parsed, err := markdown.ParseMarkdown(notePath, diskData)
+	if err != nil {
+		t.Fatalf("ParseMarkdown on created note failed: %v", err)
+	}
+	parsedNote, ok := parsed.(*markdown.Note)
+	if !ok {
+		t.Fatalf("parsed entity is not *markdown.Note: %T", parsed)
+	}
+	if parsedNote.Title != "架构设计决策记录" || len(parsedNote.Tags) != 2 {
+		t.Fatalf("parsed note mismatch: %+v", parsedNote)
+	}
+
+	// 6. Rescan and read back via GetNote and ListNotes
+	if err := s.RescanVault(); err != nil {
+		t.Fatalf("RescanVault failed: %v", err)
+	}
+	fetched, err := s.GetNote(created.ID)
+	if err != nil || fetched.ID != created.ID || fetched.Title != created.Title {
+		t.Fatalf("GetNote failed: %v, fetched=%+v", err, fetched)
+	}
+	list, err := s.ListNotes()
+	if err != nil || len(list) != 1 || list[0].ID != created.ID {
+		t.Fatalf("ListNotes failed: %v, list=%+v", err, list)
+	}
+
+	// 7. Restart simulation
+	s2 := &VaultService{}
+	if _, err := s2.openVault(vaultDir); err != nil {
+		t.Fatalf("restart openVault failed: %v", err)
+	}
+	defer func() {
+		if s2.stopWatcher != nil {
+			s2.stopWatcher()
+		}
+	}()
+	restartedList, err := s2.ListNotes()
+	if err != nil || len(restartedList) != 1 || restartedList[0].ID != created.ID {
+		t.Fatalf("restarted ListNotes mismatch: %v, list=%+v", err, restartedList)
+	}
+}
+
+func TestVaultService_UpdateNote_PreserveCreatedAtAndBaselineConflict(t *testing.T) {
+	vaultDir := t.TempDir()
+	s := &VaultService{}
+	if _, err := s.openVault(vaultDir); err != nil {
+		t.Fatalf("openVault failed: %v", err)
+	}
+	defer func() {
+		if s.stopWatcher != nil {
+			s.stopWatcher()
+		}
+	}()
+
+	created, err := s.CreateNote(CreateNoteInput{
+		Title: "原始笔记标题",
+		Tags:  []string{"草稿"},
+		Body:  "# 原始正文\n\n初始内容",
+	})
+	if err != nil {
+		t.Fatalf("CreateNote failed: %v", err)
+	}
+	origCreatedAt := created.CreatedAt
+
+	time.Sleep(10 * time.Millisecond)
+
+	// 1. UpdateNote modifies title, tags, body, and UpdatedAt while keeping CreatedAt
+	updated, err := s.UpdateNote(UpdateNoteInput{
+		ID:    created.ID,
+		Title: "修改后的笔记标题",
+		Tags:  []string{"发布", "技术"},
+		Body:  "# 修改后正文\n\n更新后的内容",
+	})
+	if err != nil {
+		t.Fatalf("UpdateNote failed: %v", err)
+	}
+	if !updated.CreatedAt.Equal(origCreatedAt) {
+		t.Fatalf("CreatedAt modified! orig=%v, updated=%v", origCreatedAt, updated.CreatedAt)
+	}
+	if !updated.UpdatedAt.After(origCreatedAt) {
+		t.Fatalf("UpdatedAt should be after CreatedAt! created=%v, updated=%v", origCreatedAt, updated.UpdatedAt)
+	}
+	if updated.Title != "修改后的笔记标题" || updated.Body != "# 修改后正文\n\n更新后的内容" {
+		t.Fatalf("updated note mismatch: %+v", updated)
+	}
+
+	// 2. Verify file on disk
+	notePath := s.vault.ResolveEntityPath(updated)
+	diskBytes, err := os.ReadFile(notePath)
+	if err != nil {
+		t.Fatalf("read disk file failed: %v", err)
+	}
+	if !strings.Contains(string(diskBytes), "修改后的笔记标题") || !strings.Contains(string(diskBytes), "更新后的内容") {
+		t.Fatalf("disk content missing updated fields: %s", string(diskBytes))
+	}
+
+	// 3. Baseline conflict: external tampering without rescan
+	tampered := strings.Replace(string(diskBytes), "修改后的笔记标题", "外部冲突标题", 1)
+	if err := os.WriteFile(notePath, []byte(tampered), 0644); err != nil {
+		t.Fatalf("write tampered file failed: %v", err)
+	}
+
+	_, err = s.UpdateNote(UpdateNoteInput{
+		ID:    created.ID,
+		Title: "再次尝试编辑应冲突",
+		Body:  "正文",
+	})
+	if err == nil || !strings.Contains(err.Error(), "conflict") {
+		t.Fatalf("expected conflict error on external edit, got: %v", err)
+	}
+}
+
+func TestVaultService_ListNotes_OrderingAndCloneIsolation(t *testing.T) {
+	vaultDir := t.TempDir()
+	s := &VaultService{}
+	if _, err := s.openVault(vaultDir); err != nil {
+		t.Fatalf("openVault failed: %v", err)
+	}
+	defer func() {
+		if s.stopWatcher != nil {
+			s.stopWatcher()
+		}
+	}()
+
+	n1, err := s.CreateNote(CreateNoteInput{Title: "笔记1", Body: "正文1"})
+	if err != nil {
+		t.Fatalf("CreateNote n1 failed: %v", err)
+	}
+	time.Sleep(15 * time.Millisecond)
+
+	n2, err := s.CreateNote(CreateNoteInput{Title: "笔记2", Body: "正文2"})
+	if err != nil {
+		t.Fatalf("CreateNote n2 failed: %v", err)
+	}
+	time.Sleep(15 * time.Millisecond)
+
+	n3, err := s.CreateNote(CreateNoteInput{Title: "笔记3", Body: "正文3"})
+	if err != nil {
+		t.Fatalf("CreateNote n3 failed: %v", err)
+	}
+
+	// ListNotes: newest UpdatedAt first -> [n3, n2, n1]
+	list, err := s.ListNotes()
+	if err != nil {
+		t.Fatalf("ListNotes failed: %v", err)
+	}
+	if len(list) != 3 {
+		t.Fatalf("expected 3 notes, got %d", len(list))
+	}
+	if list[0].ID != n3.ID || list[1].ID != n2.ID || list[2].ID != n1.ID {
+		t.Fatalf("expected order [n3, n2, n1], got [%s, %s, %s]", list[0].ID, list[1].ID, list[2].ID)
+	}
+
+	// Update n1 -> now n1 has the newest UpdatedAt! Order should become [n1, n3, n2]
+	time.Sleep(15 * time.Millisecond)
+	n1Updated, err := s.UpdateNote(UpdateNoteInput{ID: n1.ID, Title: "笔记1新标题", Body: "正文1更新"})
+	if err != nil {
+		t.Fatalf("UpdateNote n1 failed: %v", err)
+	}
+	list2, err := s.ListNotes()
+	if err != nil {
+		t.Fatalf("ListNotes after update failed: %v", err)
+	}
+	if list2[0].ID != n1Updated.ID || list2[1].ID != n3.ID || list2[2].ID != n2.ID {
+		t.Fatalf("expected order [n1, n3, n2], got [%s, %s, %s]", list2[0].ID, list2[1].ID, list2[2].ID)
+	}
+
+	// Clone isolation check: mutating list2 does not mutate index
+	list2[0].Title = "恶意篡改标题"
+	list2[0].Body = "恶意篡改正文"
+	check, err := s.GetNote(n1.ID)
+	if err != nil || check.Title != "笔记1新标题" || check.Body != "正文1更新" {
+		t.Fatalf("index entity was mutated via returned ListNotes clone: %+v", check)
+	}
+}
+
+func TestVaultService_UpdateNote_UnknownFieldsPreserved(t *testing.T) {
+	vaultDir := t.TempDir()
+	notesDir := filepath.Join(vaultDir, "notes")
+	if err := os.MkdirAll(notesDir, 0755); err != nil {
+		t.Fatalf("MkdirAll failed: %v", err)
+	}
+
+	rawFile := filepath.Join(notesDir, "custom_note_n-ext-01.md")
+	rawContent := `---
+type: note
+id: n-ext-01
+title: 未知字段测试笔记
+created_at: 2026-10-11T10:00:00+08:00
+updated_at: 2026-10-11T10:00:00+08:00
+custom_author:
+  name: Alice
+  role: architect
+import_source: notion
+---
+
+原始笔记正文。
+`
+	if err := os.WriteFile(rawFile, []byte(rawContent), 0644); err != nil {
+		t.Fatalf("WriteFile failed: %v", err)
+	}
+
+	s := &VaultService{}
+	if _, err := s.openVault(vaultDir); err != nil {
+		t.Fatalf("openVault failed: %v", err)
+	}
+	defer func() {
+		if s.stopWatcher != nil {
+			s.stopWatcher()
+		}
+	}()
+
+	note, err := s.GetNote("n-ext-01")
+	if err != nil {
+		t.Fatalf("GetNote failed: %v", err)
+	}
+
+	// Update note via service
+	updated, err := s.UpdateNote(UpdateNoteInput{
+		ID:    note.ID,
+		Title: "通过服务更新后的笔记标题",
+		Tags:  []string{"更新"},
+		Body:  "更新后的笔记完整正文。",
+	})
+	if err != nil {
+		t.Fatalf("UpdateNote failed: %v", err)
+	}
+	if updated.Title != "通过服务更新后的笔记标题" {
+		t.Fatalf("title not updated: %s", updated.Title)
+	}
+
+	// Read raw file directly from disk
+	diskBytes, err := os.ReadFile(rawFile)
+	if err != nil {
+		t.Fatalf("ReadFile failed: %v", err)
+	}
+	diskStr := string(diskBytes)
+
+	// Check unknown YAML fields are preserved!
+	if !strings.Contains(diskStr, "custom_author:") || !strings.Contains(diskStr, "name: Alice") || !strings.Contains(diskStr, "role: architect") {
+		t.Fatalf("unknown nested field custom_author lost! Disk content:\n%s", diskStr)
+	}
+	if !strings.Contains(diskStr, "import_source: notion") {
+		t.Fatalf("unknown field import_source lost! Disk content:\n%s", diskStr)
+	}
+	if !strings.Contains(diskStr, "通过服务更新后的笔记标题") || !strings.Contains(diskStr, "更新后的笔记完整正文。") {
+		t.Fatalf("updated note content not found on disk: %s", diskStr)
+	}
+}

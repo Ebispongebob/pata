@@ -14,6 +14,7 @@ import * as VaultService from '../bindings/pata/vaultservice';
 import { VaultStatus } from '../bindings/pata/models';
 import { TasksView } from './TasksView';
 import { TodayView } from './TodayView';
+import { NotesView } from './NotesView';
 
 export default function App() {
   const [activeNav, setActiveNav] = useState<'today' | 'tasks' | 'notes'>('tasks');
@@ -263,13 +264,12 @@ export default function App() {
           )}
 
           {activeNav === 'notes' && (
-            <div className="max-w-2xl mx-auto py-12 text-center space-y-3">
-              <FileText className="w-10 h-10 text-emerald-600 mx-auto opacity-60" />
-              <h2 className="text-base font-semibold text-stone-800 dark:text-stone-200">Notes 页面骨架外壳</h2>
-              <p className="text-xs text-stone-500 max-w-sm mx-auto leading-relaxed">
-                单列卡片浏览与专注编辑结构外壳，保持两列架构，无嵌套笔记树。
-              </p>
-            </div>
+            <NotesView
+              vaultStatus={vaultStatus}
+              onSelectVault={handleSelectVault}
+              onRescanVault={handleRescan}
+              vaultBusy={vaultBusy}
+            />
           )}
         </div>
       </main>

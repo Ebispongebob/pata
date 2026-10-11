@@ -28,11 +28,20 @@ export function CreateMemo(input: $models.CreateMemoInput): $CancellablePromise<
 }
 
 /**
+ * CreateNote creates a new Note, writes it safely as Markdown, and updates the index.
+ */
+export function CreateNote(input: $models.CreateNoteInput): $CancellablePromise<markdown$0.Note | null> {
+    return $Call.ByID(2924369193, input).then(($result: any) => {
+        return $$createType3($result);
+    });
+}
+
+/**
  * CreateTask creates a new Task, writes it safely as Markdown, and updates the index.
  */
 export function CreateTask(input: $models.CreateTaskInput): $CancellablePromise<markdown$0.Task | null> {
     return $Call.ByID(3901450400, input).then(($result: any) => {
-        return $$createType3($result);
+        return $$createType5($result);
     });
 }
 
@@ -48,7 +57,7 @@ export function DeleteTask(id: string): $CancellablePromise<void> {
  */
 export function GetDayPlan(date: string): $CancellablePromise<markdown$0.DayPlan | null> {
     return $Call.ByID(2499050296, date).then(($result: any) => {
-        return $$createType5($result);
+        return $$createType7($result);
     });
 }
 
@@ -57,7 +66,7 @@ export function GetDayPlan(date: string): $CancellablePromise<markdown$0.DayPlan
  */
 export function GetDayTimeline(date: string): $CancellablePromise<$models.TimelineItem[]> {
     return $Call.ByID(2161441604, date).then(($result: any) => {
-        return $$createType7($result);
+        return $$createType9($result);
     });
 }
 
@@ -71,11 +80,20 @@ export function GetMemo(id: string): $CancellablePromise<markdown$0.Memo | null>
 }
 
 /**
+ * GetNote returns a note by its ID.
+ */
+export function GetNote(id: string): $CancellablePromise<markdown$0.Note | null> {
+    return $Call.ByID(3086395091, id).then(($result: any) => {
+        return $$createType3($result);
+    });
+}
+
+/**
  * GetTask returns a task by its ID.
  */
 export function GetTask(id: string): $CancellablePromise<markdown$0.Task | null> {
     return $Call.ByID(1057197746, id).then(($result: any) => {
-        return $$createType3($result);
+        return $$createType5($result);
     });
 }
 
@@ -84,7 +102,7 @@ export function GetTask(id: string): $CancellablePromise<markdown$0.Task | null>
  */
 export function GetVaultStatus(): $CancellablePromise<$models.VaultStatus> {
     return $Call.ByID(540011935).then(($result: any) => {
-        return $$createType8($result);
+        return $$createType10($result);
     });
 }
 
@@ -93,7 +111,16 @@ export function GetVaultStatus(): $CancellablePromise<$models.VaultStatus> {
  */
 export function ListMemosByTask(taskID: string): $CancellablePromise<(markdown$0.Memo | null)[]> {
     return $Call.ByID(2666858332, taskID).then(($result: any) => {
-        return $$createType9($result);
+        return $$createType11($result);
+    });
+}
+
+/**
+ * ListNotes returns all notes from the vault index, newest updated first.
+ */
+export function ListNotes(): $CancellablePromise<(markdown$0.Note | null)[]> {
+    return $Call.ByID(957394914).then(($result: any) => {
+        return $$createType12($result);
     });
 }
 
@@ -102,7 +129,7 @@ export function ListMemosByTask(taskID: string): $CancellablePromise<(markdown$0
  */
 export function ListTasks(): $CancellablePromise<(markdown$0.Task | null)[]> {
     return $Call.ByID(1611157941).then(($result: any) => {
-        return $$createType10($result);
+        return $$createType13($result);
     });
 }
 
@@ -118,7 +145,7 @@ export function RescanVault(): $CancellablePromise<void> {
  */
 export function SaveDayPlan(date: string, taskIDs: string[]): $CancellablePromise<markdown$0.DayPlan | null> {
     return $Call.ByID(1580712949, date, taskIDs).then(($result: any) => {
-        return $$createType5($result);
+        return $$createType7($result);
     });
 }
 
@@ -128,7 +155,7 @@ export function SaveDayPlan(date: string, taskIDs: string[]): $CancellablePromis
  */
 export function SelectVaultDirectory(): $CancellablePromise<$models.VaultStatus> {
     return $Call.ByID(2534227418).then(($result: any) => {
-        return $$createType8($result);
+        return $$createType10($result);
     });
 }
 
@@ -137,7 +164,7 @@ export function SelectVaultDirectory(): $CancellablePromise<$models.VaultStatus>
  */
 export function SetTaskStatus(id: string, status: markdown$0.TaskStatus): $CancellablePromise<markdown$0.Task | null> {
     return $Call.ByID(1569318832, id, status).then(($result: any) => {
-        return $$createType3($result);
+        return $$createType5($result);
     });
 }
 
@@ -151,23 +178,35 @@ export function UpdateMemo(input: $models.UpdateMemoInput): $CancellablePromise<
 }
 
 /**
+ * UpdateNote updates an existing Note, safely writes changes to Markdown, and preserves unknown frontmatter.
+ */
+export function UpdateNote(input: $models.UpdateNoteInput): $CancellablePromise<markdown$0.Note | null> {
+    return $Call.ByID(3482000924, input).then(($result: any) => {
+        return $$createType3($result);
+    });
+}
+
+/**
  * UpdateTask updates an existing Task, safely writes changes to Markdown, and preserves unknown frontmatter.
  */
 export function UpdateTask(input: $models.UpdateTaskInput): $CancellablePromise<markdown$0.Task | null> {
     return $Call.ByID(12384053, input).then(($result: any) => {
-        return $$createType3($result);
+        return $$createType5($result);
     });
 }
 
 // Private type creation functions
 const $$createType0 = markdown$0.Memo.createFrom;
 const $$createType1 = $Create.Nullable($$createType0);
-const $$createType2 = markdown$0.Task.createFrom;
+const $$createType2 = markdown$0.Note.createFrom;
 const $$createType3 = $Create.Nullable($$createType2);
-const $$createType4 = markdown$0.DayPlan.createFrom;
+const $$createType4 = markdown$0.Task.createFrom;
 const $$createType5 = $Create.Nullable($$createType4);
-const $$createType6 = $models.TimelineItem.createFrom;
-const $$createType7 = $Create.Array($$createType6);
-const $$createType8 = $models.VaultStatus.createFrom;
-const $$createType9 = $Create.Array($$createType1);
-const $$createType10 = $Create.Array($$createType3);
+const $$createType6 = markdown$0.DayPlan.createFrom;
+const $$createType7 = $Create.Nullable($$createType6);
+const $$createType8 = $models.TimelineItem.createFrom;
+const $$createType9 = $Create.Array($$createType8);
+const $$createType10 = $models.VaultStatus.createFrom;
+const $$createType11 = $Create.Array($$createType1);
+const $$createType12 = $Create.Array($$createType3);
+const $$createType13 = $Create.Array($$createType5);
