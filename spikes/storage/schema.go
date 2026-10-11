@@ -1,0 +1,206 @@
+package storage
+
+import (
+	"fmt"
+	"strings"
+	"time"
+)
+
+// ValidationError represents a schema validation error with context.
+type ValidationError struct {
+	Path   string `json:"path"`
+	Field  string `json:"field"`
+	Reason string `json:"reason"`
+}
+
+func (e *ValidationError) Error() string {
+	if e.Path != "" {
+		return fmt.Sprintf("validation error at %s: field '%s' %s", e.Path, e.Field, e.Reason)
+	}
+	return fmt.Sprintf("validation error: field '%s' %s", e.Field, e.Reason)
+}
+
+// ValidateEntity validates an entity against strict schema invariants.
+func ValidateEntity(filePath string, entity Entity) error {
+	if entity == nil {
+		return &ValidationError{Path: filePath, Field: "entity", Reason: "cannot be nil"}
+	}
+
+	switch e := entity.(type) {
+	case *Task:
+		return validateTask(filePath, e)
+	case *Memo:
+		return validateMemo(filePath, e)
+	case *Note:
+		return validateNote(filePath, e)
+	case *DayPlan:
+		return validateDayPlan(filePath, e)
+	default:
+		return &ValidationError{
+			Path:   filePath,
+			Field:  "type",
+			Reason: fmt.Sprintf("unsupported entity type %T", entity),
+		}
+	}
+}
+
+func validateTask(path string, t *Task) error {
+	if strings.TrimSpace(t.ID) == "" {
+		return &ValidationError{Path: path, Field: "id", Reason: "is required"}
+	}
+	if strings.TrimSpace(t.Title) == "" {
+		return &ValidationError{Path: path, Field: "title", Reason: "is required"}
+	}
+
+	switch t.Status {
+	case TaskStatusTodo, TaskStatusDoing, TaskStatusDone:
+		// valid
+	default:
+		return &ValidationError{
+			Path:   path,
+			Field:  "status",
+			Reason: fmt.Sprintf("must be one of 'todo', 'doing', 'done'; got '%s'", t.Status),
+		}
+	}
+
+	switch t.Priority {
+	case TaskPriorityP1, TaskPriorityP2, TaskPriorityP3:
+		// valid
+	default:
+		return &ValidationError{
+			Path:   path,
+			Field:  "priority",
+			Reason: fmt.Sprintf("must be one of 'p1', 'p2', 'p3'; got '%s'", t.Priority),
+		}
+	}
+
+	if t.Due != nil && *t.Due != "" {
+		if err := validateDateFormat(*t.Due); err != nil {
+			return &ValidationError{
+				Path:   path,
+				Field:  "due",
+				Reason: fmt.Sprintf("must be YYYY-MM-DD or null; got '%s'", *t.Due),
+			}
+		}
+	}
+
+	if t.CreatedAt.IsZero() {
+		return &ValidationError{Path: path, Field: "created_at", Reason: "is required and must be valid RFC3339 timestamp"}
+	}
+	if t.UpdatedAt.IsZero() {
+		return &ValidationError{Path: path, Field: "updated_at", Reason: "is required and must be valid RFC3339 timestamp"}
+	}
+
+	for i, tag := range t.Tags {
+		if strings.Contains(tag, "#") {
+			return &ValidationError{
+				Path:   path,
+				Field:  fmt.Sprintf("tags[%d]", i),
+				Reason: fmt.Sprintf("must not contain '#'; got '%s'", tag),
+			}
+		}
+	}
+
+	for i, ev := range t.StatusEvents {
+		switch ev.Action {
+		case StatusEventActionCompleted, StatusEventActionReopened:
+			// valid
+		default:
+			return &ValidationError{
+				Path:   path,
+				Field:  fmt.Sprintf("status_events[%d].action", i),
+				Reason: fmt.Sprintf("must be 'completed' or 'reopened'; got '%s'", ev.Action),
+			}
+		}
+		if ev.At.IsZero() {
+			return &ValidationError{
+				Path:   path,
+				Field:  fmt.Sprintf("status_events[%d].at", i),
+				Reason: "must be valid RFC3339 timestamp",
+			}
+		}
+	}
+
+	return nil
+}
+
+func validateMemo(path string, m *Memo) error {
+	if strings.TrimSpace(m.ID) == "" {
+		return &ValidationError{Path: path, Field: "id", Reason: "is required"}
+	}
+	if m.CreatedAt.IsZero() {
+		return &ValidationError{Path: path, Field: "created_at", Reason: "is required and must be valid RFC3339 timestamp"}
+	}
+	for i, tag := range m.Tags {
+		if strings.Contains(tag, "#") {
+			return &ValidationError{
+				Path:   path,
+				Field:  fmt.Sprintf("tags[%d]", i),
+				Reason: fmt.Sprintf("must not contain '#'; got '%s'", tag),
+			}
+		}
+	}
+	return nil
+}
+
+func validateNote(path string, n *Note) error {
+	if strings.TrimSpace(n.ID) == "" {
+		return &ValidationError{Path: path, Field: "id", Reason: "is required"}
+	}
+	if strings.TrimSpace(n.Title) == "" {
+		return &ValidationError{Path: path, Field: "title", Reason: "is required"}
+	}
+	if n.CreatedAt.IsZero() {
+		return &ValidationError{Path: path, Field: "created_at", Reason: "is required and must be valid RFC3339 timestamp"}
+	}
+	if n.UpdatedAt.IsZero() {
+		return &ValidationError{Path: path, Field: "updated_at", Reason: "is required and must be valid RFC3339 timestamp"}
+	}
+	for i, tag := range n.Tags {
+		if strings.Contains(tag, "#") {
+			return &ValidationError{
+				Path:   path,
+				Field:  fmt.Sprintf("tags[%d]", i),
+				Reason: fmt.Sprintf("must not contain '#'; got '%s'", tag),
+			}
+		}
+	}
+	return nil
+}
+
+func validateDayPlan(path string, p *DayPlan) error {
+	if err := validateDateFormat(p.Date); err != nil {
+		return &ValidationError{
+			Path:   path,
+			Field:  "date",
+			Reason: fmt.Sprintf("must be YYYY-MM-DD; got '%s'", p.Date),
+		}
+	}
+
+	// Invariant: no duplicate task IDs in the same DayPlan
+	seen := make(map[string]bool, len(p.TaskIDs))
+	for i, taskID := range p.TaskIDs {
+		if strings.TrimSpace(taskID) == "" {
+			return &ValidationError{
+				Path:   path,
+				Field:  fmt.Sprintf("task_ids[%d]", i),
+				Reason: "task id cannot be empty",
+			}
+		}
+		if seen[taskID] {
+			return &ValidationError{
+				Path:   path,
+				Field:  "task_ids",
+				Reason: fmt.Sprintf("duplicate task id '%s' violated DayPlan invariant", taskID),
+			}
+		}
+		seen[taskID] = true
+	}
+
+	return nil
+}
+
+func validateDateFormat(d string) error {
+	_, err := time.Parse("2006-01-02", d)
+	return err
+}

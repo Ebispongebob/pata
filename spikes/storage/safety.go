@@ -1,0 +1,262 @@
+package storage
+
+import (
+	"crypto/sha256"
+	"encoding/hex"
+	"errors"
+	"fmt"
+	"io"
+	"os"
+	"path/filepath"
+	"sync"
+	"time"
+)
+
+var (
+	// ErrConflict is returned when disk file has been modified externally since baseline.
+	ErrConflict = errors.New("write conflict: disk file has changed since baseline")
+)
+
+// ConflictError provides detailed context about a concurrent edit collision.
+type ConflictError struct {
+	Path             string    `json:"path"`
+	ExpectedHash     string    `json:"expected_hash"`
+	ActualDiskHash   string    `json:"actual_disk_hash"`
+	ExpectedModTime  time.Time `json:"expected_mod_time"`
+	ActualDiskModTime time.Time `json:"actual_disk_mod_time"`
+}
+
+func (e *ConflictError) Error() string {
+	return fmt.Sprintf("conflict at %s: disk hash %s != baseline %s (mod_time disk: %s, baseline: %s)",
+		e.Path, e.ActualDiskHash, e.ExpectedHash, e.ActualDiskModTime.Format(time.RFC3339Nano), e.ExpectedModTime.Format(time.RFC3339Nano))
+}
+
+func (e *ConflictError) Is(target error) bool {
+	return target == ErrConflict
+}
+
+// ComputeContentHash computes SHA-256 hex digest of data.
+func ComputeContentHash(data []byte) string {
+	h := sha256.Sum256(data)
+	return hex.EncodeToString(h[:])
+}
+
+// WriteTracker tracks internal writes to suppress fsnotify self-feedback loops.
+type WriteTracker struct {
+	mu            sync.Mutex
+	recentWrites  map[string]writeRecord
+	retention     time.Duration
+}
+
+type writeRecord struct {
+	hash      string
+	timestamp time.Time
+}
+
+// NewWriteTracker creates a new WriteTracker.
+func NewWriteTracker(retention time.Duration) *WriteTracker {
+	if retention <= 0 {
+		retention = 2 * time.Second
+	}
+	return &WriteTracker{
+		recentWrites: make(map[string]writeRecord),
+		retention:    retention,
+	}
+}
+
+// MarkInternalWrite records an internally initiated write for a file path.
+func (wt *WriteTracker) MarkInternalWrite(absPath string, hash string) {
+	if wt == nil {
+		return
+	}
+	wt.mu.Lock()
+	defer wt.mu.Unlock()
+	wt.cleanupLocked()
+	wt.recentWrites[absPath] = writeRecord{
+		hash:      hash,
+		timestamp: time.Now(),
+	}
+}
+
+// IsInternalWrite checks if a path update was caused by internal write and consumes or verifies it.
+func (wt *WriteTracker) IsInternalWrite(absPath string, hash string) bool {
+	if wt == nil {
+		return false
+	}
+	wt.mu.Lock()
+	defer wt.mu.Unlock()
+	wt.cleanupLocked()
+
+	rec, ok := wt.recentWrites[absPath]
+	if !ok {
+		return false
+	}
+
+	// If hash is provided, match hash; otherwise if recent enough, match
+	if hash != "" && rec.hash != "" {
+		if rec.hash == hash {
+			delete(wt.recentWrites, absPath)
+			return true
+		}
+		return false
+	}
+
+	delete(wt.recentWrites, absPath)
+	return true
+}
+
+func (wt *WriteTracker) cleanupLocked() {
+	cutoff := time.Now().Add(-wt.retention)
+	for p, rec := range wt.recentWrites {
+		if rec.timestamp.Before(cutoff) {
+			delete(wt.recentWrites, p)
+		}
+	}
+}
+
+// ReadBaseline reads the current state of path and generates a FileBaseline.
+// If the file does not exist, it returns os.ErrNotExist.
+func ReadBaseline(absPath string) (*FileBaseline, []byte, error) {
+	data, err := os.ReadFile(absPath)
+	if err != nil {
+		return nil, nil, err
+	}
+	fi, err := os.Stat(absPath)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	hash := ComputeContentHash(data)
+	return &FileBaseline{
+		Path:    absPath,
+		Hash:    hash,
+		ModTime: fi.ModTime(),
+	}, data, nil
+}
+
+// SafeWrite writes data to targetPath safely:
+// 1. Checks baseline against disk content. If disk modified and contents differ, returns ConflictError.
+// 2. Writes to a temporary file in the same directory (filepath.Dir(targetPath)).
+// 3. Flushes and syncs to disk (f.Sync()).
+// 4. Atomically renames temporary file over targetPath.
+// 5. Registers internal write in WriteTracker to prevent fsnotify self-feedback.
+// 6. Cleans up temp file if any step fails.
+func SafeWrite(targetPath string, data []byte, baseline *FileBaseline, tracker *WriteTracker) (*FileBaseline, error) {
+	absPath, err := filepath.Abs(targetPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to resolve absolute path: %w", err)
+	}
+
+	dir := filepath.Dir(absPath)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return nil, fmt.Errorf("failed to create target directory %s: %w", dir, err)
+	}
+
+	newHash := ComputeContentHash(data)
+
+	// Optimistic concurrency check if file exists or baseline provided
+	existingData, readErr := os.ReadFile(absPath)
+	if readErr == nil {
+		existingInfo, _ := os.Stat(absPath)
+		diskHash := ComputeContentHash(existingData)
+
+		if baseline != nil {
+			// Compare baseline with current disk
+			if baseline.Hash != diskHash {
+				// If disk changed, but new content is identical to current disk, no conflict needed
+				if newHash != diskHash {
+					var diskModTime time.Time
+					if existingInfo != nil {
+						diskModTime = existingInfo.ModTime()
+					}
+					return nil, &ConflictError{
+						Path:             absPath,
+						ExpectedHash:     baseline.Hash,
+						ActualDiskHash:   diskHash,
+						ExpectedModTime:  baseline.ModTime,
+						ActualDiskModTime: diskModTime,
+					}
+				}
+			}
+		}
+	} else if !os.IsNotExist(readErr) {
+		return nil, fmt.Errorf("failed to inspect existing file: %w", readErr)
+	} else if baseline != nil {
+		// File was deleted on disk while baseline expected it to exist!
+		return nil, &ConflictError{
+			Path:            absPath,
+			ExpectedHash:    baseline.Hash,
+			ActualDiskHash:  "<deleted>",
+			ExpectedModTime: baseline.ModTime,
+		}
+	}
+
+	// 2. Write to temp file in the SAME directory to ensure atomic rename on the same filesystem
+	tmpFile, err := os.CreateTemp(dir, ".pata_tmp_*")
+	if err != nil {
+		return nil, fmt.Errorf("failed to create temporary file in %s: %w", dir, err)
+	}
+	tmpPath := tmpFile.Name()
+
+	// Ensure cleanup on error
+	success := false
+	defer func() {
+		if !success {
+			_ = tmpFile.Close()
+			_ = os.Remove(tmpPath)
+		}
+	}()
+
+	// Write data
+	if _, err := tmpFile.Write(data); err != nil {
+		return nil, fmt.Errorf("failed to write data to temp file: %w", err)
+	}
+
+	// 3. Flush & sync to disk
+	if err := tmpFile.Sync(); err != nil {
+		return nil, fmt.Errorf("failed to sync temp file: %w", err)
+	}
+
+	if err := tmpFile.Close(); err != nil {
+		return nil, fmt.Errorf("failed to close temp file: %w", err)
+	}
+
+	// Register internal write prior to atomic rename
+	if tracker != nil {
+		tracker.MarkInternalWrite(absPath, newHash)
+	}
+
+	// 4. Atomically replace target
+	if err := os.Rename(tmpPath, absPath); err != nil {
+		return nil, fmt.Errorf("failed to atomic replace %s with %s: %w", absPath, tmpPath, err)
+	}
+
+	success = true
+
+	// Read updated modtime
+	fi, err := os.Stat(absPath)
+	var modTime time.Time
+	if err == nil {
+		modTime = fi.ModTime()
+	} else {
+		modTime = time.Now()
+	}
+
+	return &FileBaseline{
+		Path:    absPath,
+		Hash:    newHash,
+		ModTime: modTime,
+	}, nil
+}
+
+// CopyFile copies src to dst using atomic safe write.
+func CopyFile(src, dst string) error {
+	data, err := os.ReadFile(src)
+	if err != nil {
+		return err
+	}
+	_, err = SafeWrite(dst, data, nil, nil)
+	return err
+}
+
+var _ = io.Discard
