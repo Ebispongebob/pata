@@ -34,6 +34,8 @@
 - public/vditor 全量 23MB 离线包,实装裁剪;@wailsio/runtime 曾浮动(P2-001 返工钉版)。
 - 生成文件 spikeservice.ts 被手加注释,下次 generate bindings 会丢(P2-R3 nit,重生成时补到别处)。
 
-## 阶段 2 剩余(proposal 任务 2-5,未开始)
+## 阶段 2 剩余(proposal 任务 2-5,进行中)
 
-Vault 目录选择 UI、扫描/索引接入 Go Core、Tasks 列表/创建/详情/编辑/状态/删除 UI、外部修改感知与冲突提示接入前端;存储核心从 spikes/storage 并入根模块。
+已完(2026-10-12,Lead 直做):存储核心并入根模块 `internal/storage/markdown`(24 测试);单 Vault 服务 `vaultservice.go`(目录选择对话框+路径持久化 `~/Library/Application Support/pata/vault.json`+启动自动打开+watcher/周期重扫);Tasks 列表从真实 Markdown 读取(含手动重扫);D18 决策:单 Vault。
+
+未完:Tasks 创建/详情/编辑属性/状态变更/删除确认 UI(任务 4);外部修改感知与冲突提示接入前端(任务 5);Spike 演示页(macos-spike/vditor-spike)与 SpikeService 待业务页稳定后清理;spike-data/ 目录同理。

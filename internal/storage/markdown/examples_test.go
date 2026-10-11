@@ -1,4 +1,4 @@
-package storage
+package markdown
 
 import (
 	"os"
@@ -8,7 +8,7 @@ import (
 
 func TestParseExamples(t *testing.T) {
 	// Find repo root examples directory
-	examplesDir := filepath.Join("..", "..", "docs", "02-foundation", "examples")
+	examplesDir := filepath.Join("..", "..", "..", "docs", "02-foundation", "examples")
 	if _, err := os.Stat(examplesDir); os.IsNotExist(err) {
 		t.Fatalf("examples dir does not exist at %s", examplesDir)
 	}

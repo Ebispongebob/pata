@@ -1,4 +1,4 @@
-package storage
+package markdown
 
 import (
 	"path/filepath"
@@ -6,7 +6,7 @@ import (
 )
 
 func TestScanExamplesVault(t *testing.T) {
-	examplesDir := filepath.Join("..", "..", "docs", "02-foundation", "examples")
+	examplesDir := filepath.Join("..", "..", "..", "docs", "02-foundation", "examples")
 	idx, err := ScanVault(examplesDir)
 	if err != nil {
 		t.Fatalf("ScanVault failed: %v", err)
@@ -62,6 +62,22 @@ func TestScanExamplesVault(t *testing.T) {
 	dorisRefs := idx.FindByTag("Doris")
 	if len(dorisRefs) != 1 || dorisRefs[0].ID != "m-demo-002" {
 		t.Fatalf("expected m-demo-002 for tag 'Doris', got %+v", dorisRefs)
+	}
+}
+
+func TestListTasksSortedByUpdatedAt(t *testing.T) {
+	idx, err := ScanVault(filepath.Join("..", "..", "..", "docs", "02-foundation", "examples"))
+	if err != nil {
+		t.Fatalf("ScanVault failed: %v", err)
+	}
+	tasks := idx.ListTasks()
+	if len(tasks) < 2 {
+		t.Fatalf("expected at least 2 tasks, got %d", len(tasks))
+	}
+	for i := 1; i < len(tasks); i++ {
+		if tasks[i-1].UpdatedAt.Before(tasks[i].UpdatedAt) {
+			t.Fatalf("tasks not sorted by UpdatedAt desc: [%d]=%s before [%d]=%s", i-1, tasks[i-1].ID, i, tasks[i].ID)
+		}
 	}
 }
 

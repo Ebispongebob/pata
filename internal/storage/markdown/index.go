@@ -1,9 +1,10 @@
-package storage
+package markdown
 
 import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 )
@@ -83,6 +84,18 @@ func (idx *MemoryIndex) GetTask(id string) (*Task, bool) {
 		return nil, false
 	}
 	return t.Clone().(*Task), true
+}
+
+// ListTasks returns clones of all tasks sorted by UpdatedAt descending.
+func (idx *MemoryIndex) ListTasks() []*Task {
+	idx.mu.RLock()
+	tasks := make([]*Task, 0, len(idx.tasks))
+	for _, t := range idx.tasks {
+		tasks = append(tasks, t.Clone().(*Task))
+	}
+	idx.mu.RUnlock()
+	sort.Slice(tasks, func(i, j int) bool { return tasks[i].UpdatedAt.After(tasks[j].UpdatedAt) })
+	return tasks
 }
 
 // GetMemo returns a clone of the memo by ID.

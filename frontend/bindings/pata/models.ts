@@ -24,3 +24,14 @@ export interface SystemInfo {
     "wailsVersion": string;
     "nodeVersion": string;
 }
+
+/**
+ * VaultStatus reports whether a vault is configured/open for the UI.
+ */
+export interface VaultStatus {
+    "configured": boolean;
+    "path": string;
+    "open": boolean;
+    "taskCount": number;
+    "error"?: string;
+}

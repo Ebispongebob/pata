@@ -29,4 +29,4 @@
 
 ## 当前状态
 
-当前只有**设计资料与 UI 模拟原型**。阶段 1 的主要设计成果已形成，仍待真实用户确认；阶段 2–5 均尚未实现。
+阶段 1 设计已基本完成（待真实用户确认）。阶段 2 进行中：桌面 Spike（P2-001）与 Markdown 存储核心 Spike（P2-002，`spikes/storage/`）已交付验收，剩余 Vault 选择、扫描/索引接入 Go Core、Tasks 管理与外部修改感知的实装（见 [02-foundation/proposal](02-foundation/proposal.md) 实施顺序 2–5）。阶段 3–5 尚未开始。
