@@ -25,10 +25,16 @@ export default function App() {
   const [vaultStatus, setVaultStatus] = useState<VaultStatus | null>(null);
   const [vaultBusy, setVaultBusy] = useState(false);
   const [focusTaskId, setFocusTaskId] = useState<string | null>(null);
+  const [focusNoteId, setFocusNoteId] = useState<string | null>(null);
 
   const handleOpenTask = (taskID: string) => {
     setActiveNav('tasks');
     setFocusTaskId(taskID);
+  };
+
+  const handleOpenNote = (noteID: string) => {
+    setActiveNav('notes');
+    setFocusNoteId(noteID);
   };
 
   const refreshVault = async () => {
@@ -260,6 +266,7 @@ export default function App() {
               vaultBusy={vaultBusy}
               focusTaskId={focusTaskId}
               onClearFocusTask={() => setFocusTaskId(null)}
+              onOpenNote={handleOpenNote}
             />
           )}
 
@@ -269,6 +276,8 @@ export default function App() {
               onSelectVault={handleSelectVault}
               onRescanVault={handleRescan}
               vaultBusy={vaultBusy}
+              focusNoteId={focusNoteId}
+              onClearFocusNote={() => setFocusNoteId(null)}
             />
           )}
         </div>

@@ -23,6 +23,8 @@ interface NotesViewProps {
   onSelectVault: () => void;
   onRescanVault: () => void;
   vaultBusy?: boolean;
+  focusNoteId?: string | null;
+  onClearFocusNote?: () => void;
 }
 
 function formatRelativeTime(isoString: string): string {
@@ -820,11 +822,21 @@ export function NotesView({
   onSelectVault,
   onRescanVault,
   vaultBusy = false,
+  focusNoteId,
+  onClearFocusNote,
 }: NotesViewProps) {
   const [notes, setNotes] = useState<Note[]>([]);
   const [loading, setLoading] = useState(false);
   const [listError, setListError] = useState<string | null>(null);
   const [selectedNoteId, setSelectedNoteId] = useState<string | null>(null);
+
+  // Consume focusNoteId from parent navigation (one-time consumption)
+  useEffect(() => {
+    if (focusNoteId) {
+      setSelectedNoteId(focusNoteId);
+      onClearFocusNote?.();
+    }
+  }, [focusNoteId, onClearFocusNote]);
 
   // Search filter (preserved across navigation)
   const [searchQuery, setSearchQuery] = useState('');

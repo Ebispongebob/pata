@@ -16,9 +16,13 @@ import {
   FolderOpen,
   MessageSquare,
   Send,
+  FileText,
+  Link,
+  Unlink,
+  ExternalLink,
 } from 'lucide-react';
 import * as VaultService from '../bindings/pata/vaultservice';
-import { Task, TaskStatus, TaskPriority, Memo } from '../bindings/pata/internal/storage/markdown/models';
+import { Task, TaskStatus, TaskPriority, Memo, Note } from '../bindings/pata/internal/storage/markdown/models';
 import { VaultStatus, CreateTaskInput, UpdateTaskInput, CreateMemoInput } from '../bindings/pata/models';
 
 function formatMemoTimestamp(isoString: string): string {
@@ -53,6 +57,41 @@ function formatMemoTimestamp(isoString: string): string {
   }
 }
 
+function formatRelativeTime(isoString: string): string {
+  if (!isoString) return '';
+  try {
+    const d = new Date(isoString);
+    if (isNaN(d.getTime())) return isoString;
+    const now = new Date();
+    const diffSec = Math.floor((now.getTime() - d.getTime()) / 1000);
+    if (diffSec < 60) return '刚刚';
+    const diffMin = Math.floor(diffSec / 60);
+    if (diffMin < 60) return `${diffMin} 分钟前`;
+    const diffHour = Math.floor(diffMin / 60);
+    if (diffHour < 24) return `${diffHour} 小时前`;
+
+    const yesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
+    const isYesterday =
+      d.getFullYear() === yesterday.getFullYear() &&
+      d.getMonth() === yesterday.getMonth() &&
+      d.getDate() === yesterday.getDate();
+    if (isYesterday) return '昨天';
+
+    const diffDay = Math.floor(diffHour / 24);
+    if (diffDay < 7) return `${diffDay} 天前`;
+
+    const pad = (n: number) => n.toString().padStart(2, '0');
+    const y = d.getFullYear();
+    const m = pad(d.getMonth() + 1);
+    const day = pad(d.getDate());
+    if (y === now.getFullYear()) {
+      return `${m}-${day}`;
+    }
+    return `${y}-${m}-${day}`;
+  } catch {
+    return isoString;
+  }
+}
 
 interface TasksViewProps {
   vaultStatus: VaultStatus | null;
@@ -61,6 +100,7 @@ interface TasksViewProps {
   vaultBusy?: boolean;
   focusTaskId?: string | null;
   onClearFocusTask?: () => void;
+  onOpenNote?: (noteId: string) => void;
 }
 
 export function TasksView({
@@ -70,6 +110,7 @@ export function TasksView({
   vaultBusy = false,
   focusTaskId,
   onClearFocusTask,
+  onOpenNote,
 }: TasksViewProps) {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(false);
@@ -122,6 +163,14 @@ export function TasksView({
   const [submittingMemo, setSubmittingMemo] = useState(false);
   const [submitMemoError, setSubmitMemoError] = useState<string | null>(null);
 
+  // Associated Notes state
+  const [detailNoteIds, setDetailNoteIds] = useState<string[]>([]);
+  const [allNotes, setAllNotes] = useState<Note[]>([]);
+  const [loadingNotes, setLoadingNotes] = useState(false);
+  const [showAddNoteModal, setShowAddNoteModal] = useState(false);
+  const [noteSearchQuery, setNoteSearchQuery] = useState('');
+  const [unlinkTarget, setUnlinkTarget] = useState<{ id: string; title: string } | null>(null);
+
   // Fetch tasks
   const loadTasks = useCallback(async () => {
     if (!vaultStatus?.open) {
@@ -164,9 +213,28 @@ export function TasksView({
     }
   }, []);
 
+  // Fetch all notes for note association selector
+  const loadAllNotes = useCallback(async () => {
+    if (!vaultStatus?.open) {
+      setAllNotes([]);
+      return;
+    }
+    setLoadingNotes(true);
+    try {
+      const result = await VaultService.ListNotes();
+      const validNotes = (result ?? []).filter((n): n is Note => n !== null);
+      setAllNotes(validNotes);
+    } catch (err: any) {
+      console.error('Failed to list notes for task association:', err);
+    } finally {
+      setLoadingNotes(false);
+    }
+  }, [vaultStatus?.open]);
+
   useEffect(() => {
     loadTasks();
-  }, [loadTasks]);
+    loadAllNotes();
+  }, [loadTasks, loadAllNotes]);
 
   const handleRescan = async () => {
     setRescanLoading(true);
@@ -211,14 +279,16 @@ export function TasksView({
         setDetailDue(task.due ?? '');
         setDetailTags((task.tags ?? []).join(', '));
         setDetailBody(task.body ?? '');
+        setDetailNoteIds(task.note_ids ?? []);
         setSaveSuccessMsg('已重新加载最新磁盘内容');
       }
       await loadTasks();
       await loadMemos(selectedTaskId);
+      await loadAllNotes();
     } catch (err: any) {
       setDetailError(`重新加载失败: ${err?.message || err}`);
     }
-  }, [selectedTaskId, loadTasks, loadMemos]);
+  }, [selectedTaskId, loadTasks, loadMemos, loadAllNotes]);
 
   // Subscribe to Wails application events for external vault file changes
   useEffect(() => {
@@ -234,6 +304,7 @@ export function TasksView({
       }
       // Refresh background tasks list (form fields are not overwritten)
       loadTasks();
+      loadAllNotes();
 
       // Refresh task comments without overwriting in-progress draft
       if (currentSelectedId) {
@@ -244,7 +315,7 @@ export function TasksView({
     return () => {
       unsubscribe();
     };
-  }, [loadTasks, loadMemos]);
+  }, [loadTasks, loadMemos, loadAllNotes]);
 
   const prevSelectedTaskIdRef = useRef<string | null>(null);
 
@@ -258,6 +329,9 @@ export function TasksView({
       setSaveSuccessMsg(null);
       setNewMemoBody('');
       setSubmitMemoError(null);
+      setShowAddNoteModal(false);
+      setUnlinkTarget(null);
+      setNoteSearchQuery('');
       const task = tasks.find((t) => t.id === selectedTaskId);
       if (task) {
         setDetailTitle(task.title);
@@ -266,19 +340,25 @@ export function TasksView({
         setDetailDue(task.due ?? '');
         setDetailTags((task.tags ?? []).join(', '));
         setDetailBody(task.body ?? '');
+        setDetailNoteIds(task.note_ids ?? []);
       }
       loadMemos(selectedTaskId);
+      loadAllNotes();
     } else if (!selectedTaskId) {
       prevSelectedTaskIdRef.current = null;
       setExternalModified(false);
       setConflictError(null);
       setDetailError(null);
       setTaskMemos([]);
+      setDetailNoteIds([]);
+      setShowAddNoteModal(false);
+      setUnlinkTarget(null);
+      setNoteSearchQuery('');
       setNewMemoBody('');
       setSubmitMemoError(null);
       setMemoListError(null);
     }
-  }, [selectedTaskId, tasks, loadMemos]);
+  }, [selectedTaskId, tasks, loadMemos, loadAllNotes]);
 
   // Add new memo / comment to current task
   const handleAddMemo = async (e?: React.FormEvent) => {
@@ -385,7 +465,7 @@ export function TasksView({
         due: detailDue ? detailDue : null,
         tags: parsedTags,
         body: detailBody,
-        note_ids: selectedTask?.note_ids ?? [],
+        note_ids: detailNoteIds,
       };
 
       const updated = await VaultService.UpdateTask(input);
@@ -408,7 +488,70 @@ export function TasksView({
     } finally {
       setSaving(false);
     }
-  }, [selectedTaskId, detailTitle, detailStatus, detailPriority, detailDue, detailTags, detailBody, selectedTask?.note_ids, loadTasks]);
+  }, [selectedTaskId, detailTitle, detailStatus, detailPriority, detailDue, detailTags, detailBody, detailNoteIds, loadTasks]);
+
+  // Persist associated notes changes immediately
+  const saveWithNoteIds = async (nextNoteIds: string[]) => {
+    if (!selectedTaskId) return;
+    setSaving(true);
+    setDetailError(null);
+    setConflictError(null);
+    setSaveSuccessMsg(null);
+
+    try {
+      const parsedTags = detailTags
+        .split(/[,，]/)
+        .map((t) => t.trim().replace(/^#+/, ''))
+        .filter((t) => t.length > 0);
+
+      const input: UpdateTaskInput = {
+        id: selectedTaskId,
+        title: detailTitle.trim(),
+        status: detailStatus,
+        priority: detailPriority,
+        due: detailDue ? detailDue : null,
+        tags: parsedTags,
+        body: detailBody,
+        note_ids: nextNoteIds,
+      };
+
+      const updated = await VaultService.UpdateTask(input);
+      if (updated) {
+        setSaveSuccessMsg('已更新关联笔记');
+        setConflictError(null);
+        setExternalModified(false);
+      }
+      await loadTasks();
+    } catch (err: any) {
+      const isConflict =
+        typeof err?.message === 'string' &&
+        (err.message.includes('write conflict') || err.message.includes('conflict at'));
+      if (isConflict) {
+        setConflictError(err?.message || '文件已被外部修改（写入冲突）');
+        setExternalModified(true);
+      } else {
+        setDetailError(err?.message || String(err));
+      }
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleAddNoteLink = async (noteId: string) => {
+    if (detailNoteIds.includes(noteId)) return;
+    const next = [...detailNoteIds, noteId];
+    setDetailNoteIds(next);
+    setShowAddNoteModal(false);
+    await saveWithNoteIds(next);
+  };
+
+  const handleConfirmUnlinkNote = async () => {
+    if (!unlinkTarget) return;
+    const next = detailNoteIds.filter((id) => id !== unlinkTarget.id);
+    setDetailNoteIds(next);
+    setUnlinkTarget(null);
+    await saveWithNoteIds(next);
+  };
 
   // Clean up saveSuccessMsg auto-dismiss timer
   useEffect(() => {
@@ -686,6 +829,80 @@ export function TasksView({
           />
         </div>
 
+        {/* Linked Notes Section */}
+        <div className="space-y-3 pt-3 border-t border-stone-200 dark:border-stone-800">
+          <div className="flex items-center justify-between text-xs text-stone-500">
+            <span className="flex items-center space-x-1.5 font-semibold text-[11px] uppercase tracking-wider text-stone-500">
+              <Link className="w-3.5 h-3.5" />
+              <span>关联笔记 ({detailNoteIds.length})</span>
+            </span>
+            <div className="flex items-center space-x-2">
+              {loadingNotes && <span className="text-[11px] text-stone-400">加载中...</span>}
+              <button
+                type="button"
+                onClick={() => {
+                  setNoteSearchQuery('');
+                  setShowAddNoteModal(true);
+                }}
+                className="flex items-center space-x-1 text-xs text-emerald-700 dark:text-emerald-400 hover:text-emerald-800 dark:hover:text-emerald-300 transition"
+              >
+                <Plus className="w-3 h-3" />
+                <span>添加关联</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Linked Notes List */}
+          {detailNoteIds.length === 0 ? (
+            <div className="p-3 rounded-lg border border-dashed border-stone-200 dark:border-stone-800 text-stone-400 text-xs text-center">
+              暂无关联笔记（仅显式关联，相同标签不会自动建立关联）
+            </div>
+          ) : (
+            <div className="space-y-1.5">
+              {detailNoteIds.map((nid) => {
+                const note = allNotes.find((n) => n.id === nid);
+                const title = note ? note.title : nid;
+                const timeStr = note?.updated_at ? formatRelativeTime(note.updated_at) : '';
+                return (
+                  <div
+                    key={nid}
+                    className="flex items-center justify-between p-2.5 rounded-lg border border-stone-200 dark:border-stone-800 bg-white dark:bg-stone-900/60 hover:border-stone-300 dark:hover:border-stone-700 transition group"
+                  >
+                    <div
+                      onClick={() => onOpenNote?.(nid)}
+                      className={`flex items-center space-x-2 min-w-0 flex-1 ${
+                        onOpenNote ? 'cursor-pointer' : ''
+                      }`}
+                      title={onOpenNote ? '点击在编辑器中打开笔记' : undefined}
+                    >
+                      <FileText className="w-4 h-4 text-emerald-700 dark:text-emerald-400 shrink-0" />
+                      <span className="text-xs font-medium text-stone-800 dark:text-stone-200 truncate group-hover:text-emerald-700 dark:group-hover:text-emerald-400 transition">
+                        {title}
+                      </span>
+                      {timeStr && (
+                        <span className="text-[10px] text-stone-400 shrink-0">
+                          {timeStr}
+                        </span>
+                      )}
+                      {onOpenNote && (
+                        <ExternalLink className="w-3 h-3 text-stone-300 dark:text-stone-600 group-hover:text-emerald-600 dark:group-hover:text-emerald-400 shrink-0 transition" />
+                      )}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setUnlinkTarget({ id: nid, title })}
+                      className="p-1 text-stone-400 hover:text-rose-600 dark:hover:text-rose-400 rounded hover:bg-stone-100 dark:hover:bg-stone-800 transition shrink-0 ml-2"
+                      title="解除关联"
+                    >
+                      <Unlink className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
         {/* Comments / Memos Section */}
         <div className="space-y-3 pt-3 border-t border-stone-200 dark:border-stone-800">
           <div className="flex items-center justify-between text-xs text-stone-500">
@@ -854,6 +1071,177 @@ export function TasksView({
                   className="px-3 py-1.5 rounded-md bg-rose-600 hover:bg-rose-700 text-white text-xs font-medium transition disabled:opacity-50"
                 >
                   {deleting ? '删除中...' : '确认删除'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Add Note Selector Modal */}
+        {showAddNoteModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs p-4">
+            <div className="w-full max-w-md rounded-xl border border-stone-200 dark:border-stone-800 bg-white dark:bg-stone-900 p-5 shadow-xl space-y-4">
+              <div className="flex items-center justify-between pb-2 border-b border-stone-100 dark:border-stone-800">
+                <div className="flex items-center space-x-2">
+                  <Link className="w-4 h-4 text-emerald-700 dark:text-emerald-400" />
+                  <h3 className="text-sm font-semibold text-stone-900 dark:text-stone-100">
+                    关联已有笔记
+                  </h3>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowAddNoteModal(false)}
+                  className="text-stone-400 hover:text-stone-600 dark:hover:text-stone-200"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              <p className="text-xs text-stone-500">
+                选择要关联的笔记。相同标签不会自动关联，必须在此显式建立关联。
+              </p>
+
+              {/* Search input */}
+              <div className="relative">
+                <Search className="w-3.5 h-3.5 text-stone-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  value={noteSearchQuery}
+                  onChange={(e) => setNoteSearchQuery(e.target.value)}
+                  placeholder="搜索笔记标题或标签..."
+                  className="w-full pl-8 pr-3 py-1.5 text-xs rounded-lg border border-stone-200 dark:border-stone-800 bg-white dark:bg-stone-950 text-stone-900 dark:text-stone-100 placeholder-stone-400 focus:outline-hidden focus:ring-1 focus:ring-emerald-600"
+                  autoFocus
+                />
+              </div>
+
+              {/* Note options list */}
+              <div className="max-h-60 overflow-y-auto space-y-1 divide-y divide-stone-100 dark:divide-stone-800/50">
+                {allNotes
+                  .filter((n) => {
+                    if (!noteSearchQuery.trim()) return true;
+                    const q = noteSearchQuery.trim().toLowerCase();
+                    const matchTitle = n.title.toLowerCase().includes(q);
+                    const matchTags = (n.tags ?? []).some((t) => t.toLowerCase().includes(q));
+                    return matchTitle || matchTags;
+                  })
+                  .map((n) => {
+                    const alreadyLinked = detailNoteIds.includes(n.id);
+                    return (
+                      <div
+                        key={n.id}
+                        className={`flex items-center justify-between p-2 rounded-lg transition ${
+                          alreadyLinked
+                            ? 'opacity-50 cursor-not-allowed bg-stone-50 dark:bg-stone-950/40'
+                            : 'hover:bg-stone-100 dark:hover:bg-stone-800/60 cursor-pointer'
+                        }`}
+                        onClick={() => {
+                          if (!alreadyLinked) {
+                            handleAddNoteLink(n.id);
+                          }
+                        }}
+                      >
+                        <div className="min-w-0 flex-1 pr-2">
+                          <div className="flex items-center space-x-1.5">
+                            <FileText className="w-3.5 h-3.5 text-stone-400 shrink-0" />
+                            <span className="text-xs font-medium text-stone-800 dark:text-stone-200 truncate">
+                              {n.title}
+                            </span>
+                          </div>
+                          {(n.tags ?? []).length > 0 && (
+                            <div className="flex flex-wrap gap-1 mt-1 pl-5">
+                              {(n.tags ?? []).map((t) => (
+                                <span
+                                  key={t}
+                                  className="text-[10px] px-1 py-0.2 rounded bg-stone-100 dark:bg-stone-800 text-stone-500 font-mono"
+                                >
+                                  #{t}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                        <div className="shrink-0 text-right">
+                          {alreadyLinked ? (
+                            <span className="text-[10px] text-stone-400 bg-stone-200/60 dark:bg-stone-800 px-1.5 py-0.5 rounded">
+                              已关联
+                            </span>
+                          ) : (
+                            <span className="text-[10px] text-emerald-700 dark:text-emerald-400 font-medium hover:underline">
+                              关联
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                {allNotes.length === 0 && (
+                  <div className="text-center py-6 text-xs text-stone-400">
+                    Vault 中暂无笔记
+                  </div>
+                )}
+                {allNotes.length > 0 &&
+                  allNotes.filter((n) => {
+                    if (!noteSearchQuery.trim()) return true;
+                    const q = noteSearchQuery.trim().toLowerCase();
+                    return (
+                      n.title.toLowerCase().includes(q) ||
+                      (n.tags ?? []).some((t) => t.toLowerCase().includes(q))
+                    );
+                  }).length === 0 && (
+                    <div className="text-center py-6 text-xs text-stone-400">
+                      无匹配的笔记
+                    </div>
+                  )}
+              </div>
+
+              <div className="flex items-center justify-end pt-2 border-t border-stone-100 dark:border-stone-800">
+                <button
+                  type="button"
+                  onClick={() => setShowAddNoteModal(false)}
+                  className="px-3 py-1.5 rounded-md text-xs font-medium text-stone-600 dark:text-stone-300 hover:bg-stone-100 dark:hover:bg-stone-800 transition"
+                >
+                  关闭
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Unlink Note Confirmation Modal */}
+        {unlinkTarget && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs p-4">
+            <div className="w-full max-w-sm rounded-xl border border-stone-200 dark:border-stone-800 bg-white dark:bg-stone-900 p-5 shadow-xl space-y-4">
+              <div className="flex items-start space-x-3">
+                <div className="p-2 rounded-full bg-amber-100 dark:bg-amber-950/60 text-amber-600 shrink-0">
+                  <Unlink className="w-5 h-5" />
+                </div>
+                <div className="space-y-1">
+                  <h3 className="text-sm font-semibold text-stone-900 dark:text-stone-100">
+                    解除笔记关联
+                  </h3>
+                  <p className="text-xs text-stone-500 leading-relaxed">
+                    确定解除与笔记「<span className="font-medium text-stone-800 dark:text-stone-200">{unlinkTarget.title}</span>」的关联吗？
+                  </p>
+                  <p className="text-xs text-amber-600 dark:text-amber-400 font-medium">
+                    仅解除关联，不删除笔记。
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-end space-x-2 pt-2 border-t border-stone-100 dark:border-stone-800">
+                <button
+                  type="button"
+                  onClick={() => setUnlinkTarget(null)}
+                  className="px-3 py-1.5 rounded-md text-xs font-medium text-stone-600 dark:text-stone-300 hover:bg-stone-100 dark:hover:bg-stone-800 transition"
+                >
+                  取消
+                </button>
+                <button
+                  type="button"
+                  onClick={handleConfirmUnlinkNote}
+                  className="px-3 py-1.5 rounded-md bg-amber-600 hover:bg-amber-700 text-white text-xs font-medium transition shadow-xs"
+                >
+                  确认解除
                 </button>
               </div>
             </div>

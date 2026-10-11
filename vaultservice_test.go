@@ -93,6 +93,13 @@ func TestVaultService_CreateTask_PersistAndRestart(t *testing.T) {
 		}
 	}()
 
+	refNote, err := s.CreateNote(CreateNoteInput{
+		Title: "阶段2参考笔记",
+	})
+	if err != nil {
+		t.Fatalf("CreateNote failed: %v", err)
+	}
+
 	dueStr := "2026-10-15"
 	input := CreateTaskInput{
 		Title:    "阶段2任务落地",
@@ -100,7 +107,7 @@ func TestVaultService_CreateTask_PersistAndRestart(t *testing.T) {
 		Priority: markdown.TaskPriorityP1,
 		Due:      &dueStr,
 		Tags:     []string{"架构设计", "GoCore"},
-		NoteIDs:  []string{"n-ref-001"},
+		NoteIDs:  []string{refNote.ID},
 		Body:     "## 验收目标\n- 任务必须写真实 Markdown\n- 重扫解析正确",
 	}
 
@@ -1580,6 +1587,10 @@ func TestVaultService_UpdateNote_PreserveCreatedAtAndBaselineConflict(t *testing
 	}
 
 	// 3. Baseline conflict: external tampering without rescan
+	if s.stopWatcher != nil {
+		s.stopWatcher()
+		s.stopWatcher = nil
+	}
 	tampered := strings.Replace(string(diskBytes), "修改后的笔记标题", "外部冲突标题", 1)
 	if err := os.WriteFile(notePath, []byte(tampered), 0644); err != nil {
 		t.Fatalf("write tampered file failed: %v", err)
@@ -1730,5 +1741,217 @@ import_source: notion
 	}
 	if !strings.Contains(diskStr, "通过服务更新后的笔记标题") || !strings.Contains(diskStr, "更新后的笔记完整正文。") {
 		t.Fatalf("updated note content not found on disk: %s", diskStr)
+	}
+}
+
+func TestVaultService_TaskNoteLinking_Validation(t *testing.T) {
+	vaultDir := t.TempDir()
+	s := &VaultService{}
+	if _, err := s.openVault(vaultDir); err != nil {
+		t.Fatalf("openVault failed: %v", err)
+	}
+	defer func() {
+		if s.stopWatcher != nil {
+			s.stopWatcher()
+		}
+	}()
+
+	// 1. CreateTask: non-existent note_id must fail
+	_, err := s.CreateTask(CreateTaskInput{
+		Title:   "测试关联不存在笔记的任务",
+		NoteIDs: []string{"n-not-found-999"},
+	})
+	if err == nil || !strings.Contains(err.Error(), "笔记不存在: n-not-found-999") {
+		t.Fatalf("expected '笔记不存在: n-not-found-999', got: %v", err)
+	}
+
+	// 2. CreateTask: empty string note_id must fail
+	_, err = s.CreateTask(CreateTaskInput{
+		Title:   "测试空笔记ID的任务",
+		NoteIDs: []string{"   "},
+	})
+	if err == nil || !strings.Contains(err.Error(), "笔记 ID 不能为空") {
+		t.Fatalf("expected '笔记 ID 不能为空', got: %v", err)
+	}
+
+	// Create a valid task
+	validTask, err := s.CreateTask(CreateTaskInput{
+		Title: "有效任务",
+	})
+	if err != nil {
+		t.Fatalf("CreateTask failed: %v", err)
+	}
+
+	// 3. UpdateTask: non-existent note_id must fail
+	_, err = s.UpdateTask(UpdateTaskInput{
+		ID:      validTask.ID,
+		Title:   validTask.Title,
+		Status:  validTask.Status,
+		NoteIDs: []string{"n-missing-123"},
+	})
+	if err == nil || !strings.Contains(err.Error(), "笔记不存在: n-missing-123") {
+		t.Fatalf("expected '笔记不存在: n-missing-123', got: %v", err)
+	}
+
+	// 4. UpdateTask: empty string note_id must fail
+	_, err = s.UpdateTask(UpdateTaskInput{
+		ID:      validTask.ID,
+		Title:   validTask.Title,
+		Status:  validTask.Status,
+		NoteIDs: []string{""},
+	})
+	if err == nil || !strings.Contains(err.Error(), "笔记 ID 不能为空") {
+		t.Fatalf("expected '笔记 ID 不能为空', got: %v", err)
+	}
+}
+
+func TestVaultService_TaskNoteLinking_Lifecycle(t *testing.T) {
+	vaultDir := t.TempDir()
+	s := &VaultService{}
+	if _, err := s.openVault(vaultDir); err != nil {
+		t.Fatalf("openVault failed: %v", err)
+	}
+	defer func() {
+		if s.stopWatcher != nil {
+			s.stopWatcher()
+		}
+	}()
+
+	// Create Note 1
+	n1, err := s.CreateNote(CreateNoteInput{
+		Title: "架构设计决策 ADR-001",
+		Tags:  []string{"架构"},
+		Body:  "决策内容...",
+	})
+	if err != nil {
+		t.Fatalf("CreateNote n1 failed: %v", err)
+	}
+
+	// Create Note 2
+	n2, err := s.CreateNote(CreateNoteInput{
+		Title: "数据库重构备忘",
+		Tags:  []string{"存储"},
+		Body:  "备忘内容...",
+	})
+	if err != nil {
+		t.Fatalf("CreateNote n2 failed: %v", err)
+	}
+
+	// Create Task linking Note 1
+	task, err := s.CreateTask(CreateTaskInput{
+		Title:   "实现架构改进",
+		NoteIDs: []string{n1.ID},
+	})
+	if err != nil {
+		t.Fatalf("CreateTask with NoteIDs failed: %v", err)
+	}
+	if len(task.NoteIDs) != 1 || task.NoteIDs[0] != n1.ID {
+		t.Fatalf("unexpected NoteIDs in created task: %+v", task.NoteIDs)
+	}
+
+	// Verify GetTask returns correct NoteIDs
+	gotTask, err := s.GetTask(task.ID)
+	if err != nil {
+		t.Fatalf("GetTask failed: %v", err)
+	}
+	if len(gotTask.NoteIDs) != 1 || gotTask.NoteIDs[0] != n1.ID {
+		t.Fatalf("unexpected NoteIDs in GetTask: %+v", gotTask.NoteIDs)
+	}
+
+	// Update Task to link both Note 1 and Note 2
+	updatedTask, err := s.UpdateTask(UpdateTaskInput{
+		ID:       task.ID,
+		Title:    task.Title,
+		Status:   task.Status,
+		Priority: task.Priority,
+		NoteIDs:  []string{n1.ID, n2.ID},
+	})
+	if err != nil {
+		t.Fatalf("UpdateTask failed: %v", err)
+	}
+	if len(updatedTask.NoteIDs) != 2 || updatedTask.NoteIDs[0] != n1.ID || updatedTask.NoteIDs[1] != n2.ID {
+		t.Fatalf("unexpected NoteIDs after update: %+v", updatedTask.NoteIDs)
+	}
+
+	// Unlink all notes: full replacement semantics
+	unlinkedTask, err := s.UpdateTask(UpdateTaskInput{
+		ID:       task.ID,
+		Title:    task.Title,
+		Status:   task.Status,
+		Priority: task.Priority,
+		NoteIDs:  []string{},
+	})
+	if err != nil {
+		t.Fatalf("UpdateTask unlinking failed: %v", err)
+	}
+	if len(unlinkedTask.NoteIDs) != 0 {
+		t.Fatalf("expected empty NoteIDs after unlinking, got: %+v", unlinkedTask.NoteIDs)
+	}
+
+	// Verify unlinking does NOT delete the note file: Note 1 and Note 2 must remain intact
+	checkN1, err := s.GetNote(n1.ID)
+	if err != nil || checkN1 == nil {
+		t.Fatalf("Note 1 should remain intact after unlinking, got err: %v", err)
+	}
+	if checkN1.Title != "架构设计决策 ADR-001" {
+		t.Fatalf("Note 1 content modified unexpectedly: %s", checkN1.Title)
+	}
+
+	checkN2, err := s.GetNote(n2.ID)
+	if err != nil || checkN2 == nil {
+		t.Fatalf("Note 2 should remain intact after unlinking, got err: %v", err)
+	}
+}
+
+func TestVaultService_TaskNoteLinking_SameTagsDoNotLink(t *testing.T) {
+	vaultDir := t.TempDir()
+	s := &VaultService{}
+	if _, err := s.openVault(vaultDir); err != nil {
+		t.Fatalf("openVault failed: %v", err)
+	}
+	defer func() {
+		if s.stopWatcher != nil {
+			s.stopWatcher()
+		}
+	}()
+
+	sharedTags := []string{"pata", "frontend", "mvp"}
+
+	// Create Note with shared tags
+	note, err := s.CreateNote(CreateNoteInput{
+		Title: "关于 MVP 前端设计的随笔",
+		Tags:  sharedTags,
+		Body:  "这是一篇笔记...",
+	})
+	if err != nil {
+		t.Fatalf("CreateNote failed: %v", err)
+	}
+
+	// Create Task with the exact same tags, but empty NoteIDs
+	task, err := s.CreateTask(CreateTaskInput{
+		Title:   "完成前端组件重构",
+		Tags:    sharedTags,
+		NoteIDs: []string{},
+	})
+	if err != nil {
+		t.Fatalf("CreateTask failed: %v", err)
+	}
+
+	// Assert: identical tags MUST NOT automatically produce links
+	gotTask, err := s.GetTask(task.ID)
+	if err != nil {
+		t.Fatalf("GetTask failed: %v", err)
+	}
+	if len(gotTask.NoteIDs) != 0 {
+		t.Fatalf("red line violation: same tags must NOT produce note_ids links! got NoteIDs: %+v", gotTask.NoteIDs)
+	}
+
+	// Assert: Note tags and metadata remain independent and unaffected
+	gotNote, err := s.GetNote(note.ID)
+	if err != nil {
+		t.Fatalf("GetNote failed: %v", err)
+	}
+	if len(gotNote.Tags) != len(sharedTags) {
+		t.Fatalf("note tags corrupted: %+v", gotNote.Tags)
 	}
 }

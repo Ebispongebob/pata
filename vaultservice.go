@@ -250,6 +250,11 @@ func (s *VaultService) CreateTask(input CreateTaskInput) (*markdown.Task, error)
 		priority = markdown.TaskPriorityP2
 	}
 
+	cleanedNoteIDs, err := validateAndCleanNoteIDs(v, input.NoteIDs)
+	if err != nil {
+		return nil, err
+	}
+
 	var due *string
 	if input.Due != nil && strings.TrimSpace(*input.Due) != "" {
 		d := strings.TrimSpace(*input.Due)
@@ -265,7 +270,7 @@ func (s *VaultService) CreateTask(input CreateTaskInput) (*markdown.Task, error)
 		Priority:  priority,
 		Due:       due,
 		Tags:      input.Tags,
-		NoteIDs:   input.NoteIDs,
+		NoteIDs:   cleanedNoteIDs,
 		CreatedAt: now,
 		UpdatedAt: now,
 		Body:      input.Body,
@@ -310,6 +315,11 @@ func (s *VaultService) UpdateTask(input UpdateTaskInput) (*markdown.Task, error)
 		return nil, fmt.Errorf("任务不存在: %s", input.ID)
 	}
 
+	cleanedNoteIDs, err := validateAndCleanNoteIDs(v, input.NoteIDs)
+	if err != nil {
+		return nil, err
+	}
+
 	now := time.Now()
 	// Status event semantics: record completion or reopen
 	if existing.Status != markdown.TaskStatusDone && input.Status == markdown.TaskStatusDone {
@@ -335,7 +345,7 @@ func (s *VaultService) UpdateTask(input UpdateTaskInput) (*markdown.Task, error)
 	existing.Priority = input.Priority
 	existing.Due = due
 	existing.Tags = input.Tags
-	existing.NoteIDs = input.NoteIDs
+	existing.NoteIDs = cleanedNoteIDs
 	existing.Body = input.Body
 	existing.UpdatedAt = now
 
@@ -346,6 +356,25 @@ func (s *VaultService) UpdateTask(input UpdateTaskInput) (*markdown.Task, error)
 	}
 
 	return existing, nil
+}
+
+// validateAndCleanNoteIDs validates that all non-empty note IDs exist in the index.
+func validateAndCleanNoteIDs(v *markdown.Vault, noteIDs []string) ([]string, error) {
+	if len(noteIDs) == 0 {
+		return []string{}, nil
+	}
+	cleaned := make([]string, len(noteIDs))
+	for i, nid := range noteIDs {
+		id := strings.TrimSpace(nid)
+		if id == "" {
+			return nil, fmt.Errorf("笔记 ID 不能为空")
+		}
+		if _, ok := v.Index.GetNote(id); !ok {
+			return nil, fmt.Errorf("笔记不存在: %s", id)
+		}
+		cleaned[i] = id
+	}
+	return cleaned, nil
 }
 
 // taskBaseline looks up the baseline for an entity directly from the memory index.
@@ -913,10 +942,13 @@ func (s *VaultService) openVault(path string) (*markdown.Vault, error) {
 	s.mu.Lock()
 	oldStop := s.stopWatcher
 	s.vault = v
+	var stopOnce sync.Once
 	s.stopWatcher = func() {
-		close(stopForwarder)
-		stopRescan()
-		_ = v.StopWatcher()
+		stopOnce.Do(func() {
+			close(stopForwarder)
+			stopRescan()
+			_ = v.StopWatcher()
+		})
 	}
 	s.mu.Unlock()
 
