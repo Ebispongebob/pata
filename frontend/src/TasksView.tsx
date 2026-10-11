@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { Events } from '@wailsio/runtime';
 import {
   Circle,
   CheckCircle2,
@@ -57,6 +58,10 @@ export function TasksView({
   const [detailError, setDetailError] = useState<string | null>(null);
   const [saveSuccessMsg, setSaveSuccessMsg] = useState<string | null>(null);
 
+  // External change / Conflict indicators
+  const [externalModified, setExternalModified] = useState(false);
+  const [conflictError, setConflictError] = useState<string | null>(null);
+
   // Delete modal state
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -110,19 +115,81 @@ export function TasksView({
     return tasks.find((t) => t.id === selectedTaskId) ?? null;
   }, [tasks, selectedTaskId]);
 
-  // When selected task changes, sync form fields
+  const selectedTaskIdRef = useRef<string | null>(null);
   useEffect(() => {
-    if (selectedTask) {
-      setDetailTitle(selectedTask.title);
-      setDetailStatus(selectedTask.status);
-      setDetailPriority(selectedTask.priority);
-      setDetailDue(selectedTask.due ?? '');
-      setDetailTags((selectedTask.tags ?? []).join(', '));
-      setDetailBody(selectedTask.body ?? '');
+    selectedTaskIdRef.current = selectedTaskId;
+  }, [selectedTaskId]);
+
+  // Reload task from disk discarding uncommitted local edits
+  const reloadSelectedTask = useCallback(async () => {
+    if (!selectedTaskId) return;
+    setDetailError(null);
+    setConflictError(null);
+    setExternalModified(false);
+    try {
+      const task = await VaultService.GetTask(selectedTaskId);
+      if (task) {
+        setDetailTitle(task.title);
+        setDetailStatus(task.status);
+        setDetailPriority(task.priority);
+        setDetailDue(task.due ?? '');
+        setDetailTags((task.tags ?? []).join(', '));
+        setDetailBody(task.body ?? '');
+        setSaveSuccessMsg('已重新加载最新磁盘内容');
+      }
+      await loadTasks();
+    } catch (err: any) {
+      setDetailError(`重新加载失败: ${err?.message || err}`);
+    }
+  }, [selectedTaskId, loadTasks]);
+
+  // Subscribe to Wails application events for external vault file changes
+  useEffect(() => {
+    const unsubscribe = Events.On('vault:changed', (ev) => {
+      const data = ev.data as
+        | { op?: string; path?: string; entity_id?: string; type?: string }
+        | undefined;
+      const currentSelectedId = selectedTaskIdRef.current;
+
+      if (currentSelectedId && data?.entity_id === currentSelectedId) {
+        // User is editing details of this task: do NOT overwrite form fields, prompt external modification!
+        setExternalModified(true);
+      }
+      // Refresh background tasks list (form fields are not overwritten)
+      loadTasks();
+    });
+
+    return () => {
+      unsubscribe();
+    };
+  }, [loadTasks]);
+
+  const prevSelectedTaskIdRef = useRef<string | null>(null);
+
+  // When selected task ID changes, initialize form fields
+  useEffect(() => {
+    if (selectedTaskId && selectedTaskId !== prevSelectedTaskIdRef.current) {
+      prevSelectedTaskIdRef.current = selectedTaskId;
+      setExternalModified(false);
+      setConflictError(null);
       setDetailError(null);
       setSaveSuccessMsg(null);
+      const task = tasks.find((t) => t.id === selectedTaskId);
+      if (task) {
+        setDetailTitle(task.title);
+        setDetailStatus(task.status);
+        setDetailPriority(task.priority);
+        setDetailDue(task.due ?? '');
+        setDetailTags((task.tags ?? []).join(', '));
+        setDetailBody(task.body ?? '');
+      }
+    } else if (!selectedTaskId) {
+      prevSelectedTaskIdRef.current = null;
+      setExternalModified(false);
+      setConflictError(null);
+      setDetailError(null);
     }
-  }, [selectedTask]);
+  }, [selectedTaskId, tasks]);
 
   // Quick create task
   const handleQuickCreate = async (e: React.FormEvent) => {
@@ -168,7 +235,15 @@ export function TasksView({
       await VaultService.SetTaskStatus(task.id, nextStatus);
       await loadTasks();
     } catch (err: any) {
-      alert(`变更状态失败: ${err?.message || err}`);
+      const isConflict =
+        typeof err?.message === 'string' &&
+        (err.message.includes('write conflict') || err.message.includes('conflict at'));
+      if (isConflict) {
+        alert(`任务「${task.title}」文件已被外部修改，无法直接变更状态。列表已自动刷新。`);
+        await loadTasks();
+      } else {
+        alert(`变更状态失败: ${err?.message || err}`);
+      }
     }
   };
 
@@ -177,6 +252,7 @@ export function TasksView({
     if (!selectedTaskId) return;
     setSaving(true);
     setDetailError(null);
+    setConflictError(null);
     setSaveSuccessMsg(null);
 
     try {
@@ -199,10 +275,20 @@ export function TasksView({
       const updated = await VaultService.UpdateTask(input);
       if (updated) {
         setSaveSuccessMsg('已安全保存到 Markdown 文件');
+        setConflictError(null);
+        setExternalModified(false);
       }
       await loadTasks();
     } catch (err: any) {
-      setDetailError(err?.message || String(err));
+      const isConflict =
+        typeof err?.message === 'string' &&
+        (err.message.includes('write conflict') || err.message.includes('conflict at'));
+      if (isConflict) {
+        setConflictError(err?.message || '文件已被外部修改（写入冲突）');
+        setExternalModified(true);
+      } else {
+        setDetailError(err?.message || String(err));
+      }
     } finally {
       setSaving(false);
     }
@@ -320,6 +406,8 @@ export function TasksView({
             onClick={() => {
               setSelectedTaskId(null);
               setDetailError(null);
+              setConflictError(null);
+              setExternalModified(false);
             }}
             className="flex items-center space-x-1 px-2.5 py-1.5 rounded-md text-xs font-medium text-stone-600 dark:text-stone-300 hover:bg-stone-200/60 dark:hover:bg-stone-800/60 transition"
           >
@@ -347,8 +435,30 @@ export function TasksView({
           </div>
         </div>
 
-        {/* Error / Success Feedback Banners */}
-        {detailError && (
+        {/* External Modification / Conflict Warning Banner */}
+        {(externalModified || conflictError) && (
+          <div className="p-3.5 rounded-lg border border-amber-300 dark:border-amber-800/80 bg-amber-50 dark:bg-amber-950/40 text-amber-900 dark:text-amber-200 text-xs flex items-center justify-between gap-3 shadow-xs">
+            <div className="flex items-center space-x-2.5 min-w-0">
+              <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
+              <span className="font-medium">
+                {conflictError
+                  ? '文件已被外部修改（保存冲突），点击重新加载以丢弃本地编辑并重读'
+                  : '文件已被外部修改，点击重新加载'}
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={reloadSelectedTask}
+              className="flex items-center space-x-1 px-3 py-1 rounded-md bg-amber-600 hover:bg-amber-700 text-white text-xs font-medium transition shrink-0 shadow-2xs"
+            >
+              <RefreshCw className="w-3 h-3" />
+              <span>重新加载</span>
+            </button>
+          </div>
+        )}
+
+        {/* Generic Error / Success Feedback Banners */}
+        {detailError && !conflictError && (
           <div className="p-3 rounded-lg border border-rose-200 dark:border-rose-900/60 bg-rose-50/80 dark:bg-rose-950/40 text-rose-800 dark:text-rose-200 text-xs flex items-start space-x-2">
             <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
             <div className="space-y-0.5">

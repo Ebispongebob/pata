@@ -54,21 +54,42 @@ type UpdateTaskInput struct {
 	Body     string                `json:"body"`
 }
 
+// EventVaultChanged is emitted to the Wails frontend when a vault entity is created, modified, or deleted.
+const EventVaultChanged = "vault:changed"
+
+// VaultChangeEvent describes a change dispatched to the frontend application.
+type VaultChangeEvent struct {
+	Op       string `json:"op"`
+	Path     string `json:"path"`
+	EntityID string `json:"entity_id,omitempty"`
+	Type     string `json:"type,omitempty"`
+}
+
 // VaultService owns the single Vault instance; all structured file access goes through it.
 type VaultService struct {
 	mu          sync.Mutex
 	vault       *markdown.Vault
 	stopWatcher func()
 	configPath  string
+	emitEvent   func(name string, data any)
 }
 
 func NewVaultService() *VaultService {
+	defaultEmit := func(name string, data any) {
+		if app := application.Get(); app != nil && app.Event != nil {
+			app.Event.Emit(name, data)
+		}
+	}
+
 	configDir, err := os.UserConfigDir()
 	if err != nil {
 		log.Printf("vault: cannot resolve user config dir, persistence disabled: %v", err)
-		return &VaultService{}
+		return &VaultService{emitEvent: defaultEmit}
 	}
-	return &VaultService{configPath: filepath.Join(configDir, "pata", "vault.json")}
+	return &VaultService{
+		configPath: filepath.Join(configDir, "pata", "vault.json"),
+		emitEvent:  defaultEmit,
+	}
 }
 
 // ServiceStartup auto-opens the persisted vault; failure leaves the vault closed, not the app dead.
@@ -369,6 +390,15 @@ func (s *VaultService) DeleteTask(id string) error {
 	return v.DeleteEntity(id)
 }
 
+func (s *VaultService) dispatchEvent(name string, data any) {
+	s.mu.Lock()
+	emit := s.emitEvent
+	s.mu.Unlock()
+	if emit != nil {
+		emit(name, data)
+	}
+}
+
 func (s *VaultService) openVault(path string) (*markdown.Vault, error) {
 	v, err := markdown.NewVault(path)
 	if err != nil {
@@ -379,10 +409,14 @@ func (s *VaultService) openVault(path string) (*markdown.Vault, error) {
 	}
 	stopRescan := v.StartPeriodicRescan(30 * time.Second)
 
+	stopForwarder := make(chan struct{})
+	go s.forwardVaultEvents(v.Events(), stopForwarder)
+
 	s.mu.Lock()
 	oldStop := s.stopWatcher
 	s.vault = v
 	s.stopWatcher = func() {
+		close(stopForwarder)
 		stopRescan()
 		_ = v.StopWatcher()
 	}
@@ -392,6 +426,26 @@ func (s *VaultService) openVault(path string) (*markdown.Vault, error) {
 		oldStop()
 	}
 	return v, nil
+}
+
+func (s *VaultService) forwardVaultEvents(events <-chan markdown.VaultEvent, stop <-chan struct{}) {
+	for {
+		select {
+		case <-stop:
+			return
+		case ev, ok := <-events:
+			if !ok {
+				return
+			}
+			payload := VaultChangeEvent{
+				Op:       string(ev.Op),
+				Path:     ev.Path,
+				EntityID: ev.EntityID,
+				Type:     string(ev.Type),
+			}
+			s.dispatchEvent(EventVaultChanged, payload)
+		}
+	}
 }
 
 func (s *VaultService) loadConfig() (VaultConfig, error) {

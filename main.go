@@ -11,14 +11,12 @@ import (
 var assets embed.FS
 
 func main() {
-	spikeService := NewSpikeService()
 	vaultService := NewVaultService()
 
 	app := application.New(application.Options{
 		Name:        "Pata",
 		Description: "Personal task and note workspace",
 		Services: []application.Service{
-			application.NewService(spikeService),
 			application.NewService(vaultService),
 		},
 		Assets: application.AssetOptions{

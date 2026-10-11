@@ -18,30 +18,6 @@ export interface CreateTaskInput {
     "body"?: string;
 }
 
-export interface RoundTripResult {
-    "success": boolean;
-    "originalLen": number;
-    "reloadedLen": number;
-    "diffCount": number;
-    "hasCodeBlock": boolean;
-    "hasTable": boolean;
-    "hasChinese": boolean;
-    "hasRelativeLinks": boolean;
-    "notes": string[] | null;
-    "diffSummary": string;
-}
-
-export interface SystemInfo {
-    "os": string;
-    "arch": string;
-    "kernelVersion": string;
-    "productVersion": string;
-    "buildVersion": string;
-    "goVersion": string;
-    "wailsVersion": string;
-    "nodeVersion": string;
-}
-
 /**
  * UpdateTaskInput defines parameters for updating an existing Task.
  * Note: tags, note_ids, and body follow full-replacement semantics (not partial patch).

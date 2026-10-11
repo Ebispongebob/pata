@@ -45,22 +45,31 @@ type MemoryIndex struct {
 	baselines    map[string]FileBaseline
 	danglingRefs []DanglingRef
 	parseErrors  []ParseError
+	pendingMoves map[string]pendingMove
+}
+
+type pendingMove struct {
+	path     string
+	entity   Entity
+	baseline FileBaseline
 }
 
 // NewMemoryIndex creates an empty MemoryIndex.
 func NewMemoryIndex() *MemoryIndex {
 	return &MemoryIndex{
-		tasks:     make(map[string]*Task),
-		memos:     make(map[string]*Memo),
-		notes:     make(map[string]*Note),
-		dayPlans:  make(map[string]*DayPlan),
-		fileToID:  make(map[string]string),
-		idToFile:  make(map[string]string),
-		baselines: make(map[string]FileBaseline),
+		tasks:        make(map[string]*Task),
+		memos:        make(map[string]*Memo),
+		notes:        make(map[string]*Note),
+		dayPlans:     make(map[string]*DayPlan),
+		fileToID:     make(map[string]string),
+		idToFile:     make(map[string]string),
+		baselines:    make(map[string]FileBaseline),
+		pendingMoves: make(map[string]pendingMove),
 	}
 }
 
 // Clear resets the index to empty state.
+// 注释: Scan 清空 pendingMoves 与 Remove 事件存在竞态窗口(最长 30s 周期重扫闪失、重扫自愈，属已知可接受).
 func (idx *MemoryIndex) Clear() {
 	idx.mu.Lock()
 	defer idx.mu.Unlock()
@@ -71,6 +80,7 @@ func (idx *MemoryIndex) Clear() {
 	idx.fileToID = make(map[string]string)
 	idx.idToFile = make(map[string]string)
 	idx.baselines = make(map[string]FileBaseline)
+	idx.pendingMoves = make(map[string]pendingMove)
 	idx.danglingRefs = nil
 	idx.parseErrors = nil
 }
@@ -229,25 +239,88 @@ func hasTag(tags []string, target string) bool {
 	return false
 }
 
+// ClearPendingMove removes any pending move candidate for an entity ID.
+func (idx *MemoryIndex) ClearPendingMove(id string) {
+	idx.mu.Lock()
+	defer idx.mu.Unlock()
+	if idx.pendingMoves != nil {
+		delete(idx.pendingMoves, id)
+	}
+}
+
 // RemoveFile removes an entity associated with a path from the index.
 func (idx *MemoryIndex) RemoveFile(absPath string) {
+	idx.RemoveFileWithPromotion(absPath)
+}
+
+// RemoveFileWithPromotion removes an entity associated with a path from the index.
+// If a pendingMove exists for this entity ID at a new path, it is promoted to the index.
+// Returns deletedID, and if a pendingMove was promoted, promotedID, promotedPath and promotedType.
+// 注释: 锁内执行 os.Stat 进行文件存在性探查持有锁 syscalls，在单用户桌面规模可接受；后续大 vault 场景可移出锁外双检.
+func (idx *MemoryIndex) RemoveFileWithPromotion(absPath string) (deletedID, promotedID, promotedPath string, promotedType EntityType) {
 	idx.mu.Lock()
 	defer idx.mu.Unlock()
 
 	id, ok := idx.fileToID[absPath]
 	if ok {
+		deletedID = id
 		delete(idx.fileToID, absPath)
-		delete(idx.idToFile, id)
-		delete(idx.tasks, id)
-		delete(idx.memos, id)
-		delete(idx.notes, id)
-		delete(idx.dayPlans, id)
+		// Only delete the entity if idToFile still points to this path (not already migrated)
+		if idx.idToFile[id] == absPath {
+			delete(idx.idToFile, id)
+			delete(idx.tasks, id)
+			delete(idx.memos, id)
+			delete(idx.notes, id)
+			delete(idx.dayPlans, id)
+		}
 	}
 	delete(idx.baselines, absPath)
+
+	// Check if there was a pending move for this entity ID
+	if ok && idx.pendingMoves != nil {
+		if pm, hasPending := idx.pendingMoves[id]; hasPending {
+			delete(idx.pendingMoves, id)
+			if _, err := os.Stat(pm.path); err == nil {
+				idx.fileToID[pm.path] = id
+				idx.idToFile[id] = pm.path
+				idx.baselines[pm.path] = pm.baseline
+
+				switch e := pm.entity.(type) {
+				case *Task:
+					idx.tasks[id] = e.Clone().(*Task)
+				case *Memo:
+					idx.memos[id] = e.Clone().(*Memo)
+				case *Note:
+					idx.notes[id] = e.Clone().(*Note)
+				case *DayPlan:
+					idx.dayPlans[id] = e.Clone().(*DayPlan)
+				}
+
+				idx.removeDuplicateParseErrorLocked(id, pm.path)
+				promotedID = id
+				promotedPath = pm.path
+				promotedType = pm.entity.GetType()
+			}
+		}
+	}
+
 	idx.recomputeDanglingRefsLocked()
+	return deletedID, promotedID, promotedPath, promotedType
+}
+
+func (idx *MemoryIndex) removeDuplicateParseErrorLocked(id, path string) {
+	filtered := idx.parseErrors[:0]
+	for _, pe := range idx.parseErrors {
+		if pe.Path == path && strings.Contains(pe.Reason, fmt.Sprintf("duplicate entity ID collision '%s'", id)) {
+			continue
+		}
+		filtered = append(filtered, pe)
+	}
+	idx.parseErrors = filtered
 }
 
 // PutEntity inserts or updates an entity in the index.
+// 注释: 锁内执行 os.Stat 进行文件存在性探查持有锁 syscalls，在单用户桌面规模可接受；后续大 vault 场景可移出锁外双检.
 func (idx *MemoryIndex) PutEntity(absPath string, entity Entity, baseline FileBaseline) {
 	idx.mu.Lock()
 	defer idx.mu.Unlock()
@@ -263,18 +336,38 @@ func (idx *MemoryIndex) PutEntity(absPath string, entity Entity, baseline FileBa
 
 	id := entity.GetID()
 	if existingPath, exists := idx.idToFile[id]; exists && existingPath != absPath {
-		// M2: Duplicate ID collision across different paths: isolate error and reject overwrite
-		idx.parseErrors = append(idx.parseErrors, ParseError{
-			Path:   absPath,
-			Reason: fmt.Sprintf("duplicate entity ID collision '%s' (already declared in %s); update rejected", id, existingPath),
-			Err:    fmt.Errorf("duplicate entity ID collision: %s", id),
-		})
-		return
+		// Check whether existingPath still exists on disk
+		if _, err := os.Stat(existingPath); os.IsNotExist(err) {
+			// existingPath no longer exists on disk: the entity was moved/renamed to absPath!
+			delete(idx.fileToID, existingPath)
+			delete(idx.baselines, existingPath)
+			idx.removeDuplicateParseErrorLocked(id, absPath)
+		} else {
+			// existingPath still exists on disk.
+			// Could be a duplicate ID collision, OR Create arrived before Remove in a move.
+			if idx.pendingMoves == nil {
+				idx.pendingMoves = make(map[string]pendingMove)
+			}
+			idx.pendingMoves[id] = pendingMove{
+				path:     absPath,
+				entity:   entity,
+				baseline: baseline,
+			}
+			idx.parseErrors = append(idx.parseErrors, ParseError{
+				Path:   absPath,
+				Reason: fmt.Sprintf("duplicate entity ID collision '%s' (already declared in %s); update rejected", id, existingPath),
+				Err:    fmt.Errorf("duplicate entity ID collision: %s", id),
+			})
+			return
+		}
 	}
 
 	idx.fileToID[absPath] = id
 	idx.idToFile[id] = absPath
 	idx.baselines[absPath] = baseline
+	if idx.pendingMoves != nil {
+		delete(idx.pendingMoves, id)
+	}
 
 	switch e := entity.(type) {
 	case *Task:

@@ -91,6 +91,8 @@ func (v *Vault) Scan() error {
 	v.Index.baselines = newIndex.baselines
 	v.Index.danglingRefs = newIndex.danglingRefs
 	v.Index.parseErrors = newIndex.parseErrors
+	// 注释: Scan 清空 pendingMoves 与 Remove 事件存在竞态窗口(最长 30s 周期重扫闪失、重扫自愈，属已知可接受).
+	v.Index.pendingMoves = make(map[string]pendingMove)
 	newIndex.mu.RUnlock()
 	v.Index.mu.Unlock()
 
@@ -173,6 +175,7 @@ func (v *Vault) DeleteEntity(id string) error {
 		return fmt.Errorf("failed to delete file %s: %w", filePath, err)
 	}
 
+	v.Index.ClearPendingMove(id)
 	v.Index.RemoveFile(filePath)
 	return nil
 }
@@ -272,11 +275,20 @@ func (v *Vault) handleFSEvent(event fsnotify.Event) {
 	if event.Has(fsnotify.Remove) || event.Has(fsnotify.Rename) {
 		// If file was deleted
 		if _, err := os.Stat(path); os.IsNotExist(err) {
-			v.Index.RemoveFile(path)
+			deletedID, promotedID, promotedPath, promotedType := v.Index.RemoveFileWithPromotion(path)
 			v.dispatch(VaultEvent{
-				Op:   ChangeOpDelete,
-				Path: path,
+				Op:       ChangeOpDelete,
+				Path:     path,
+				EntityID: deletedID,
 			})
+			if promotedID != "" && promotedPath != "" {
+				v.dispatch(VaultEvent{
+					Op:       ChangeOpCreate,
+					Path:     promotedPath,
+					EntityID: promotedID,
+					Type:     promotedType,
+				})
+			}
 			return
 		}
 	}
@@ -326,17 +338,23 @@ func (v *Vault) handleFSEvent(event fsnotify.Event) {
 
 		v.Index.PutEntity(path, entity, baseline)
 
-		op := ChangeOpUpdate
-		if event.Has(fsnotify.Create) {
-			op = ChangeOpCreate
-		}
+		v.Index.mu.RLock()
+		acceptedPath := v.Index.idToFile[entity.GetID()]
+		v.Index.mu.RUnlock()
 
-		v.dispatch(VaultEvent{
-			Op:       op,
-			Path:     path,
-			EntityID: entity.GetID(),
-			Type:     entity.GetType(),
-		})
+		if acceptedPath == path {
+			op := ChangeOpUpdate
+			if event.Has(fsnotify.Create) {
+				op = ChangeOpCreate
+			}
+
+			v.dispatch(VaultEvent{
+				Op:       op,
+				Path:     path,
+				EntityID: entity.GetID(),
+				Type:     entity.GetType(),
+			})
+		}
 	}
 }
 

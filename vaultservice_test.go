@@ -509,3 +509,119 @@ func TestVaultService_ValidationErrors(t *testing.T) {
 		t.Fatalf("expected error for invalid status")
 	}
 }
+
+func TestVaultService_EventForwarding(t *testing.T) {
+	vaultDir := t.TempDir()
+	eventsReceived := make(chan VaultChangeEvent, 10)
+	var eventNameReceived string
+
+	s := &VaultService{
+		emitEvent: func(name string, data any) {
+			eventNameReceived = name
+			if payload, ok := data.(VaultChangeEvent); ok {
+				eventsReceived <- payload
+			}
+		},
+	}
+
+	tasksDir := filepath.Join(vaultDir, "tasks")
+	if err := os.MkdirAll(tasksDir, 0755); err != nil {
+		t.Fatalf("MkdirAll failed: %v", err)
+	}
+
+	if _, err := s.openVault(vaultDir); err != nil {
+		t.Fatalf("openVault failed: %v", err)
+	}
+	defer func() {
+		if s.stopWatcher != nil {
+			s.stopWatcher()
+		}
+	}()
+
+	// 1. Create a task via external file write (simulating external editor)
+	extFile := filepath.Join(tasksDir, "external_task_t-ext-ev1.md")
+	content := `---
+type: task
+id: t-ext-ev1
+title: 外部创建任务
+status: todo
+priority: p2
+created_at: 2026-10-11T12:00:00+08:00
+updated_at: 2026-10-11T12:00:00+08:00
+---
+
+外部正文内容。
+`
+	if err := os.WriteFile(extFile, []byte(content), 0644); err != nil {
+		t.Fatalf("WriteFile failed: %v", err)
+	}
+
+	// 2. Poll assert for EventVaultChanged event
+	select {
+	case ev := <-eventsReceived:
+		if eventNameReceived != EventVaultChanged {
+			t.Fatalf("expected event name %s, got %s", EventVaultChanged, eventNameReceived)
+		}
+		if ev.EntityID != "t-ext-ev1" {
+			t.Fatalf("expected EntityID t-ext-ev1, got %s", ev.EntityID)
+		}
+		if ev.Type != "task" {
+			t.Fatalf("expected Type task, got %s", ev.Type)
+		}
+		if ev.Op != "create" && ev.Op != "update" {
+			t.Fatalf("unexpected Op %s", ev.Op)
+		}
+		if ev.Path != extFile {
+			t.Fatalf("expected Path %s, got %s", extFile, ev.Path)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatalf("timed out waiting for forwarded vault event")
+	}
+}
+
+func TestVaultService_EventForwarding_StopLifecycle(t *testing.T) {
+	vaultDir := t.TempDir()
+	eventsReceived := make(chan VaultChangeEvent, 10)
+
+	s := &VaultService{
+		emitEvent: func(name string, data any) {
+			if payload, ok := data.(VaultChangeEvent); ok {
+				eventsReceived <- payload
+			}
+		},
+	}
+
+	if _, err := s.openVault(vaultDir); err != nil {
+		t.Fatalf("openVault failed: %v", err)
+	}
+
+	// Stop watcher
+	if s.stopWatcher != nil {
+		s.stopWatcher()
+	}
+
+	// Create another file after stopWatcher
+	tasksDir := filepath.Join(vaultDir, "tasks")
+	_ = os.MkdirAll(tasksDir, 0755)
+	extFile := filepath.Join(tasksDir, "after_stop_t-ext-ev2.md")
+	content := `---
+type: task
+id: t-ext-ev2
+title: 停止后创建
+status: todo
+priority: p2
+created_at: 2026-10-11T12:00:00+08:00
+updated_at: 2026-10-11T12:00:00+08:00
+---
+`
+	_ = os.WriteFile(extFile, []byte(content), 0644)
+
+	// No events should be received after stopWatcher
+	select {
+	case ev := <-eventsReceived:
+		t.Fatalf("received unexpected event after stopWatcher: %+v", ev)
+	case <-time.After(200 * time.Millisecond):
+		// Expected: no event received
+	}
+}
+
