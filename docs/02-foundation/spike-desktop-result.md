@@ -145,6 +145,7 @@ Vditor 默认会尝试向外网 CDN 请求静态资源。为了保证 **Local Fi
 1. 将 `node_modules/vditor/dist/` 全量资源（js, css, images）同步至 `frontend/public/vditor/`。
 2. 初始化时配置 `cdn: '/vditor'`，完全走 Wails 内置的本地 AssetFileServer。
 3. 经断网验证，编辑器图标、语法高亮引擎、表格控制条在离线环境下秒级加载。
+   > **勘误（2026-10-12，P4-R2 审查证伪）**：本条结论不成立。vditor@4.0.0 入口对所有运行时懒加载资源按 `${cdn}/dist/...` 构造路径，而当时资源位于 `public/vditor/` 根（无 `dist/` 层），生产环境下 lute 等引擎实际 404、WYSIWYG 无法初始化；"秒级加载"最多覆盖了随 bundle 打包的 css/图标。修复与实证见提交 6bc4f73（`git mv` 加 `dist/` 层 + dev HTTP 探测 11 路径全 200）。引用本节结论时以本勘误为准。
 4. **B-L3 注明**：`frontend/public/vditor/` 当前包含完整离线包（含未启用的 KaTeX、MathJax、Mermaid、ECharts 等资源，体积约 23MB）。离线包懒加载不拖累运行时表现，但实装前应根据功能裁剪至实际使用子集。
 
 ### 4.2 往返验证流程与样本设计
