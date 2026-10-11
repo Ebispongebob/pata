@@ -119,6 +119,28 @@ func (idx *MemoryIndex) GetMemo(id string) (*Memo, bool) {
 	return m.Clone().(*Memo), true
 }
 
+// ListMemosByTask returns clones of all memos belonging to taskID sorted by CreatedAt ascending.
+func (idx *MemoryIndex) ListMemosByTask(taskID string) []*Memo {
+	idx.mu.RLock()
+	var memos []*Memo
+	for _, m := range idx.memos {
+		if m.TaskID == taskID {
+			memos = append(memos, m.Clone().(*Memo))
+		}
+	}
+	idx.mu.RUnlock()
+	sort.Slice(memos, func(i, j int) bool {
+		if memos[i].CreatedAt.Equal(memos[j].CreatedAt) {
+			return memos[i].ID < memos[j].ID
+		}
+		return memos[i].CreatedAt.Before(memos[j].CreatedAt)
+	})
+	if memos == nil {
+		return []*Memo{}
+	}
+	return memos
+}
+
 // GetNote returns a clone of the note by ID.
 func (idx *MemoryIndex) GetNote(id string) (*Note, bool) {
 	idx.mu.RLock()

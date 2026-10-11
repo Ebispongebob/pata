@@ -6,6 +6,15 @@
 import * as markdown$0 from "./internal/storage/markdown/models.js";
 
 /**
+ * CreateMemoInput defines parameters for creating a new Memo.
+ */
+export interface CreateMemoInput {
+    "body": string;
+    "task_id"?: string;
+    "tags"?: string[] | null;
+}
+
+/**
  * CreateTaskInput defines parameters for creating a new Task.
  */
 export interface CreateTaskInput {
@@ -16,6 +25,15 @@ export interface CreateTaskInput {
     "tags"?: string[] | null;
     "note_ids"?: string[] | null;
     "body"?: string;
+}
+
+/**
+ * UpdateMemoInput defines parameters for updating an existing Memo.
+ */
+export interface UpdateMemoInput {
+    "id": string;
+    "body": string;
+    "tags"?: string[] | null;
 }
 
 /**

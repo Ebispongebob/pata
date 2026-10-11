@@ -7,7 +7,9 @@ export {
 };
 
 export type {
+    CreateMemoInput,
     CreateTaskInput,
+    UpdateMemoInput,
     UpdateTaskInput,
     VaultStatus
 } from "./models.js";

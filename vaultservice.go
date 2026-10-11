@@ -54,6 +54,20 @@ type UpdateTaskInput struct {
 	Body     string                `json:"body"`
 }
 
+// CreateMemoInput defines parameters for creating a new Memo.
+type CreateMemoInput struct {
+	Body   string   `json:"body"`
+	TaskID string   `json:"task_id,omitempty"`
+	Tags   []string `json:"tags,omitempty"`
+}
+
+// UpdateMemoInput defines parameters for updating an existing Memo.
+type UpdateMemoInput struct {
+	ID   string   `json:"id"`
+	Body string   `json:"body"`
+	Tags []string `json:"tags,omitempty"`
+}
+
 // EventVaultChanged is emitted to the Wails frontend when a vault entity is created, modified, or deleted.
 const EventVaultChanged = "vault:changed"
 
@@ -388,6 +402,133 @@ func (s *VaultService) DeleteTask(id string) error {
 	}
 
 	return v.DeleteEntity(id)
+}
+
+// ListMemosByTask returns all memos associated with taskID from the vault index, oldest first.
+func (s *VaultService) ListMemosByTask(taskID string) ([]*markdown.Memo, error) {
+	s.mu.Lock()
+	v := s.vault
+	s.mu.Unlock()
+	if v == nil {
+		return nil, fmt.Errorf("尚未打开 Vault")
+	}
+	return v.Index.ListMemosByTask(taskID), nil
+}
+
+// GetMemo returns a memo by its ID.
+func (s *VaultService) GetMemo(id string) (*markdown.Memo, error) {
+	s.mu.Lock()
+	v := s.vault
+	s.mu.Unlock()
+	if v == nil {
+		return nil, fmt.Errorf("尚未打开 Vault")
+	}
+
+	if strings.TrimSpace(id) == "" {
+		return nil, fmt.Errorf("Memo ID 不能为空")
+	}
+
+	memo, ok := v.Index.GetMemo(id)
+	if !ok {
+		return nil, fmt.Errorf("Memo 不存在: %s", id)
+	}
+	return memo, nil
+}
+
+// CreateMemo creates a new Memo, writes it safely as Markdown, and updates the index.
+func (s *VaultService) CreateMemo(input CreateMemoInput) (*markdown.Memo, error) {
+	s.mu.Lock()
+	v := s.vault
+	s.mu.Unlock()
+	if v == nil {
+		return nil, fmt.Errorf("尚未打开 Vault")
+	}
+
+	body := strings.TrimSpace(input.Body)
+	if body == "" {
+		return nil, fmt.Errorf("Memo 正文不能为空")
+	}
+
+	taskID := strings.TrimSpace(input.TaskID)
+	if taskID != "" {
+		if _, ok := v.Index.GetTask(taskID); !ok {
+			return nil, fmt.Errorf("任务不存在: %s", taskID)
+		}
+	}
+
+	var tags []string
+	for _, tag := range input.Tags {
+		cleaned := strings.TrimSpace(strings.TrimPrefix(tag, "#"))
+		if cleaned != "" {
+			tags = append(tags, cleaned)
+		}
+	}
+
+	memo := &markdown.Memo{
+		Type:      markdown.EntityTypeMemo,
+		ID:        markdown.GenerateEntityID(markdown.EntityTypeMemo),
+		TaskID:    taskID,
+		CreatedAt: time.Now(),
+		Tags:      tags,
+		Body:      input.Body,
+	}
+
+	if _, err := v.SaveEntity(memo, nil); err != nil {
+		return nil, err
+	}
+
+	return memo, nil
+}
+
+// UpdateMemo updates an existing Memo's body and tags while preserving its creation timestamp.
+func (s *VaultService) UpdateMemo(input UpdateMemoInput) (*markdown.Memo, error) {
+	s.mu.Lock()
+	v := s.vault
+	s.mu.Unlock()
+	if v == nil {
+		return nil, fmt.Errorf("尚未打开 Vault")
+	}
+
+	if strings.TrimSpace(input.ID) == "" {
+		return nil, fmt.Errorf("Memo ID 不能为空")
+	}
+
+	body := strings.TrimSpace(input.Body)
+	if body == "" {
+		return nil, fmt.Errorf("Memo 正文不能为空")
+	}
+
+	existing, ok := v.Index.GetMemo(input.ID)
+	if !ok {
+		return nil, fmt.Errorf("Memo 不存在: %s", input.ID)
+	}
+
+	var tags []string
+	for _, tag := range input.Tags {
+		cleaned := strings.TrimSpace(strings.TrimPrefix(tag, "#"))
+		if cleaned != "" {
+			tags = append(tags, cleaned)
+		}
+	}
+
+	existing.Body = input.Body
+	existing.Tags = tags
+
+	baseline := memoBaseline(v, existing)
+	if _, err := v.SaveEntity(existing, baseline); err != nil {
+		return nil, err
+	}
+
+	return existing, nil
+}
+
+// memoBaseline looks up the baseline for a memo directly from the memory index.
+func memoBaseline(v *markdown.Vault, memo *markdown.Memo) *markdown.FileBaseline {
+	path := v.ResolveEntityPath(memo)
+	if b, ok := v.Index.GetBaseline(path); ok {
+		return &b
+	}
+	return nil
 }
 
 func (s *VaultService) dispatchEvent(name string, data any) {

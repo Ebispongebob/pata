@@ -19,6 +19,13 @@ import * as markdown$0 from "./internal/storage/markdown/models.js";
 import * as $models from "./models.js";
 
 /**
+ * CreateMemo creates a new Memo, writes it safely as Markdown, and updates the index.
+ */
+export function CreateMemo(input: $models.CreateMemoInput): $CancellablePromise<markdown$0.Memo | null> {
+    return $Call.ByID(1514226879, input);
+}
+
+/**
  * CreateTask creates a new Task, writes it safely as Markdown, and updates the index.
  */
 export function CreateTask(input: $models.CreateTaskInput): $CancellablePromise<markdown$0.Task | null> {
@@ -33,6 +40,13 @@ export function DeleteTask(id: string): $CancellablePromise<void> {
 }
 
 /**
+ * GetMemo returns a memo by its ID.
+ */
+export function GetMemo(id: string): $CancellablePromise<markdown$0.Memo | null> {
+    return $Call.ByID(780043581, id);
+}
+
+/**
  * GetTask returns a task by its ID.
  */
 export function GetTask(id: string): $CancellablePromise<markdown$0.Task | null> {
@@ -44,6 +58,13 @@ export function GetTask(id: string): $CancellablePromise<markdown$0.Task | null>
  */
 export function GetVaultStatus(): $CancellablePromise<$models.VaultStatus> {
     return $Call.ByID(540011935);
+}
+
+/**
+ * ListMemosByTask returns all memos associated with taskID from the vault index, oldest first.
+ */
+export function ListMemosByTask(taskID: string): $CancellablePromise<(markdown$0.Memo | null)[] | null> {
+    return $Call.ByID(2666858332, taskID);
 }
 
 /**
@@ -73,6 +94,13 @@ export function SelectVaultDirectory(): $CancellablePromise<$models.VaultStatus>
  */
 export function SetTaskStatus(id: string, status: markdown$0.TaskStatus): $CancellablePromise<markdown$0.Task | null> {
     return $Call.ByID(1569318832, id, status);
+}
+
+/**
+ * UpdateMemo updates an existing Memo's body and tags while preserving its creation timestamp.
+ */
+export function UpdateMemo(input: $models.UpdateMemoInput): $CancellablePromise<markdown$0.Memo | null> {
+    return $Call.ByID(971500362, input);
 }
 
 /**

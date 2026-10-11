@@ -3,6 +3,7 @@ package markdown
 import (
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 func TestScanExamplesVault(t *testing.T) {
@@ -118,5 +119,77 @@ func TestDanglingReferences(t *testing.T) {
 	t.Logf("Dangling references correctly isolated:\n")
 	for _, d := range dangling {
 		t.Logf("  - %s\n", d.String())
+	}
+}
+
+func TestListMemosByTask(t *testing.T) {
+	idx := NewMemoryIndex()
+
+	t1 := time.Date(2026, 10, 11, 10, 0, 0, 0, time.UTC)
+	t2 := time.Date(2026, 10, 11, 11, 0, 0, 0, time.UTC)
+	t3 := time.Date(2026, 10, 11, 12, 0, 0, 0, time.UTC)
+
+	memo1 := &Memo{
+		Type:      EntityTypeMemo,
+		ID:        "m-001",
+		TaskID:    "t-target",
+		CreatedAt: t2,
+		Body:      "第二条评论",
+	}
+	memo2 := &Memo{
+		Type:      EntityTypeMemo,
+		ID:        "m-002",
+		TaskID:    "t-target",
+		CreatedAt: t1,
+		Body:      "第一条评论",
+	}
+	memo3 := &Memo{
+		Type:      EntityTypeMemo,
+		ID:        "m-003",
+		TaskID:    "t-target",
+		CreatedAt: t3,
+		Body:      "第三条评论",
+	}
+	memoOther := &Memo{
+		Type:      EntityTypeMemo,
+		ID:        "m-004",
+		TaskID:    "t-other",
+		CreatedAt: t1,
+		Body:      "其他任务的评论",
+	}
+	memoStandAlone := &Memo{
+		Type:      EntityTypeMemo,
+		ID:        "m-005",
+		TaskID:    "",
+		CreatedAt: t1,
+		Body:      "独立 Memo",
+	}
+
+	idx.PutEntity("/vault/memos/2026/10/m-001.md", memo1, FileBaseline{})
+	idx.PutEntity("/vault/memos/2026/10/m-002.md", memo2, FileBaseline{})
+	idx.PutEntity("/vault/memos/2026/10/m-003.md", memo3, FileBaseline{})
+	idx.PutEntity("/vault/memos/2026/10/m-004.md", memoOther, FileBaseline{})
+	idx.PutEntity("/vault/memos/2026/10/m-005.md", memoStandAlone, FileBaseline{})
+
+	// 1. Filter and sorting check (must be sorted by CreatedAt ascending: m-002, m-001, m-003)
+	memos := idx.ListMemosByTask("t-target")
+	if len(memos) != 3 {
+		t.Fatalf("expected 3 memos for t-target, got %d", len(memos))
+	}
+	if memos[0].ID != "m-002" || memos[1].ID != "m-001" || memos[2].ID != "m-003" {
+		t.Fatalf("expected order [m-002, m-001, m-003], got [%s, %s, %s]", memos[0].ID, memos[1].ID, memos[2].ID)
+	}
+
+	// 2. Clone check (mutation of returned memo shouldn't affect index)
+	memos[0].Body = "篡改的正文"
+	m2, _ := idx.GetMemo("m-002")
+	if m2.Body != "第一条评论" {
+		t.Fatalf("index entity was mutated through returned clone")
+	}
+
+	// 3. Query non-existent task returns empty slice, not nil
+	empty := idx.ListMemosByTask("t-not-found")
+	if empty == nil || len(empty) != 0 {
+		t.Fatalf("expected non-nil empty slice for non-existent task, got %v", empty)
 	}
 }

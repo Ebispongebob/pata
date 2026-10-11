@@ -17,6 +17,18 @@ export enum EntityType {
 };
 
 /**
+ * Memo represents a short memo or task comment.
+ */
+export interface Memo {
+    "type": EntityType;
+    "id": string;
+    "task_id"?: string;
+    "created_at": string;
+    "tags"?: string[] | null;
+    "body": string;
+}
+
+/**
  * StatusEvent records completion and reopen events.
  */
 export interface StatusEvent {

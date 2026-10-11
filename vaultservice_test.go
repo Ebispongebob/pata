@@ -625,3 +625,297 @@ updated_at: 2026-10-11T12:00:00+08:00
 	}
 }
 
+func TestVaultService_MemoCRUDAndValidation(t *testing.T) {
+	sClosed := &VaultService{}
+	if _, err := sClosed.CreateMemo(CreateMemoInput{Body: "测试"}); err == nil {
+		t.Fatalf("expected error on closed vault for CreateMemo")
+	}
+	if _, err := sClosed.UpdateMemo(UpdateMemoInput{ID: "m-1", Body: "测试"}); err == nil {
+		t.Fatalf("expected error on closed vault for UpdateMemo")
+	}
+	if _, err := sClosed.GetMemo("m-1"); err == nil {
+		t.Fatalf("expected error on closed vault for GetMemo")
+	}
+	if _, err := sClosed.ListMemosByTask("t-1"); err == nil {
+		t.Fatalf("expected error on closed vault for ListMemosByTask")
+	}
+
+	vaultDir := t.TempDir()
+	s := &VaultService{}
+	if _, err := s.openVault(vaultDir); err != nil {
+		t.Fatalf("openVault failed: %v", err)
+	}
+	defer func() {
+		if s.stopWatcher != nil {
+			s.stopWatcher()
+		}
+	}()
+
+	// 1. Empty body error
+	if _, err := s.CreateMemo(CreateMemoInput{Body: "   "}); err == nil {
+		t.Fatalf("expected error for empty memo body")
+	}
+
+	// 2. Non-existent taskID error
+	if _, err := s.CreateMemo(CreateMemoInput{Body: "关联不存在的任务", TaskID: "t-ghost-999"}); err == nil || !strings.Contains(err.Error(), "任务不存在: t-ghost-999") {
+		t.Fatalf("expected '任务不存在: t-ghost-999', got: %v", err)
+	}
+
+	// 3. Standalone Memo without title/tags/task_id must succeed
+	standalone, err := s.CreateMemo(CreateMemoInput{Body: "独立闪念记录"})
+	if err != nil {
+		t.Fatalf("CreateMemo standalone failed: %v", err)
+	}
+	if !strings.HasPrefix(standalone.ID, "m-") {
+		t.Fatalf("expected memo ID prefix 'm-', got %s", standalone.ID)
+	}
+	if standalone.TaskID != "" {
+		t.Fatalf("expected empty TaskID, got %s", standalone.TaskID)
+	}
+	if len(standalone.Tags) != 0 {
+		t.Fatalf("expected empty Tags, got %v", standalone.Tags)
+	}
+	if standalone.CreatedAt.IsZero() {
+		t.Fatalf("expected non-zero CreatedAt")
+	}
+
+	// 4. Verify disk persistence of standalone Memo in memos/YYYY/MM/
+	memoPath := s.vault.ResolveEntityPath(standalone)
+	expectedSubdir := filepath.Join("memos", standalone.CreatedAt.Format("2006"), standalone.CreatedAt.Format("01"))
+	if !strings.Contains(memoPath, expectedSubdir) {
+		t.Fatalf("expected path to contain %s, got %s", expectedSubdir, memoPath)
+	}
+
+	data, err := os.ReadFile(memoPath)
+	if err != nil {
+		t.Fatalf("failed to read memo file from disk: %v", err)
+	}
+	parsed, err := markdown.ParseMarkdown(memoPath, data)
+	if err != nil {
+		t.Fatalf("ParseMarkdown failed: %v", err)
+	}
+	parsedMemo, ok := parsed.(*markdown.Memo)
+	if !ok {
+		t.Fatalf("parsed entity is not Memo: %T", parsed)
+	}
+	if strings.TrimSpace(parsedMemo.Body) != "独立闪念记录" {
+		t.Fatalf("parsed body mismatch: %s", parsedMemo.Body)
+	}
+
+	// 5. Read back via GetMemo
+	fetched, err := s.GetMemo(standalone.ID)
+	if err != nil || fetched.ID != standalone.ID || fetched.Body != standalone.Body {
+		t.Fatalf("GetMemo failed: %v, fetched=%+v", err, fetched)
+	}
+
+	// 6. Associate Memo with an existing Task
+	task, err := s.CreateTask(CreateTaskInput{Title: "宿主任务"})
+	if err != nil {
+		t.Fatalf("CreateTask failed: %v", err)
+	}
+
+	taskMemo, err := s.CreateMemo(CreateMemoInput{
+		Body:   "任务评论第1条",
+		TaskID: task.ID,
+		Tags:   []string{"#反馈", "开发"},
+	})
+	if err != nil {
+		t.Fatalf("CreateMemo with TaskID failed: %v", err)
+	}
+	if taskMemo.TaskID != task.ID {
+		t.Fatalf("expected TaskID=%s, got %s", task.ID, taskMemo.TaskID)
+	}
+	if len(taskMemo.Tags) != 2 || taskMemo.Tags[0] != "反馈" || taskMemo.Tags[1] != "开发" {
+		t.Fatalf("tags not cleaned properly: %v", taskMemo.Tags)
+	}
+
+	memosForTask, err := s.ListMemosByTask(task.ID)
+	if err != nil || len(memosForTask) != 1 || memosForTask[0].ID != taskMemo.ID {
+		t.Fatalf("ListMemosByTask failed: %v, got %+v", err, memosForTask)
+	}
+}
+
+func TestVaultService_UpdateMemo_PreserveCreatedAtAndBaselineConflict(t *testing.T) {
+	vaultDir := t.TempDir()
+	s := &VaultService{}
+	if _, err := s.openVault(vaultDir); err != nil {
+		t.Fatalf("openVault failed: %v", err)
+	}
+	defer func() {
+		if s.stopWatcher != nil {
+			s.stopWatcher()
+		}
+	}()
+
+	created, err := s.CreateMemo(CreateMemoInput{
+		Body: "原始评论正文",
+		Tags: []string{"v1"},
+	})
+	if err != nil {
+		t.Fatalf("CreateMemo failed: %v", err)
+	}
+	origCreatedAt := created.CreatedAt
+
+	// Update Memo
+	updated, err := s.UpdateMemo(UpdateMemoInput{
+		ID:   created.ID,
+		Body: "修改后的评论正文",
+		Tags: []string{"v2", "已修复"},
+	})
+	if err != nil {
+		t.Fatalf("UpdateMemo failed: %v", err)
+	}
+
+	// Invariant: CreatedAt must NOT be modified
+	if !updated.CreatedAt.Equal(origCreatedAt) {
+		t.Fatalf("UpdateMemo modified created_at: orig=%s, new=%s", origCreatedAt, updated.CreatedAt)
+	}
+	if updated.Body != "修改后的评论正文" {
+		t.Fatalf("body not updated: %s", updated.Body)
+	}
+	if len(updated.Tags) != 2 || updated.Tags[0] != "v2" {
+		t.Fatalf("tags not updated: %v", updated.Tags)
+	}
+
+	// Verify persistence
+	memoPath := s.vault.ResolveEntityPath(updated)
+	diskData, err := os.ReadFile(memoPath)
+	if err != nil {
+		t.Fatalf("read disk memo failed: %v", err)
+	}
+	if !strings.Contains(string(diskData), "修改后的评论正文") {
+		t.Fatalf("disk file does not contain updated body: %s", string(diskData))
+	}
+
+	// External collision test: tamper with disk file
+	tamperedContent := strings.Replace(string(diskData), "修改后的评论正文", "外部冲突编辑", 1)
+	if err := os.WriteFile(memoPath, []byte(tamperedContent), 0644); err != nil {
+		t.Fatalf("write tampered file failed: %v", err)
+	}
+
+	// Attempt UpdateMemo without rescan -> baseline conflict must be rejected
+	_, err = s.UpdateMemo(UpdateMemoInput{
+		ID:   created.ID,
+		Body: "再次尝试编辑将发生冲突",
+	})
+	if err == nil || !strings.Contains(err.Error(), "conflict") {
+		t.Fatalf("expected conflict error on external edit, got: %v", err)
+	}
+}
+
+func TestVaultService_ListMemosByTask_Ordering(t *testing.T) {
+	vaultDir := t.TempDir()
+	s := &VaultService{}
+	if _, err := s.openVault(vaultDir); err != nil {
+		t.Fatalf("openVault failed: %v", err)
+	}
+	defer func() {
+		if s.stopWatcher != nil {
+			s.stopWatcher()
+		}
+	}()
+
+	task, err := s.CreateTask(CreateTaskInput{Title: "排序测试任务"})
+	if err != nil {
+		t.Fatalf("CreateTask failed: %v", err)
+	}
+
+	m1, err := s.CreateMemo(CreateMemoInput{Body: "第1条", TaskID: task.ID})
+	if err != nil {
+		t.Fatalf("CreateMemo m1 failed: %v", err)
+	}
+	time.Sleep(20 * time.Millisecond)
+
+	m2, err := s.CreateMemo(CreateMemoInput{Body: "第2条", TaskID: task.ID})
+	if err != nil {
+		t.Fatalf("CreateMemo m2 failed: %v", err)
+	}
+	time.Sleep(20 * time.Millisecond)
+
+	m3, err := s.CreateMemo(CreateMemoInput{Body: "第3条", TaskID: task.ID})
+	if err != nil {
+		t.Fatalf("CreateMemo m3 failed: %v", err)
+	}
+
+	list, err := s.ListMemosByTask(task.ID)
+	if err != nil {
+		t.Fatalf("ListMemosByTask failed: %v", err)
+	}
+	if len(list) != 3 {
+		t.Fatalf("expected 3 memos, got %d", len(list))
+	}
+	if list[0].ID != m1.ID || list[1].ID != m2.ID || list[2].ID != m3.ID {
+		t.Fatalf("expected order [m1, m2, m3], got [%s, %s, %s]", list[0].ID, list[1].ID, list[2].ID)
+	}
+}
+
+func TestVaultService_UpdateMemo_UnknownFieldsPreserved(t *testing.T) {
+	vaultDir := t.TempDir()
+	memoDir := filepath.Join(vaultDir, "memos", "2026", "10")
+	if err := os.MkdirAll(memoDir, 0755); err != nil {
+		t.Fatalf("MkdirAll failed: %v", err)
+	}
+
+	rawFile := filepath.Join(memoDir, "custom_memo_m-ext-01.md")
+	rawContent := `---
+type: memo
+id: m-ext-01
+created_at: 2026-10-11T10:00:00+08:00
+custom_agent_id: agent-xyz
+extra_meta:
+  source: webhook
+  verified: true
+---
+
+初始 Memo 正文。
+`
+	if err := os.WriteFile(rawFile, []byte(rawContent), 0644); err != nil {
+		t.Fatalf("WriteFile failed: %v", err)
+	}
+
+	s := &VaultService{}
+	if _, err := s.openVault(vaultDir); err != nil {
+		t.Fatalf("openVault failed: %v", err)
+	}
+	defer func() {
+		if s.stopWatcher != nil {
+			s.stopWatcher()
+		}
+	}()
+
+	memo, err := s.GetMemo("m-ext-01")
+	if err != nil {
+		t.Fatalf("GetMemo failed: %v", err)
+	}
+
+	// Update memo through service
+	updated, err := s.UpdateMemo(UpdateMemoInput{
+		ID:   memo.ID,
+		Body: "经 UpdateMemo 更新后的正文内容。",
+		Tags: []string{"重要"},
+	})
+	if err != nil {
+		t.Fatalf("UpdateMemo failed: %v", err)
+	}
+	if updated.Body != "经 UpdateMemo 更新后的正文内容。" {
+		t.Fatalf("body not updated: %s", updated.Body)
+	}
+
+	// Read back markdown file directly from disk
+	diskBytes, err := os.ReadFile(rawFile)
+	if err != nil {
+		t.Fatalf("ReadFile failed: %v", err)
+	}
+	diskStr := string(diskBytes)
+
+	// Check that unknown YAML fields are preserved!
+	if !strings.Contains(diskStr, "custom_agent_id: agent-xyz") {
+		t.Fatalf("unknown field custom_agent_id lost! Disk content:\n%s", diskStr)
+	}
+	if !strings.Contains(diskStr, "extra_meta:") || !strings.Contains(diskStr, "source: webhook") {
+		t.Fatalf("unknown nested field extra_meta lost! Disk content:\n%s", diskStr)
+	}
+	if !strings.Contains(diskStr, "经 UpdateMemo 更新后的正文内容。") {
+		t.Fatalf("updated body not in disk file! Disk content:\n%s", diskStr)
+	}
+}

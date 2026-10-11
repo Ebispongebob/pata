@@ -9,6 +9,7 @@ export {
 } from "./models.js";
 
 export type {
+    Memo,
     StatusEvent,
     Task
 } from "./models.js";

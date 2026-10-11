@@ -14,10 +14,45 @@ import {
   X,
   Search,
   FolderOpen,
+  MessageSquare,
+  Send,
 } from 'lucide-react';
 import * as VaultService from '../bindings/pata/vaultservice';
-import { Task, TaskStatus, TaskPriority } from '../bindings/pata/internal/storage/markdown/models';
-import { VaultStatus, CreateTaskInput, UpdateTaskInput } from '../bindings/pata/models';
+import { Task, TaskStatus, TaskPriority, Memo } from '../bindings/pata/internal/storage/markdown/models';
+import { VaultStatus, CreateTaskInput, UpdateTaskInput, CreateMemoInput } from '../bindings/pata/models';
+
+function formatMemoTimestamp(isoString: string): string {
+  if (!isoString) return '';
+  try {
+    const d = new Date(isoString);
+    if (isNaN(d.getTime())) return isoString;
+
+    const pad = (n: number) => n.toString().padStart(2, '0');
+    const hours = pad(d.getHours());
+    const minutes = pad(d.getMinutes());
+
+    const now = new Date();
+    const isToday =
+      d.getFullYear() === now.getFullYear() &&
+      d.getMonth() === now.getMonth() &&
+      d.getDate() === now.getDate();
+
+    if (isToday) {
+      return `${hours}:${minutes}`;
+    }
+
+    const year = d.getFullYear();
+    const month = pad(d.getMonth() + 1);
+    const day = pad(d.getDate());
+    if (year === now.getFullYear()) {
+      return `${month}-${day} ${hours}:${minutes}`;
+    }
+    return `${year}-${month}-${day} ${hours}:${minutes}`;
+  } catch {
+    return isoString;
+  }
+}
+
 
 interface TasksViewProps {
   vaultStatus: VaultStatus | null;
@@ -67,6 +102,14 @@ export function TasksView({
   const [deleting, setDeleting] = useState(false);
   const [rescanLoading, setRescanLoading] = useState(false);
 
+  // Memo / Comment state for selected task
+  const [taskMemos, setTaskMemos] = useState<Memo[]>([]);
+  const [loadingMemos, setLoadingMemos] = useState(false);
+  const [memoListError, setMemoListError] = useState<string | null>(null);
+  const [newMemoBody, setNewMemoBody] = useState('');
+  const [submittingMemo, setSubmittingMemo] = useState(false);
+  const [submitMemoError, setSubmitMemoError] = useState<string | null>(null);
+
   // Fetch tasks
   const loadTasks = useCallback(async () => {
     if (!vaultStatus?.open) {
@@ -87,6 +130,27 @@ export function TasksView({
       setLoading(false);
     }
   }, [vaultStatus?.open, vaultStatus?.path]);
+
+  // Fetch memos for selected task
+  const loadMemos = useCallback(async (taskId: string) => {
+    if (!taskId) {
+      setTaskMemos([]);
+      setMemoListError(null);
+      return;
+    }
+    setLoadingMemos(true);
+    setMemoListError(null);
+    try {
+      const result = await VaultService.ListMemosByTask(taskId);
+      const validMemos = (result ?? []).filter((m): m is Memo => m !== null);
+      setTaskMemos(validMemos);
+    } catch (err: any) {
+      console.error('Failed to list memos for task:', err);
+      setMemoListError(err?.message || String(err));
+    } finally {
+      setLoadingMemos(false);
+    }
+  }, []);
 
   useEffect(() => {
     loadTasks();
@@ -138,10 +202,11 @@ export function TasksView({
         setSaveSuccessMsg('已重新加载最新磁盘内容');
       }
       await loadTasks();
+      await loadMemos(selectedTaskId);
     } catch (err: any) {
       setDetailError(`重新加载失败: ${err?.message || err}`);
     }
-  }, [selectedTaskId, loadTasks]);
+  }, [selectedTaskId, loadTasks, loadMemos]);
 
   // Subscribe to Wails application events for external vault file changes
   useEffect(() => {
@@ -157,12 +222,17 @@ export function TasksView({
       }
       // Refresh background tasks list (form fields are not overwritten)
       loadTasks();
+
+      // Refresh task comments without overwriting in-progress draft
+      if (currentSelectedId) {
+        loadMemos(currentSelectedId);
+      }
     });
 
     return () => {
       unsubscribe();
     };
-  }, [loadTasks]);
+  }, [loadTasks, loadMemos]);
 
   const prevSelectedTaskIdRef = useRef<string | null>(null);
 
@@ -174,6 +244,8 @@ export function TasksView({
       setConflictError(null);
       setDetailError(null);
       setSaveSuccessMsg(null);
+      setNewMemoBody('');
+      setSubmitMemoError(null);
       const task = tasks.find((t) => t.id === selectedTaskId);
       if (task) {
         setDetailTitle(task.title);
@@ -183,13 +255,45 @@ export function TasksView({
         setDetailTags((task.tags ?? []).join(', '));
         setDetailBody(task.body ?? '');
       }
+      loadMemos(selectedTaskId);
     } else if (!selectedTaskId) {
       prevSelectedTaskIdRef.current = null;
       setExternalModified(false);
       setConflictError(null);
       setDetailError(null);
+      setTaskMemos([]);
+      setNewMemoBody('');
+      setSubmitMemoError(null);
+      setMemoListError(null);
     }
-  }, [selectedTaskId, tasks]);
+  }, [selectedTaskId, tasks, loadMemos]);
+
+  // Add new memo / comment to current task
+  const handleAddMemo = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!selectedTaskId) return;
+    const body = newMemoBody.trim();
+    if (!body) return;
+
+    setSubmittingMemo(true);
+    setSubmitMemoError(null);
+
+    try {
+      const input: CreateMemoInput = {
+        body,
+        task_id: selectedTaskId,
+      };
+      await VaultService.CreateMemo(input);
+      setNewMemoBody('');
+      await loadMemos(selectedTaskId);
+    } catch (err: any) {
+      console.error('Failed to create memo:', err);
+      setSubmitMemoError(err?.message || String(err));
+    } finally {
+      setSubmittingMemo(false);
+    }
+  };
+
 
   // Quick create task
   const handleQuickCreate = async (e: React.FormEvent) => {
@@ -568,6 +672,107 @@ export function TasksView({
             rows={12}
             className="w-full p-3.5 text-sm font-mono rounded-lg border border-stone-200 dark:border-stone-800 bg-white dark:bg-stone-950 text-stone-900 dark:text-stone-100 focus:outline-hidden focus:ring-2 focus:ring-emerald-600 resize-y leading-relaxed"
           />
+        </div>
+
+        {/* Comments / Memos Section */}
+        <div className="space-y-3 pt-3 border-t border-stone-200 dark:border-stone-800">
+          <div className="flex items-center justify-between text-xs text-stone-500">
+            <span className="flex items-center space-x-1.5 font-semibold text-[11px] uppercase tracking-wider text-stone-500">
+              <MessageSquare className="w-3.5 h-3.5" />
+              <span>记录 / 评论 ({taskMemos.length})</span>
+            </span>
+            {loadingMemos && <span className="text-[11px] text-stone-400">加载中...</span>}
+          </div>
+
+          {/* Memo List Error Banner */}
+          {memoListError && (
+            <div className="p-2.5 rounded-lg border border-rose-200 dark:border-rose-900/60 bg-rose-50/80 dark:bg-rose-950/40 text-rose-800 dark:text-rose-200 text-xs flex items-center space-x-2">
+              <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+              <span>加载记录列表失败: {memoListError}</span>
+            </div>
+          )}
+
+          {/* Memo Items List */}
+          {taskMemos.length === 0 ? (
+            <div className="py-3 text-center text-xs text-stone-400 dark:text-stone-500">
+              暂无记录或评论，可在下方快速记录进展
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {taskMemos.map((memo) => (
+                <div
+                  key={memo.id}
+                  className="p-3 rounded-xl border border-stone-200/90 dark:border-stone-800 bg-white dark:bg-stone-900/50 space-y-1.5 shadow-2xs"
+                >
+                  <div className="flex items-center justify-between text-[11px] text-stone-400">
+                    <span className="font-mono text-[10px] text-stone-400">{memo.id}</span>
+                    <span
+                      title={memo.created_at ? memo.created_at.replace('T', ' ').slice(0, 19) : ''}
+                      className="font-mono text-[11px] text-stone-500 dark:text-stone-400"
+                    >
+                      {formatMemoTimestamp(memo.created_at)}
+                    </span>
+                  </div>
+                  <div className="text-xs text-stone-800 dark:text-stone-200 whitespace-pre-wrap leading-relaxed break-words font-sans">
+                    {memo.body}
+                  </div>
+                  {memo.tags && memo.tags.length > 0 && (
+                    <div className="flex flex-wrap gap-1 pt-0.5">
+                      {memo.tags.map((tag) => (
+                        <span
+                          key={tag}
+                          className="inline-flex items-center text-[10px] px-1.5 py-0.2 rounded bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-400 font-mono"
+                        >
+                          #{tag}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Submit New Memo Form */}
+          <form onSubmit={handleAddMemo} className="space-y-2 pt-1">
+            <textarea
+              value={newMemoBody}
+              onChange={(e) => setNewMemoBody(e.target.value)}
+              onKeyDown={(e) => {
+                if ((e.metaKey || e.ctrlKey) && e.key === 'Enter' && !submittingMemo && newMemoBody.trim()) {
+                  e.preventDefault();
+                  handleAddMemo();
+                }
+              }}
+              placeholder="输入任务记录或评论...（支持 ⌘+Enter 提交）"
+              rows={3}
+              disabled={submittingMemo}
+              className="w-full p-3 text-xs rounded-lg border border-stone-200 dark:border-stone-800 bg-white dark:bg-stone-950 text-stone-900 dark:text-stone-100 placeholder-stone-400 focus:outline-hidden focus:ring-2 focus:ring-emerald-600 resize-y leading-relaxed shadow-2xs"
+            />
+
+            {/* Submit Error Banner */}
+            {submitMemoError && (
+              <div className="p-2.5 rounded-lg border border-rose-200 dark:border-rose-900/60 bg-rose-50/80 dark:bg-rose-950/40 text-rose-800 dark:text-rose-200 text-xs flex items-start space-x-2">
+                <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                <div className="space-y-0.5">
+                  <div className="font-semibold">添加记录失败</div>
+                  <div className="font-mono text-[11px] break-all">{submitMemoError}</div>
+                </div>
+              </div>
+            )}
+
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] text-stone-400">支持 ⌘+Enter 快捷提交</span>
+              <button
+                type="submit"
+                disabled={submittingMemo || !newMemoBody.trim()}
+                className="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-medium transition disabled:opacity-40 shadow-2xs shrink-0"
+              >
+                <Send className={`w-3 h-3 ${submittingMemo ? 'animate-spin' : ''}`} />
+                <span>{submittingMemo ? '提交中...' : '添加记录'}</span>
+              </button>
+            </div>
+          </form>
         </div>
 
         {/* Status Events History & Meta info */}
