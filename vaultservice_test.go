@@ -919,3 +919,162 @@ extra_meta:
 		t.Fatalf("updated body not in disk file! Disk content:\n%s", diskStr)
 	}
 }
+
+func TestVaultService_DayPlanCRUDAndValidation(t *testing.T) {
+	sClosed := &VaultService{}
+	if _, err := sClosed.GetDayPlan("2026-10-11"); err == nil {
+		t.Fatalf("expected error on closed vault for GetDayPlan")
+	}
+	if _, err := sClosed.SaveDayPlan("2026-10-11", []string{}); err == nil {
+		t.Fatalf("expected error on closed vault for SaveDayPlan")
+	}
+
+	vaultDir := t.TempDir()
+	s := &VaultService{}
+	if _, err := s.openVault(vaultDir); err != nil {
+		t.Fatalf("openVault failed: %v", err)
+	}
+	defer func() {
+		if s.stopWatcher != nil {
+			s.stopWatcher()
+		}
+	}()
+
+	// 1. Invalid date format error
+	if _, err := s.GetDayPlan("invalid-date"); err == nil {
+		t.Fatalf("expected error for invalid date in GetDayPlan")
+	}
+	if _, err := s.SaveDayPlan("2026/10/11", []string{}); err == nil {
+		t.Fatalf("expected error for invalid date in SaveDayPlan")
+	}
+
+	// 2. Non-existent day plan returns empty DayPlan without error
+	emptyPlan, err := s.GetDayPlan("2026-10-11")
+	if err != nil {
+		t.Fatalf("GetDayPlan on non-existent date failed: %v", err)
+	}
+	if emptyPlan.Date != "2026-10-11" || len(emptyPlan.TaskIDs) != 0 {
+		t.Fatalf("expected empty plan, got: %+v", emptyPlan)
+	}
+
+	// 3. SaveDayPlan with non-existent task_id returns error
+	if _, err := s.SaveDayPlan("2026-10-11", []string{"t-ghost-999"}); err == nil || !strings.Contains(err.Error(), "任务不存在: t-ghost-999") {
+		t.Fatalf("expected '任务不存在: t-ghost-999', got: %v", err)
+	}
+
+	// 4. SaveDayPlan with empty task_ids succeeds (saving empty plan)
+	savedEmpty, err := s.SaveDayPlan("2026-10-11", []string{})
+	if err != nil {
+		t.Fatalf("SaveDayPlan empty failed: %v", err)
+	}
+	if savedEmpty.Date != "2026-10-11" || len(savedEmpty.TaskIDs) != 0 {
+		t.Fatalf("expected empty task IDs, got: %+v", savedEmpty)
+	}
+
+	// 5. Create tasks and save day plan (ordered)
+	dueStr := "2026-10-25"
+	task1, err := s.CreateTask(CreateTaskInput{Title: "任务1", Due: &dueStr})
+	if err != nil {
+		t.Fatalf("CreateTask 1 failed: %v", err)
+	}
+	task2, err := s.CreateTask(CreateTaskInput{Title: "任务2"})
+	if err != nil {
+		t.Fatalf("CreateTask 2 failed: %v", err)
+	}
+
+	// New plan with [task1, task2]
+	saved, err := s.SaveDayPlan("2026-10-11", []string{task1.ID, task2.ID})
+	if err != nil {
+		t.Fatalf("SaveDayPlan failed: %v", err)
+	}
+	if len(saved.TaskIDs) != 2 || saved.TaskIDs[0] != task1.ID || saved.TaskIDs[1] != task2.ID {
+		t.Fatalf("expected task IDs [%s, %s], got %v", task1.ID, task2.ID, saved.TaskIDs)
+	}
+
+	// Read back via GetDayPlan
+	fetched, err := s.GetDayPlan("2026-10-11")
+	if err != nil || len(fetched.TaskIDs) != 2 || fetched.TaskIDs[0] != task1.ID {
+		t.Fatalf("GetDayPlan failed: %v, fetched: %+v", err, fetched)
+	}
+
+	// Update order to [task2, task1]
+	reordered, err := s.SaveDayPlan("2026-10-11", []string{task2.ID, task1.ID})
+	if err != nil {
+		t.Fatalf("SaveDayPlan reorder failed: %v", err)
+	}
+	if len(reordered.TaskIDs) != 2 || reordered.TaskIDs[0] != task2.ID || reordered.TaskIDs[1] != task1.ID {
+		t.Fatalf("reordered mismatch: %v", reordered.TaskIDs)
+	}
+
+	// 6. External collision test (conflict rejection)
+	planPath := s.vault.ResolveEntityPath(reordered)
+	diskBytes, err := os.ReadFile(planPath)
+	if err != nil {
+		t.Fatalf("read plan file failed: %v", err)
+	}
+	// Tamper file externally
+	tampered := strings.Replace(string(diskBytes), task2.ID, task1.ID, 1)
+	if err := os.WriteFile(planPath, []byte(tampered), 0644); err != nil {
+		t.Fatalf("write tampered plan file failed: %v", err)
+	}
+	// Attempt save without rescan -> should detect baseline conflict
+	_, err = s.SaveDayPlan("2026-10-11", []string{task1.ID})
+	if err == nil || !strings.Contains(err.Error(), "conflict") {
+		t.Fatalf("expected conflict error on external edit, got: %v", err)
+	}
+
+	// 7. Duplicate task ID in SaveDayPlan is rejected by schema validation
+	_ = s.RescanVault()
+	_, err = s.SaveDayPlan("2026-10-11", []string{task1.ID, task1.ID})
+	if err == nil || !strings.Contains(err.Error(), "duplicate task id") {
+		t.Fatalf("expected duplicate task id error from schema, got: %v", err)
+	}
+}
+
+func TestVaultService_DayPlan_SameTaskMultiDayDueUnchanged(t *testing.T) {
+	vaultDir := t.TempDir()
+	s := &VaultService{}
+	if _, err := s.openVault(vaultDir); err != nil {
+		t.Fatalf("openVault failed: %v", err)
+	}
+	defer func() {
+		if s.stopWatcher != nil {
+			s.stopWatcher()
+		}
+	}()
+
+	dueStr := "2026-10-30"
+	task, err := s.CreateTask(CreateTaskInput{
+		Title: "跨日安排任务",
+		Due:   &dueStr,
+	})
+	if err != nil {
+		t.Fatalf("CreateTask failed: %v", err)
+	}
+
+	// Arrange the same task in two different DayPlans
+	plan1, err := s.SaveDayPlan("2026-10-11", []string{task.ID})
+	if err != nil {
+		t.Fatalf("SaveDayPlan day 1 failed: %v", err)
+	}
+	plan2, err := s.SaveDayPlan("2026-10-12", []string{task.ID})
+	if err != nil {
+		t.Fatalf("SaveDayPlan day 2 failed: %v", err)
+	}
+
+	if len(plan1.TaskIDs) != 1 || plan1.TaskIDs[0] != task.ID {
+		t.Fatalf("plan1 does not contain task: %+v", plan1)
+	}
+	if len(plan2.TaskIDs) != 1 || plan2.TaskIDs[0] != task.ID {
+		t.Fatalf("plan2 does not contain task: %+v", plan2)
+	}
+
+	// Assert: Task.due is UNCHANGED across multiple daily arrangements!
+	taskFetched, err := s.GetTask(task.ID)
+	if err != nil {
+		t.Fatalf("GetTask failed: %v", err)
+	}
+	if taskFetched.Due == nil || *taskFetched.Due != "2026-10-30" {
+		t.Fatalf("Task.Due was modified! Expected 2026-10-30, got %v", taskFetched.Due)
+	}
+}

@@ -531,6 +531,91 @@ func memoBaseline(v *markdown.Vault, memo *markdown.Memo) *markdown.FileBaseline
 	return nil
 }
 
+// GetDayPlan returns the DayPlan for a date. If no plan exists, an empty DayPlan is returned without error.
+func (s *VaultService) GetDayPlan(date string) (*markdown.DayPlan, error) {
+	s.mu.Lock()
+	v := s.vault
+	s.mu.Unlock()
+	if v == nil {
+		return nil, fmt.Errorf("尚未打开 Vault")
+	}
+
+	trimmedDate := strings.TrimSpace(date)
+	if _, err := time.Parse("2006-01-02", trimmedDate); err != nil {
+		return nil, fmt.Errorf("无效的日期格式: %s (必须为 YYYY-MM-DD)", date)
+	}
+
+	if plan, ok := v.Index.GetDayPlan(trimmedDate); ok {
+		if plan.TaskIDs == nil {
+			plan.TaskIDs = []string{}
+		}
+		return plan, nil
+	}
+
+	return &markdown.DayPlan{
+		Type:    markdown.EntityTypeDayPlan,
+		Date:    trimmedDate,
+		TaskIDs: []string{},
+	}, nil
+}
+
+// SaveDayPlan creates or updates a DayPlan for a date with an ordered list of task IDs.
+func (s *VaultService) SaveDayPlan(date string, taskIDs []string) (*markdown.DayPlan, error) {
+	s.mu.Lock()
+	v := s.vault
+	s.mu.Unlock()
+	if v == nil {
+		return nil, fmt.Errorf("尚未打开 Vault")
+	}
+
+	trimmedDate := strings.TrimSpace(date)
+	if _, err := time.Parse("2006-01-02", trimmedDate); err != nil {
+		return nil, fmt.Errorf("无效的日期格式: %s (必须为 YYYY-MM-DD)", date)
+	}
+
+	cleanedTaskIDs := make([]string, len(taskIDs))
+	for i, tid := range taskIDs {
+		id := strings.TrimSpace(tid)
+		if id == "" {
+			return nil, fmt.Errorf("任务 ID 不能为空")
+		}
+		if _, ok := v.Index.GetTask(id); !ok {
+			return nil, fmt.Errorf("任务不存在: %s", id)
+		}
+		cleanedTaskIDs[i] = id
+	}
+
+	existing, exists := v.Index.GetDayPlan(trimmedDate)
+	var baseline *markdown.FileBaseline
+	var plan *markdown.DayPlan
+	if exists {
+		baseline = dayPlanBaseline(v, existing)
+		existing.TaskIDs = cleanedTaskIDs
+		plan = existing
+	} else {
+		plan = &markdown.DayPlan{
+			Type:    markdown.EntityTypeDayPlan,
+			Date:    trimmedDate,
+			TaskIDs: cleanedTaskIDs,
+		}
+	}
+
+	if _, err := v.SaveEntity(plan, baseline); err != nil {
+		return nil, err
+	}
+
+	return plan, nil
+}
+
+// dayPlanBaseline looks up the baseline for a day plan directly from the memory index.
+func dayPlanBaseline(v *markdown.Vault, plan *markdown.DayPlan) *markdown.FileBaseline {
+	path := v.ResolveEntityPath(plan)
+	if b, ok := v.Index.GetBaseline(path); ok {
+		return &b
+	}
+	return nil
+}
+
 func (s *VaultService) dispatchEvent(name string, data any) {
 	s.mu.Lock()
 	emit := s.emitEvent

@@ -40,6 +40,13 @@ export function DeleteTask(id: string): $CancellablePromise<void> {
 }
 
 /**
+ * GetDayPlan returns the DayPlan for a date. If no plan exists, an empty DayPlan is returned without error.
+ */
+export function GetDayPlan(date: string): $CancellablePromise<markdown$0.DayPlan | null> {
+    return $Call.ByID(2499050296, date);
+}
+
+/**
  * GetMemo returns a memo by its ID.
  */
 export function GetMemo(id: string): $CancellablePromise<markdown$0.Memo | null> {
@@ -79,6 +86,13 @@ export function ListTasks(): $CancellablePromise<(markdown$0.Task | null)[] | nu
  */
 export function RescanVault(): $CancellablePromise<void> {
     return $Call.ByID(1981298399);
+}
+
+/**
+ * SaveDayPlan creates or updates a DayPlan for a date with an ordered list of task IDs.
+ */
+export function SaveDayPlan(date: string, taskIDs: string[] | null): $CancellablePromise<markdown$0.DayPlan | null> {
+    return $Call.ByID(1580712949, date, taskIDs);
 }
 
 /**

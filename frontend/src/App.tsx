@@ -13,6 +13,7 @@ import {
 import * as VaultService from '../bindings/pata/vaultservice';
 import { VaultStatus } from '../bindings/pata/models';
 import { TasksView } from './TasksView';
+import { TodayView } from './TodayView';
 
 export default function App() {
   const [activeNav, setActiveNav] = useState<'today' | 'tasks' | 'notes'>('tasks');
@@ -235,13 +236,12 @@ export default function App() {
         {/* Content Body */}
         <div className="flex-1 overflow-y-auto p-6">
           {activeNav === 'today' && (
-            <div className="max-w-2xl mx-auto py-12 text-center space-y-3">
-              <Calendar className="w-10 h-10 text-emerald-600 mx-auto opacity-60" />
-              <h2 className="text-base font-semibold text-stone-800 dark:text-stone-200">Today 页面骨架外壳</h2>
-              <p className="text-xs text-stone-500 max-w-sm mx-auto leading-relaxed">
-                遵循阶段 1 UI 规范（今日计划 + 今日记录），不提前实现业务逻辑。
-              </p>
-            </div>
+            <TodayView
+              vaultStatus={vaultStatus}
+              onSelectVault={handleSelectVault}
+              onRescanVault={handleRescan}
+              vaultBusy={vaultBusy}
+            />
           )}
 
           {activeNav === 'tasks' && (

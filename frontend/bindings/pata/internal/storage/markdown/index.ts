@@ -9,6 +9,7 @@ export {
 } from "./models.js";
 
 export type {
+    DayPlan,
     Memo,
     StatusEvent,
     Task
