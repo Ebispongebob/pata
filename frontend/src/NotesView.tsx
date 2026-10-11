@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { Events } from '@wailsio/runtime';
 import {
   FileText,
@@ -9,11 +9,14 @@ import {
   RefreshCw,
   FolderOpen,
   ArrowLeft,
-  Info,
+  Loader2,
+  Check,
+  Copy,
 } from 'lucide-react';
+import Vditor from 'vditor';
 import * as VaultService from '../bindings/pata/vaultservice';
 import { Note } from '../bindings/pata/internal/storage/markdown/models';
-import { VaultStatus, CreateNoteInput } from '../bindings/pata/models';
+import { VaultStatus, CreateNoteInput, UpdateNoteInput } from '../bindings/pata/models';
 
 interface NotesViewProps {
   vaultStatus: VaultStatus | null;
@@ -79,6 +82,739 @@ function getNoteExcerpt(title: string, body?: string): string {
   return cleaned;
 }
 
+function parseTags(tagStr: string): string[] {
+  return tagStr
+    .split(/[,，]/)
+    .map((t) => t.trim().replace(/^#+/, ''))
+    .filter((t) => t.length > 0);
+}
+
+interface NoteEditorProps {
+  noteId: string;
+  onBack: () => void;
+  onNoteUpdated: () => void;
+}
+
+function NoteEditor({ noteId, onBack, onNoteUpdated }: NoteEditorProps) {
+  const [initialNote, setInitialNote] = useState<Note | null>(null);
+  const [loadingNote, setLoadingNote] = useState<boolean>(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+
+  const [editTitle, setEditTitle] = useState<string>('');
+  const [editTags, setEditTags] = useState<string>('');
+  const [saveStatus, setSaveStatus] = useState<'saved' | 'saving' | 'unsaved' | 'conflict'>('saved');
+  const [conflictError, setConflictError] = useState<string | null>(null);
+  const [titleError, setTitleError] = useState<string | null>(null);
+
+  const [showReloadConfirm, setShowReloadConfirm] = useState<boolean>(false);
+  const [showLeaveConflictConfirm, setShowLeaveConflictConfirm] = useState<boolean>(false);
+  const [showSaveFailedConfirm, setShowSaveFailedConfirm] = useState<boolean>(false);
+  const [copiedDraft, setCopiedDraft] = useState<boolean>(false);
+
+  const vditorRef = useRef<Vditor | null>(null);
+  const vditorContainerRef = useRef<HTMLDivElement | null>(null);
+  const lastSavedStateRef = useRef<{ title: string; tags: string[]; body: string } | null>(null);
+  const debounceTimerRef = useRef<number | null>(null);
+  const hasConflictRef = useRef<boolean>(false);
+  const isSavingRef = useRef<boolean>(false);
+
+  const editTitleRef = useRef<string>('');
+  const editTagsRef = useRef<string>('');
+  const triggerDebouncedSaveRef = useRef<() => void>(() => {});
+
+  // Dirty check: comparison with last persisted state
+  const isDirty = useCallback((currentTitle: string, currentTags: string[], currentBody: string): boolean => {
+    if (!lastSavedStateRef.current) return false;
+    const last = lastSavedStateRef.current;
+    if (currentTitle.trim() !== last.title.trim()) return true;
+    if (currentBody !== last.body) return true;
+    if (currentTags.length !== last.tags.length) return true;
+    for (let i = 0; i < currentTags.length; i++) {
+      if (currentTags[i] !== last.tags[i]) return true;
+    }
+    return false;
+  }, []);
+
+  // Save implementation (D19)
+  const doSave = useCallback(async (force: boolean = false): Promise<boolean> => {
+    if (hasConflictRef.current && !force) {
+      return false;
+    }
+
+    // must-fix 2: vditorRef 为 null (初始化未完成) 时绝对不能写盘，避免空 body 清空正文
+    if (!vditorRef.current) {
+      return false;
+    }
+
+    const currentTitle = editTitleRef.current.trim();
+    if (!currentTitle) {
+      setTitleError('笔记标题不能为空，无法保存');
+      return false;
+    }
+    setTitleError(null);
+
+    const currentBody = vditorRef.current.getValue();
+    const currentTags = parseTags(editTagsRef.current);
+
+    if (!isDirty(currentTitle, currentTags, currentBody)) {
+      setSaveStatus('saved');
+      return true;
+    }
+
+    if (isSavingRef.current) {
+      return false;
+    }
+
+    isSavingRef.current = true;
+    setSaveStatus('saving');
+    let saved = false;
+
+    try {
+      // Frontmatter separation: title and tags from top inputs, body from Vditor
+      const input: UpdateNoteInput = {
+        id: noteId,
+        title: currentTitle,
+        tags: currentTags,
+        body: currentBody,
+      };
+
+      const updated = await VaultService.UpdateNote(input);
+      if (updated) {
+        lastSavedStateRef.current = {
+          title: currentTitle,
+          tags: currentTags,
+          body: currentBody,
+        };
+        hasConflictRef.current = false;
+        setConflictError(null);
+        setSaveStatus('saved');
+        onNoteUpdated();
+        saved = true;
+      }
+      return saved;
+    } catch (err: any) {
+      console.error('UpdateNote failed:', err);
+      const errMsg = err?.message || String(err);
+      const isConflict = errMsg.includes('conflict') || errMsg.includes('写入冲突');
+
+      if (isConflict) {
+        hasConflictRef.current = true;
+        setSaveStatus('conflict');
+        setConflictError('文件已被外部修改（保存冲突）。自动保存已停止，当前本地草稿尚未写盘。为防内容丢失，建议先复制草稿到剪贴板后再重新加载或返回。');
+        if (debounceTimerRef.current) {
+          window.clearTimeout(debounceTimerRef.current);
+          debounceTimerRef.current = null;
+        }
+      } else {
+        setSaveStatus('unsaved');
+        setTitleError(errMsg);
+      }
+      return false;
+    } finally {
+      isSavingRef.current = false;
+      // 仅当本次保存成功时才重排（保存 in-flight 期间新输入不丢）；若保存失败则不自动重排，避免无限重试
+      if (saved && vditorRef.current) {
+        const bodyNow = vditorRef.current.getValue();
+        const titleNow = editTitleRef.current;
+        const tagsNow = parseTags(editTagsRef.current);
+        if (isDirty(titleNow, tagsNow, bodyNow) && !hasConflictRef.current) {
+          triggerDebouncedSaveRef.current();
+        }
+      }
+    }
+  }, [noteId, isDirty, onNoteUpdated]);
+
+  // Debounced auto-save (1.5s as per D19)
+  const triggerDebouncedSave = useCallback(() => {
+    if (hasConflictRef.current) return;
+    setSaveStatus('unsaved');
+    if (debounceTimerRef.current) {
+      window.clearTimeout(debounceTimerRef.current);
+    }
+    debounceTimerRef.current = window.setTimeout(() => {
+      debounceTimerRef.current = null;
+      doSave();
+    }, 1500);
+  }, [doSave]);
+
+  useEffect(() => {
+    triggerDebouncedSaveRef.current = triggerDebouncedSave;
+  }, [triggerDebouncedSave]);
+
+  const handleTitleChange = (val: string) => {
+    setEditTitle(val);
+    editTitleRef.current = val;
+    if (!val.trim()) {
+      setTitleError('笔记标题不能为空');
+    } else {
+      setTitleError(null);
+    }
+    triggerDebouncedSave();
+  };
+
+  const handleTagsChange = (val: string) => {
+    setEditTags(val);
+    editTagsRef.current = val;
+    triggerDebouncedSave();
+  };
+
+  // Load note details on mount
+  useEffect(() => {
+    let mounted = true;
+    setLoadingNote(true);
+    setLoadError(null);
+    VaultService.GetNote(noteId)
+      .then((n) => {
+        if (!mounted || !n) return;
+        setInitialNote(n);
+        setEditTitle(n.title);
+        editTitleRef.current = n.title;
+        const tagsStr = (n.tags ?? []).join(', ');
+        setEditTags(tagsStr);
+        editTagsRef.current = tagsStr;
+        lastSavedStateRef.current = {
+          title: n.title,
+          tags: n.tags ?? [],
+          body: n.body ?? '',
+        };
+        setLoadingNote(false);
+      })
+      .catch((err) => {
+        if (!mounted) return;
+        setLoadError(err?.message || String(err));
+        setLoadingNote(false);
+      });
+    return () => {
+      mounted = false;
+    };
+  }, [noteId]);
+
+  // Mount Vditor editor when note is loaded
+  useEffect(() => {
+    if (loadingNote || !initialNote || !vditorContainerRef.current) return;
+
+    const isDark = document.documentElement.classList.contains('dark');
+
+    // Vditor 离线包已裁剪至 <=8MB (从 23MB 裁剪至 7.5MB，保留 lute, highlight.js, icons, i18n, content-theme; 移除数学公式、流程图、脑图等重型图表库)
+    // 若未来从 node_modules 重新同步，需参照 docs/02-foundation/spike-desktop-result.md §4 重新裁剪。
+    const vditor = new Vditor(vditorContainerRef.current, {
+      cdn: '/vditor',
+      mode: 'wysiwyg',
+      value: initialNote.body ?? '',
+      height: '100%',
+      placeholder: '开始记录内容...（支持 Markdown 语法、表格、代码块）',
+      theme: isDark ? 'dark' : 'classic',
+      preview: {
+        theme: {
+          current: isDark ? 'dark' : 'light',
+        },
+        hljs: {
+          style: isDark ? 'github-dark' : 'github',
+        },
+        markdown: {
+          toc: true,
+          mark: true,
+          footnotes: true,
+          autoSpace: true,
+        },
+      },
+      cache: {
+        enable: false,
+      },
+      toolbar: [
+        'emoji',
+        'headings',
+        'bold',
+        'italic',
+        'strike',
+        'link',
+        '|',
+        'list',
+        'ordered-list',
+        'check',
+        'outdent',
+        'indent',
+        '|',
+        'quote',
+        'line',
+        'code',
+        'inline-code',
+        'insert-before',
+        'insert-after',
+        '|',
+        'table',
+        '|',
+        'undo',
+        'redo',
+      ],
+      input: () => {
+        triggerDebouncedSave();
+      },
+      after: () => {
+        vditorRef.current = vditor;
+        // 如果在加载期间用户编辑了标题/标签，触发一次防抖保存检查
+        const bodyNow = vditor.getValue();
+        if (isDirty(editTitleRef.current, parseTags(editTagsRef.current), bodyNow)) {
+          triggerDebouncedSave();
+        }
+      },
+    });
+
+    // Dark mode observer
+    const observer = new MutationObserver(() => {
+      const dark = document.documentElement.classList.contains('dark');
+      vditor.setTheme(
+        dark ? 'dark' : 'classic',
+        dark ? 'dark' : 'light',
+        dark ? 'github-dark' : 'github'
+      );
+    });
+    observer.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ['class'],
+    });
+
+    return () => {
+      observer.disconnect();
+      if (debounceTimerRef.current) {
+        window.clearTimeout(debounceTimerRef.current);
+        debounceTimerRef.current = null;
+      }
+      try {
+        vditor.destroy();
+      } catch {
+        // ignore
+      }
+      vditorRef.current = null;
+    };
+  }, [loadingNote, initialNote, isDirty, triggerDebouncedSave]);
+
+  // Subscribe to vault:changed: if hitting current note, trigger conflict path
+  useEffect(() => {
+    const unsubscribe = Events.On('vault:changed', (ev) => {
+      const data = ev.data as { op?: string; path?: string; entity_id?: string; type?: string } | undefined;
+      if (data?.entity_id === noteId) {
+        hasConflictRef.current = true;
+        if (debounceTimerRef.current) {
+          window.clearTimeout(debounceTimerRef.current);
+          debounceTimerRef.current = null;
+        }
+        setSaveStatus('conflict');
+        setConflictError('外部检测到文件变动，自动保存已停止，当前本地草稿尚未写盘。为防内容丢失，建议先复制草稿到剪贴板后再重新加载或返回。');
+      }
+    });
+    return () => {
+      unsubscribe();
+    };
+  }, [noteId]);
+
+  // Window beforeunload flush
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      // shortcut: 导航切走时 best-effort flush,关窗/极速切换仍可能丢 ≤1.5s 输入,实机走查评估
+      // 注：beforeunload 异步 IPC 关窗由于浏览器生命周期与 IPC 异步性亦可能丢失未保存数据，接受现状，不实现 Go 退出钩子
+      if (debounceTimerRef.current) {
+        window.clearTimeout(debounceTimerRef.current);
+        debounceTimerRef.current = null;
+        doSave();
+      }
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [doSave]);
+
+  // Unmount cleanup best-effort flush (should-fix 4)
+  const doSaveRef = useRef<() => Promise<boolean>>(doSave);
+  useEffect(() => {
+    doSaveRef.current = doSave;
+  }, [doSave]);
+
+  useEffect(() => {
+    return () => {
+      // shortcut: 导航切走时 best-effort flush,关窗/极速切换仍可能丢 ≤1.5s 输入,实机走查评估
+      // 注：beforeunload 异步 IPC 关窗由于浏览器生命周期与 IPC 异步性亦可能丢失未保存数据，接受现状，不实现 Go 退出钩子
+      if (debounceTimerRef.current) {
+        window.clearTimeout(debounceTimerRef.current);
+        debounceTimerRef.current = null;
+      }
+      doSaveRef.current();
+    };
+  }, []);
+
+  // Keyboard shortcut Cmd+S / Ctrl+S to save immediately
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 's') {
+        e.preventDefault();
+        if (debounceTimerRef.current) {
+          window.clearTimeout(debounceTimerRef.current);
+          debounceTimerRef.current = null;
+        }
+        doSave();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [doSave]);
+
+  // Back button handling with flush (must-fix 3)
+  const handleBackClick = async () => {
+    if (hasConflictRef.current) {
+      setShowLeaveConflictConfirm(true);
+      return;
+    }
+    if (debounceTimerRef.current) {
+      window.clearTimeout(debounceTimerRef.current);
+      debounceTimerRef.current = null;
+    }
+
+    const currentTitle = editTitleRef.current;
+    const currentTags = parseTags(editTagsRef.current);
+    const currentBody = vditorRef.current ? vditorRef.current.getValue() : (initialNote?.body ?? '');
+    const dirty = isDirty(currentTitle, currentTags, currentBody);
+
+    if (!dirty) {
+      onBack();
+      return;
+    }
+
+    const saved = await doSave();
+    if (saved) {
+      onBack();
+    } else {
+      setShowSaveFailedConfirm(true);
+    }
+  };
+
+  // Copy draft to clipboard (should-fix 3)
+  const handleCopyDraft = async () => {
+    const currentTitle = editTitleRef.current;
+    const currentBody = vditorRef.current ? vditorRef.current.getValue() : '';
+    const draftText = currentTitle ? `# ${currentTitle}\n\n${currentBody}` : currentBody;
+    try {
+      await navigator.clipboard.writeText(draftText);
+      setCopiedDraft(true);
+      setTimeout(() => setCopiedDraft(false), 2500);
+    } catch (err) {
+      console.error('Failed to copy draft to clipboard:', err);
+    }
+  };
+
+  // Reload handler (discard local changes and reload from disk)
+  const handleConfirmReload = async () => {
+    setShowReloadConfirm(false);
+    try {
+      const diskNote = await VaultService.GetNote(noteId);
+      if (!diskNote) return;
+
+      setEditTitle(diskNote.title);
+      editTitleRef.current = diskNote.title;
+      const tagsStr = (diskNote.tags ?? []).join(', ');
+      setEditTags(tagsStr);
+      editTagsRef.current = tagsStr;
+      setTitleError(null);
+
+      const body = diskNote.body ?? '';
+      if (vditorRef.current) {
+        vditorRef.current.setValue(body);
+      }
+
+      lastSavedStateRef.current = {
+        title: diskNote.title,
+        tags: diskNote.tags ?? [],
+        body,
+      };
+
+      hasConflictRef.current = false;
+      setConflictError(null);
+      setSaveStatus('saved');
+      onNoteUpdated();
+    } catch (err: any) {
+      console.error('Failed to reload note:', err);
+      setConflictError(`重新加载失败: ${err?.message || err}`);
+    }
+  };
+
+  // Abandon changes and return to list
+  const handleAbandonAndReturn = () => {
+    if (debounceTimerRef.current) {
+      window.clearTimeout(debounceTimerRef.current);
+      debounceTimerRef.current = null;
+    }
+    hasConflictRef.current = false;
+    onBack();
+  };
+
+  if (loadingNote) {
+    return (
+      <div className="flex items-center justify-center py-24 text-xs text-stone-400">
+        <Loader2 className="w-5 h-5 animate-spin mr-2 text-emerald-600" />
+        <span>加载笔记中...</span>
+      </div>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <div className="p-6 max-w-xl mx-auto space-y-4">
+        <div className="p-3.5 rounded-lg border border-rose-200 dark:border-rose-900/60 bg-rose-50/80 dark:bg-rose-950/40 text-rose-800 dark:text-rose-200 text-xs flex items-center space-x-2">
+          <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+          <span>加载笔记失败: {loadError}</span>
+        </div>
+        <button
+          type="button"
+          onClick={onBack}
+          className="flex items-center space-x-1 px-3 py-1.5 rounded-md text-xs font-medium text-stone-600 dark:text-stone-300 hover:bg-stone-200/60 dark:hover:bg-stone-800/60 transition"
+        >
+          <ArrowLeft className="w-3.5 h-3.5" />
+          <span>返回笔记列表</span>
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col h-[calc(100vh-6rem)] max-w-5xl mx-auto space-y-2.5">
+      {/* Top Header / Metadata Toolbar */}
+      <div className="flex items-center justify-between gap-3 pb-2 border-b border-stone-200 dark:border-stone-800 shrink-0">
+        <div className="flex items-center space-x-2.5 flex-1 min-w-0">
+          <button
+            type="button"
+            onClick={handleBackClick}
+            className="flex items-center space-x-1 px-2.5 py-1.5 rounded-md text-xs font-medium text-stone-600 dark:text-stone-300 hover:bg-stone-200/60 dark:hover:bg-stone-800/60 transition shrink-0"
+            title="返回笔记列表（将自动保存未提交改动）"
+          >
+            <ArrowLeft className="w-3.5 h-3.5" />
+            <span>笔记列表</span>
+          </button>
+
+          {/* Title Input (Required) */}
+          <input
+            type="text"
+            value={editTitle}
+            onChange={(e) => handleTitleChange(e.target.value)}
+            placeholder="输入笔记标题（必填）..."
+            className={`flex-1 min-w-[200px] px-3 py-1.5 text-sm font-semibold rounded-lg border bg-white dark:bg-stone-950 text-stone-900 dark:text-stone-100 placeholder-stone-400 focus:outline-hidden focus:ring-2 focus:ring-emerald-600 transition ${
+              titleError
+                ? 'border-rose-400 dark:border-rose-700 ring-1 ring-rose-400'
+                : 'border-stone-200 dark:border-stone-800'
+            }`}
+          />
+
+          {/* Tags Input (Optional) */}
+          <input
+            type="text"
+            value={editTags}
+            onChange={(e) => handleTagsChange(e.target.value)}
+            placeholder="标签 (逗号分隔)"
+            className="w-44 px-2.5 py-1.5 text-xs rounded-lg border border-stone-200 dark:border-stone-800 bg-white dark:bg-stone-950 text-stone-800 dark:text-stone-200 placeholder-stone-400 focus:outline-hidden focus:ring-1 focus:ring-emerald-600 transition"
+          />
+        </div>
+
+        {/* Status Indicator & ID */}
+        <div className="flex items-center space-x-3 shrink-0">
+          <div className="text-xs">
+            {saveStatus === 'saving' && (
+              <span className="text-stone-400 flex items-center space-x-1">
+                <Loader2 className="w-3 h-3 animate-spin text-emerald-600" />
+                <span>保存中...</span>
+              </span>
+            )}
+            {saveStatus === 'saved' && (
+              <span className="text-stone-400 dark:text-stone-500 flex items-center space-x-1">
+                <Check className="w-3 h-3 text-emerald-600" />
+                <span>已保存</span>
+              </span>
+            )}
+            {saveStatus === 'unsaved' && (
+              <span className="text-amber-600 dark:text-amber-400 font-medium flex items-center space-x-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
+                <span>未保存</span>
+              </span>
+            )}
+            {saveStatus === 'conflict' && (
+              <span className="text-rose-600 dark:text-rose-400 font-semibold flex items-center space-x-1">
+                <AlertCircle className="w-3.5 h-3.5 text-rose-600" />
+                <span>保存冲突</span>
+              </span>
+            )}
+          </div>
+
+          <span className="text-[10px] font-mono text-stone-400 dark:text-stone-500 pl-2 border-l border-stone-200 dark:border-stone-800">
+            {noteId}
+          </span>
+        </div>
+      </div>
+
+      {/* Validation Warning */}
+      {titleError && (
+        <div className="text-[11px] text-rose-600 dark:text-rose-400 px-1 font-medium shrink-0">
+          {titleError}
+        </div>
+      )}
+
+      {/* Conflict Warning Banner (Stops auto-save) */}
+      {(hasConflictRef.current || conflictError) && (
+        <div className="p-3.5 rounded-xl border border-amber-300 dark:border-amber-800/80 bg-amber-50 dark:bg-amber-950/40 text-amber-900 dark:text-amber-200 text-xs flex items-center justify-between gap-3 shadow-xs shrink-0">
+          <div className="flex items-center space-x-2.5 min-w-0">
+            <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
+            <span className="font-medium">
+              {conflictError ||
+                '文件已被外部修改（保存冲突）。自动保存已停止，当前本地草稿尚未写盘。为防内容丢失，建议先复制草稿到剪贴板后再重新加载或返回。'}
+            </span>
+          </div>
+          <div className="flex items-center space-x-2 shrink-0">
+            <button
+              type="button"
+              onClick={handleCopyDraft}
+              className="flex items-center space-x-1 px-3 py-1 rounded-md bg-stone-700 hover:bg-stone-800 text-white text-xs font-medium transition shadow-2xs"
+              title="将当前编辑器中的草稿（标题与正文）复制到剪贴板"
+            >
+              {copiedDraft ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+              <span>{copiedDraft ? '已复制草稿' : '复制草稿到剪贴板'}</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowReloadConfirm(true)}
+              className="flex items-center space-x-1 px-3 py-1 rounded-md bg-amber-600 hover:bg-amber-700 text-white text-xs font-medium transition shadow-2xs"
+            >
+              <RefreshCw className="w-3 h-3" />
+              <span>重新加载（丢弃本地改动）</span>
+            </button>
+            <button
+              type="button"
+              onClick={handleAbandonAndReturn}
+              className="px-2.5 py-1 rounded-md border border-amber-300 dark:border-amber-700 hover:bg-amber-100 dark:hover:bg-amber-900/40 text-xs transition"
+            >
+              放弃保存返回
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Vditor WYSIWYG Editor Container (occupies remaining height) */}
+      <div
+        ref={vditorContainerRef}
+        className="flex-1 min-h-0 rounded-xl overflow-hidden border border-stone-200 dark:border-stone-800 bg-white dark:bg-stone-950 shadow-2xs [&_.vditor]:border-0 [&_.vditor]:rounded-xl"
+      />
+
+      {/* Confirmation Modal for Discarding Local Changes on Reload */}
+      {showReloadConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs p-4">
+          <div className="w-full max-w-sm rounded-xl border border-stone-200 dark:border-stone-800 bg-white dark:bg-stone-900 p-5 shadow-xl space-y-4">
+            <div className="flex items-start space-x-3">
+              <div className="p-2 rounded-full bg-amber-100 dark:bg-amber-950/60 text-amber-600 shrink-0">
+                <AlertCircle className="w-5 h-5" />
+              </div>
+              <div className="space-y-1">
+                <h3 className="text-sm font-semibold text-stone-900 dark:text-stone-100">
+                  确认重新加载？
+                </h3>
+                <p className="text-xs text-stone-500 leading-relaxed">
+                  重新加载将从磁盘读取最新的笔记内容，您当前在编辑器中未保存的本地修改将被全部丢弃。
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center justify-end space-x-2 pt-2 border-t border-stone-100 dark:border-stone-800">
+              <button
+                type="button"
+                onClick={() => setShowReloadConfirm(false)}
+                className="px-3 py-1.5 rounded-md text-xs font-medium text-stone-600 dark:text-stone-300 hover:bg-stone-100 dark:hover:bg-stone-800 transition"
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmReload}
+                className="px-3 py-1.5 rounded-md bg-amber-600 hover:bg-amber-700 text-white text-xs font-medium transition shadow-xs"
+              >
+                确认重新加载
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Confirmation Modal for Leaving During Conflict */}
+      {showLeaveConflictConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs p-4">
+          <div className="w-full max-w-sm rounded-xl border border-stone-200 dark:border-stone-800 bg-white dark:bg-stone-900 p-5 shadow-xl space-y-4">
+            <div className="flex items-start space-x-3">
+              <div className="p-2 rounded-full bg-rose-100 dark:bg-rose-950/60 text-rose-600 shrink-0">
+                <AlertCircle className="w-5 h-5" />
+              </div>
+              <div className="space-y-1">
+                <h3 className="text-sm font-semibold text-stone-900 dark:text-stone-100">
+                  存在未解决冲突
+                </h3>
+                <p className="text-xs text-stone-500 leading-relaxed">
+                  当前笔记存在外部文件修改冲突。直接返回列表将放弃本地未保存的内容。确认离开吗？
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center justify-end space-x-2 pt-2 border-t border-stone-100 dark:border-stone-800">
+              <button
+                type="button"
+                onClick={() => setShowLeaveConflictConfirm(false)}
+                className="px-3 py-1.5 rounded-md text-xs font-medium text-stone-600 dark:text-stone-300 hover:bg-stone-100 dark:hover:bg-stone-800 transition"
+              >
+                继续编辑
+              </button>
+              <button
+                type="button"
+                onClick={handleAbandonAndReturn}
+                className="px-3 py-1.5 rounded-md bg-rose-600 hover:bg-rose-700 text-white text-xs font-medium transition shadow-xs"
+              >
+                放弃修改并离开
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Confirmation Modal for Save Failure on Exit (must-fix 3) */}
+      {showSaveFailedConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs p-4">
+          <div className="w-full max-w-sm rounded-xl border border-stone-200 dark:border-stone-800 bg-white dark:bg-stone-900 p-5 shadow-xl space-y-4">
+            <div className="flex items-start space-x-3">
+              <div className="p-2 rounded-full bg-rose-100 dark:bg-rose-950/60 text-rose-600 shrink-0">
+                <AlertCircle className="w-5 h-5" />
+              </div>
+              <div className="space-y-1">
+                <h3 className="text-sm font-semibold text-stone-900 dark:text-stone-100">
+                  保存未成功
+                </h3>
+                <p className="text-xs text-stone-500 leading-relaxed">
+                  当前笔记未能成功保存到磁盘（可能标题为空或写入异常）。直接返回将丢弃未保存的修改，是否确定离开？
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center justify-end space-x-2 pt-2 border-t border-stone-100 dark:border-stone-800">
+              <button
+                type="button"
+                onClick={() => setShowSaveFailedConfirm(false)}
+                className="px-3 py-1.5 rounded-md text-xs font-medium text-stone-600 dark:text-stone-300 hover:bg-stone-100 dark:hover:bg-stone-800 transition"
+              >
+                留在页面
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowSaveFailedConfirm(false);
+                  onBack();
+                }}
+                className="px-3 py-1.5 rounded-md bg-rose-600 hover:bg-rose-700 text-white text-xs font-medium transition shadow-xs"
+              >
+                丢弃并返回
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function NotesView({
   vaultStatus,
   onSelectVault,
@@ -90,8 +826,12 @@ export function NotesView({
   const [listError, setListError] = useState<string | null>(null);
   const [selectedNoteId, setSelectedNoteId] = useState<string | null>(null);
 
-  // Search filter
+  // Search filter (preserved across navigation)
   const [searchQuery, setSearchQuery] = useState('');
+
+  // Scroll position preservation
+  const rootRef = useRef<HTMLDivElement | null>(null);
+  const scrollTopRef = useRef<number>(0);
 
   // Modal / Create state
   const [createModalOpen, setCreateModalOpen] = useState(false);
@@ -138,6 +878,30 @@ export function NotesView({
     };
   }, [loadNotes]);
 
+  // Record scroll position while in list view
+  useEffect(() => {
+    if (selectedNoteId) return;
+    const scrollContainer = rootRef.current?.closest('.overflow-y-auto') as HTMLElement | null;
+    if (!scrollContainer) return;
+    const handleScroll = () => {
+      scrollTopRef.current = scrollContainer.scrollTop;
+    };
+    scrollContainer.addEventListener('scroll', handleScroll, { passive: true });
+    return () => scrollContainer.removeEventListener('scroll', handleScroll);
+  }, [selectedNoteId]);
+
+  // Restore scroll position when returning to list view
+  useEffect(() => {
+    if (selectedNoteId === null) {
+      const scrollContainer = rootRef.current?.closest('.overflow-y-auto') as HTMLElement | null;
+      if (scrollContainer && scrollTopRef.current > 0) {
+        requestAnimationFrame(() => {
+          scrollContainer.scrollTop = scrollTopRef.current;
+        });
+      }
+    }
+  }, [selectedNoteId]);
+
   const handleRescan = async () => {
     setRescanLoading(true);
     setListError(null);
@@ -155,12 +919,6 @@ export function NotesView({
     }
   };
 
-  // Find currently selected note
-  const selectedNote = useMemo(() => {
-    if (!selectedNoteId) return null;
-    return notes.find((n) => n.id === selectedNoteId) ?? null;
-  }, [notes, selectedNoteId]);
-
   // Filter notes by title, body, and tags (case-insensitive)
   const filteredNotes = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
@@ -173,7 +931,17 @@ export function NotesView({
     });
   }, [notes, searchQuery]);
 
-  // Create note handler
+  // Select note and record scroll position
+  const handleSelectNote = (id: string) => {
+    const scrollContainer = rootRef.current?.closest('.overflow-y-auto') as HTMLElement | null;
+    if (scrollContainer) {
+      scrollTopRef.current = scrollContainer.scrollTop;
+      scrollContainer.scrollTop = 0;
+    }
+    setSelectedNoteId(id);
+  };
+
+  // Create note handler (directly enters editor on success)
   const handleCreateNote = async (e: React.FormEvent) => {
     e.preventDefault();
     const title = newTitle.trim();
@@ -186,11 +954,7 @@ export function NotesView({
     setCreateError(null);
 
     try {
-      const parsedTags = newTags
-        .split(/[,，]/)
-        .map((t) => t.trim().replace(/^#+/, ''))
-        .filter((t) => t.length > 0);
-
+      const parsedTags = parseTags(newTags);
       const input: CreateNoteInput = {
         title,
         tags: parsedTags,
@@ -205,7 +969,12 @@ export function NotesView({
       await loadNotes();
 
       if (created) {
-        // Enters placeholder detail before next batch editor
+        // Enters editor directly
+        const scrollContainer = rootRef.current?.closest('.overflow-y-auto') as HTMLElement | null;
+        if (scrollContainer) {
+          scrollTopRef.current = scrollContainer.scrollTop;
+          scrollContainer.scrollTop = 0;
+        }
         setSelectedNoteId(created.id);
       }
     } catch (err: any) {
@@ -215,22 +984,6 @@ export function NotesView({
       setCreating(false);
     }
   };
-
-  // Fold duplicate # Title in display body (display layer collapse only, does not alter source data)
-  const displayBody = useMemo(() => {
-    if (!selectedNote?.body) return '';
-    const lines = selectedNote.body.split('\n');
-    if (lines.length > 0) {
-      const firstLine = lines[0].trim();
-      if (firstLine.startsWith('#')) {
-        const headingText = firstLine.replace(/^#+\s*/, '').trim();
-        if (headingText.toLowerCase() === selectedNote.title.trim().toLowerCase()) {
-          return lines.slice(1).join('\n').trim();
-        }
-      }
-    }
-    return selectedNote.body;
-  }, [selectedNote]);
 
   // Unconfigured Vault state
   if (!vaultStatus?.configured) {
@@ -272,83 +1025,20 @@ export function NotesView({
     );
   }
 
-  // Read-only Note Detail View (replaces main area in single-column style, no textarea editing / no Vditor)
-  if (selectedNote) {
+  // Editor View (occupies full main content area)
+  if (selectedNoteId) {
     return (
-      <div className="max-w-3xl mx-auto space-y-5">
-        {/* Navigation & Header Top Bar */}
-        <div className="flex items-center justify-between pb-3 border-b border-stone-200 dark:border-stone-800">
-          <button
-            type="button"
-            onClick={() => setSelectedNoteId(null)}
-            className="flex items-center space-x-1 px-2.5 py-1.5 rounded-md text-xs font-medium text-stone-600 dark:text-stone-300 hover:bg-stone-200/60 dark:hover:bg-stone-800/60 transition"
-          >
-            <ArrowLeft className="w-3.5 h-3.5" />
-            <span>返回笔记列表</span>
-          </button>
-
-          <span className="text-[11px] font-mono text-stone-400 dark:text-stone-500">
-            {selectedNote.id}
-          </span>
-        </div>
-
-        {/* Next Batch Editor Placeholder Notice Banner */}
-        <div className="p-3.5 rounded-xl border border-emerald-200 dark:border-emerald-900/60 bg-emerald-50/60 dark:bg-emerald-950/30 text-emerald-900 dark:text-emerald-200 text-xs flex items-center space-x-2.5 shadow-2xs">
-          <Info className="w-4 h-4 text-emerald-600 shrink-0" />
-          <div className="leading-relaxed">
-            <span className="font-semibold">当前为只读预览</span>
-            <span className="text-stone-500 dark:text-stone-400 ml-1.5">
-              （编辑器将在下一批集成，本批专注服务层与单列浏览）
-            </span>
-          </div>
-        </div>
-
-        {/* Note Article Details */}
-        <div className="p-6 rounded-xl border border-stone-200 dark:border-stone-800 bg-white dark:bg-stone-950 shadow-2xs space-y-4">
-          <div className="space-y-2">
-            <h1 className="text-xl font-bold text-stone-900 dark:text-stone-100 break-words tracking-tight">
-              {selectedNote.title}
-            </h1>
-
-            <div className="flex flex-wrap items-center gap-2 text-xs text-stone-500 dark:text-stone-400 pt-1">
-              {selectedNote.tags && selectedNote.tags.length > 0 && (
-                <div className="flex flex-wrap items-center gap-1.5">
-                  {selectedNote.tags.map((tag) => (
-                    <span
-                      key={tag}
-                      className="inline-flex items-center text-[10px] px-2 py-0.5 rounded-md bg-stone-100 dark:bg-stone-800 text-emerald-800 dark:text-emerald-300 font-mono font-medium"
-                    >
-                      #{tag}
-                    </span>
-                  ))}
-                </div>
-              )}
-
-              <span className="text-[11px] font-mono text-stone-400">
-                修改于 {formatRelativeTime(selectedNote.updated_at)}
-              </span>
-            </div>
-          </div>
-
-          <div className="pt-4 border-t border-stone-100 dark:border-stone-800/80">
-            {displayBody ? (
-              <div className="text-xs text-stone-800 dark:text-stone-200 whitespace-pre-wrap leading-relaxed font-sans break-words">
-                {displayBody}
-              </div>
-            ) : (
-              <div className="text-xs text-stone-400 dark:text-stone-500 italic py-4 text-center">
-                （正文内容为空）
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
+      <NoteEditor
+        noteId={selectedNoteId}
+        onBack={() => setSelectedNoteId(null)}
+        onNoteUpdated={loadNotes}
+      />
     );
   }
 
   // Single-column Flomo-style Card List View
   return (
-    <div className="max-w-3xl mx-auto space-y-5">
+    <div ref={rootRef} className="max-w-3xl mx-auto space-y-5">
       {/* Top Header Row with Path & Rescan */}
       <div className="flex items-center justify-between text-xs text-stone-500 dark:text-stone-400 pb-2 border-b border-stone-200/80 dark:border-stone-800">
         <span className="font-mono text-[11px] truncate max-w-md" title={vaultStatus.path}>
@@ -459,7 +1149,7 @@ export function NotesView({
             return (
               <div
                 key={n.id}
-                onClick={() => setSelectedNoteId(n.id)}
+                onClick={() => handleSelectNote(n.id)}
                 className="group p-4 rounded-xl border border-stone-200 dark:border-stone-800 bg-white dark:bg-stone-950 hover:border-emerald-500/60 dark:hover:border-emerald-600/60 hover:shadow-2xs transition cursor-pointer select-none space-y-2"
               >
                 <div className="flex items-start justify-between gap-3">
@@ -578,7 +1268,7 @@ export function NotesView({
                   disabled={creating || !newTitle.trim()}
                   className="px-3.5 py-1.5 rounded-md bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-medium transition disabled:opacity-40"
                 >
-                  {creating ? '创建中...' : '创建笔记'}
+                  {creating ? '创建中...' : '创建并进入编辑'}
                 </button>
               </div>
             </form>
