@@ -10,19 +10,13 @@ import (
 //go:embed all:frontend/dist
 var assets embed.FS
 
-func init() {
-	application.RegisterEvent[string]("time")
-}
-
 func main() {
 	spikeService := NewSpikeService()
-	greetService := &GreetService{}
 
 	app := application.New(application.Options{
 		Name:        "Pata",
 		Description: "Personal task and note workspace",
 		Services: []application.Service{
-			application.NewService(greetService),
 			application.NewService(spikeService),
 		},
 		Assets: application.AssetOptions{

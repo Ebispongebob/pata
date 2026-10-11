@@ -21,6 +21,9 @@ export function SaveMarkdown(filename: string, content: string): $CancellablePro
     return $Call.ByID(3605041307, filename, content);
 }
 
+/**
+ * VerifyRoundTrip 收紧自动断言：要求逐行 diff == 0 且精确比对表格对齐符号
+ */
 export function VerifyRoundTrip(original: string, reloaded: string): $CancellablePromise<$models.RoundTripResult> {
     return $Call.ByID(1560264493, original, reloaded);
 }

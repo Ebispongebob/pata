@@ -673,6 +673,15 @@ export default function App() {
                     <div className="p-2.5 rounded bg-stone-50 dark:bg-stone-900 text-stone-600 dark:text-stone-400 border border-stone-200 dark:border-stone-800 font-mono text-[11px]">
                       {roundTripResult.diffSummary}
                     </div>
+                    {roundTripResult.notes && roundTripResult.notes.length > 0 && (
+                      <div className="space-y-0.5 pt-1">
+                        {roundTripResult.notes.map((note, idx) => (
+                          <div key={idx} className="text-[11px] text-stone-500 dark:text-stone-400">
+                            ℹ {note}
+                          </div>
+                        ))}
+                      </div>
+                    )}
                     {savedPath && (
                       <div className="text-[11px] text-stone-400">
                         落盘路径: <code>{savedPath}</code>
