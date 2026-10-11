@@ -1,0 +1,28 @@
+@import "tailwindcss";
+
+:root {
+  --wails-draggable: drag;
+  color-scheme: light dark;
+}
+
+.drag-region {
+  --wails-draggable: drag;
+}
+
+.no-drag-region {
+  --wails-draggable: no-drag;
+}
+
+.app-chrome {
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+button, input, textarea, select, a, [role="button"], .vditor {
+  --wails-draggable: no-drag;
+}
+
+.vditor, .vditor-reset, pre, code, .selectable-text {
+  user-select: text;
+  -webkit-user-select: text;
+}

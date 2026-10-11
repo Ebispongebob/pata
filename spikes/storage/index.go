@@ -249,6 +249,16 @@ func (idx *MemoryIndex) PutEntity(absPath string, entity Entity, baseline FileBa
 	}
 
 	id := entity.GetID()
+	if existingPath, exists := idx.idToFile[id]; exists && existingPath != absPath {
+		// M2: Duplicate ID collision across different paths: isolate error and reject overwrite
+		idx.parseErrors = append(idx.parseErrors, ParseError{
+			Path:   absPath,
+			Reason: fmt.Sprintf("duplicate entity ID collision '%s' (already declared in %s); update rejected", id, existingPath),
+			Err:    fmt.Errorf("duplicate entity ID collision: %s", id),
+		})
+		return
+	}
+
 	idx.fileToID[absPath] = id
 	idx.idToFile[id] = absPath
 	idx.baselines[absPath] = baseline
@@ -382,6 +392,17 @@ func ScanVault(vaultRoot string) (*MemoryIndex, error) {
 		}
 
 		id := entity.GetID()
+		if existingPath, exists := idx.idToFile[id]; exists && existingPath != path {
+			// M2: Duplicate ID detected across different files.
+			// Do not overwrite existing entity; isolate error in parseErrors to align with Invariant 6.
+			parseErrs = append(parseErrs, ParseError{
+				Path:   path,
+				Reason: fmt.Sprintf("duplicate entity ID collision '%s' (already declared in %s); file ignored to prevent silent overwrite", id, existingPath),
+				Err:    fmt.Errorf("duplicate entity ID collision: %s", id),
+			})
+			return nil
+		}
+
 		idx.fileToID[path] = id
 		idx.idToFile[id] = path
 		idx.baselines[path] = baseline

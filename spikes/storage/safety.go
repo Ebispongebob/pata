@@ -5,7 +5,6 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"sync"
@@ -13,16 +12,17 @@ import (
 )
 
 var (
-	// ErrConflict is returned when disk file has been modified externally since baseline.
+	// ErrConflict is returned when disk file has been modified externally since baseline,
+	// or when creating a new file over an already existing different file.
 	ErrConflict = errors.New("write conflict: disk file has changed since baseline")
 )
 
 // ConflictError provides detailed context about a concurrent edit collision.
 type ConflictError struct {
-	Path             string    `json:"path"`
-	ExpectedHash     string    `json:"expected_hash"`
-	ActualDiskHash   string    `json:"actual_disk_hash"`
-	ExpectedModTime  time.Time `json:"expected_mod_time"`
+	Path              string    `json:"path"`
+	ExpectedHash      string    `json:"expected_hash"`
+	ActualDiskHash    string    `json:"actual_disk_hash"`
+	ExpectedModTime   time.Time `json:"expected_mod_time"`
 	ActualDiskModTime time.Time `json:"actual_disk_mod_time"`
 }
 
@@ -43,9 +43,9 @@ func ComputeContentHash(data []byte) string {
 
 // WriteTracker tracks internal writes to suppress fsnotify self-feedback loops.
 type WriteTracker struct {
-	mu            sync.Mutex
-	recentWrites  map[string]writeRecord
-	retention     time.Duration
+	mu           sync.Mutex
+	recentWrites map[string]writeRecord
+	retention    time.Duration
 }
 
 type writeRecord struct {
@@ -139,8 +139,9 @@ func ReadBaseline(absPath string) (*FileBaseline, []byte, error) {
 // 2. Writes to a temporary file in the same directory (filepath.Dir(targetPath)).
 // 3. Flushes and syncs to disk (f.Sync()).
 // 4. Atomically renames temporary file over targetPath.
-// 5. Registers internal write in WriteTracker to prevent fsnotify self-feedback.
-// 6. Cleans up temp file if any step fails.
+// 5. fsyncs parent directory to ensure directory entry persistence.
+// 6. Registers internal write in WriteTracker to prevent fsnotify self-feedback.
+// 7. Cleans up temp file if any step fails.
 func SafeWrite(targetPath string, data []byte, baseline *FileBaseline, tracker *WriteTracker) (*FileBaseline, error) {
 	absPath, err := filepath.Abs(targetPath)
 	if err != nil {
@@ -170,12 +171,28 @@ func SafeWrite(targetPath string, data []byte, baseline *FileBaseline, tracker *
 						diskModTime = existingInfo.ModTime()
 					}
 					return nil, &ConflictError{
-						Path:             absPath,
-						ExpectedHash:     baseline.Hash,
-						ActualDiskHash:   diskHash,
-						ExpectedModTime:  baseline.ModTime,
+						Path:              absPath,
+						ExpectedHash:      baseline.Hash,
+						ActualDiskHash:    diskHash,
+						ExpectedModTime:   baseline.ModTime,
 						ActualDiskModTime: diskModTime,
 					}
+				}
+			}
+		} else {
+			// H1: baseline is nil (e.g. creating a new entity or unversioned save).
+			// If file already exists on disk and content differs, reject overwrite to prevent silent data loss!
+			if newHash != diskHash {
+				var diskModTime time.Time
+				if existingInfo != nil {
+					diskModTime = existingInfo.ModTime()
+				}
+				return nil, &ConflictError{
+					Path:              absPath,
+					ExpectedHash:      "<new-file>",
+					ActualDiskHash:    diskHash,
+					ExpectedModTime:   time.Time{},
+					ActualDiskModTime: diskModTime,
 				}
 			}
 		}
@@ -192,6 +209,9 @@ func SafeWrite(targetPath string, data []byte, baseline *FileBaseline, tracker *
 	}
 
 	// 2. Write to temp file in the SAME directory to ensure atomic rename on the same filesystem
+	// Note (L3): os.CreateTemp creates files with 0600 mode. On overwriting existing 0644 files,
+	// permissions may narrow and Finder xattrs (labels) are not preserved across inode replacement.
+	// Acceptable for Spike stage; production can preserve file mode and xattrs.
 	tmpFile, err := os.CreateTemp(dir, ".pata_tmp_*")
 	if err != nil {
 		return nil, fmt.Errorf("failed to create temporary file in %s: %w", dir, err)
@@ -226,9 +246,20 @@ func SafeWrite(targetPath string, data []byte, baseline *FileBaseline, tracker *
 		tracker.MarkInternalWrite(absPath, newHash)
 	}
 
+	// shortcut: TOCTOU window exists between reading/checking disk baseline and os.Rename.
+	// This is acceptable for a single-user desktop app in the Spike stage.
+	// Upgrade trigger: When long-running external agents (e.g. Pi agent) or concurrent background
+	// workers perform continuous writes, upgrade to POSIX file locking (flock/fcntl) or a coordination server.
+
 	// 4. Atomically replace target
 	if err := os.Rename(tmpPath, absPath); err != nil {
 		return nil, fmt.Errorf("failed to atomic replace %s with %s: %w", absPath, tmpPath, err)
+	}
+
+	// M4: fsync parent directory to ensure rename metadata is persisted on crash/power loss
+	if dirFile, dirErr := os.Open(dir); dirErr == nil {
+		_ = dirFile.Sync()
+		_ = dirFile.Close()
 	}
 
 	success = true
@@ -248,15 +279,3 @@ func SafeWrite(targetPath string, data []byte, baseline *FileBaseline, tracker *
 		ModTime: modTime,
 	}, nil
 }
-
-// CopyFile copies src to dst using atomic safe write.
-func CopyFile(src, dst string) error {
-	data, err := os.ReadFile(src)
-	if err != nil {
-		return err
-	}
-	_, err = SafeWrite(dst, data, nil, nil)
-	return err
-}
-
-var _ = io.Discard

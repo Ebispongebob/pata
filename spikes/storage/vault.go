@@ -106,23 +106,22 @@ func (v *Vault) ResolveEntityPath(entity Entity) string {
 	}
 	v.Index.mu.RUnlock()
 
+	filename := FormatEntityFilename(entity)
 	switch e := entity.(type) {
 	case *Task:
-		slug := SanitizeSlug(e.Title)
-		return filepath.Join(v.RootPath, "tasks", fmt.Sprintf("%s_%s.md", slug, e.ID))
+		return filepath.Join(v.RootPath, "tasks", filename)
 	case *Note:
-		slug := SanitizeSlug(e.Title)
-		return filepath.Join(v.RootPath, "notes", fmt.Sprintf("%s.md", slug))
+		return filepath.Join(v.RootPath, "notes", filename)
 	case *Memo:
 		t := e.CreatedAt
 		if t.IsZero() {
 			t = time.Now()
 		}
-		return filepath.Join(v.RootPath, "memos", t.Format("2006"), t.Format("01"), fmt.Sprintf("%s.md", e.ID))
+		return filepath.Join(v.RootPath, "memos", t.Format("2006"), t.Format("01"), filename)
 	case *DayPlan:
-		return filepath.Join(v.RootPath, ".pata", "plans", fmt.Sprintf("%s.md", e.Date))
+		return filepath.Join(v.RootPath, ".pata", "plans", filename)
 	default:
-		return filepath.Join(v.RootPath, fmt.Sprintf("%s.md", entity.GetID()))
+		return filepath.Join(v.RootPath, filename)
 	}
 }
 
@@ -318,6 +317,9 @@ func (v *Vault) handleFSEvent(event fsnotify.Event) {
 	}
 }
 
+// Note (L4): Non-blocking dispatch may drop events if channel buffer (100) overflows;
+// parseErrors appends without deduplication. Background periodic rescan (StartPeriodicRescan)
+// serves as the safety net for missed events.
 func (v *Vault) dispatch(ev VaultEvent) {
 	select {
 	case v.events <- ev:

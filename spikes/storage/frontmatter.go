@@ -3,7 +3,9 @@ package storage
 import (
 	"bytes"
 	"fmt"
+	"path/filepath"
 	"strings"
+	"time"
 
 	"gopkg.in/yaml.v3"
 )
@@ -91,6 +93,25 @@ type RawFrontmatter struct {
 	Type EntityType `yaml:"type"`
 }
 
+func derivePlainMarkdownTitle(body, filePath string) string {
+	lines := strings.Split(body, "\n")
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "# ") {
+			t := strings.TrimSpace(strings.TrimPrefix(trimmed, "# "))
+			if t != "" {
+				return t
+			}
+		}
+	}
+	if filePath != "" {
+		base := filepath.Base(filePath)
+		ext := filepath.Ext(base)
+		return strings.TrimSuffix(base, ext)
+	}
+	return "untitled"
+}
+
 // ParseMarkdown parses markdown bytes into a validated Entity.
 // If path is provided, it is attached to ParseError.
 func ParseMarkdown(filePath string, content []byte) (Entity, error) {
@@ -104,10 +125,23 @@ func ParseMarkdown(filePath string, content []byte) (Entity, error) {
 	}
 
 	if !hasFM {
-		// Ordinary markdown without frontmatter treated as Note
+		// H2: Ordinary markdown without frontmatter treated as Note.
+		// Derive a deterministic placeholder ID from the file path to prevent index collision.
+		var placeholderID string
+		if filePath != "" {
+			placeholderID = fmt.Sprintf("plain-%s", ComputeContentHash([]byte(filepath.Clean(filePath)))[:16])
+		} else {
+			placeholderID = fmt.Sprintf("plain-%s", ComputeContentHash(content)[:16])
+		}
+		title := derivePlainMarkdownTitle(string(content), filePath)
+		now := time.Now()
 		note := &Note{
-			Type: EntityTypeNote,
-			Body: string(content),
+			Type:      EntityTypeNote,
+			ID:        placeholderID,
+			Title:     title,
+			CreatedAt: now,
+			UpdatedAt: now,
+			Body:      string(content),
 		}
 		return note, nil
 	}
