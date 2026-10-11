@@ -7,6 +7,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -27,6 +28,30 @@ type VaultStatus struct {
 	Open       bool   `json:"open"`
 	TaskCount  int    `json:"taskCount"`
 	Error      string `json:"error,omitempty"`
+}
+
+// CreateTaskInput defines parameters for creating a new Task.
+type CreateTaskInput struct {
+	Title    string                `json:"title"`
+	Status   markdown.TaskStatus   `json:"status,omitempty"`
+	Priority markdown.TaskPriority `json:"priority,omitempty"`
+	Due      *string               `json:"due,omitempty"`
+	Tags     []string              `json:"tags,omitempty"`
+	NoteIDs  []string              `json:"note_ids,omitempty"`
+	Body     string                `json:"body,omitempty"`
+}
+
+// UpdateTaskInput defines parameters for updating an existing Task.
+// Note: tags, note_ids, and body follow full-replacement semantics (not partial patch).
+type UpdateTaskInput struct {
+	ID       string                `json:"id"`
+	Title    string                `json:"title"`
+	Status   markdown.TaskStatus   `json:"status"`
+	Priority markdown.TaskPriority `json:"priority"`
+	Due      *string               `json:"due"`
+	Tags     []string              `json:"tags,omitempty"`
+	NoteIDs  []string              `json:"note_ids,omitempty"`
+	Body     string                `json:"body"`
 }
 
 // VaultService owns the single Vault instance; all structured file access goes through it.
@@ -118,6 +143,230 @@ func (s *VaultService) RescanVault() error {
 		return fmt.Errorf("尚未打开 Vault")
 	}
 	return v.Scan()
+}
+
+// GetTask returns a task by its ID.
+func (s *VaultService) GetTask(id string) (*markdown.Task, error) {
+	s.mu.Lock()
+	v := s.vault
+	s.mu.Unlock()
+	if v == nil {
+		return nil, fmt.Errorf("尚未打开 Vault")
+	}
+
+	if strings.TrimSpace(id) == "" {
+		return nil, fmt.Errorf("任务 ID 不能为空")
+	}
+
+	task, ok := v.Index.GetTask(id)
+	if !ok {
+		return nil, fmt.Errorf("任务不存在: %s", id)
+	}
+	return task, nil
+}
+
+// CreateTask creates a new Task, writes it safely as Markdown, and updates the index.
+func (s *VaultService) CreateTask(input CreateTaskInput) (*markdown.Task, error) {
+	s.mu.Lock()
+	v := s.vault
+	s.mu.Unlock()
+	if v == nil {
+		return nil, fmt.Errorf("尚未打开 Vault")
+	}
+
+	title := strings.TrimSpace(input.Title)
+	if title == "" {
+		return nil, fmt.Errorf("任务标题不能为空")
+	}
+
+	status := input.Status
+	if status == "" {
+		status = markdown.TaskStatusTodo
+	}
+
+	priority := input.Priority
+	if priority == "" {
+		priority = markdown.TaskPriorityP2
+	}
+
+	var due *string
+	if input.Due != nil && strings.TrimSpace(*input.Due) != "" {
+		d := strings.TrimSpace(*input.Due)
+		due = &d
+	}
+
+	now := time.Now()
+	task := &markdown.Task{
+		Type:      markdown.EntityTypeTask,
+		ID:        markdown.GenerateEntityID(markdown.EntityTypeTask),
+		Title:     title,
+		Status:    status,
+		Priority:  priority,
+		Due:       due,
+		Tags:      input.Tags,
+		NoteIDs:   input.NoteIDs,
+		CreatedAt: now,
+		UpdatedAt: now,
+		Body:      input.Body,
+	}
+
+	if status == markdown.TaskStatusDone {
+		task.StatusEvents = []markdown.StatusEvent{
+			{
+				Action: markdown.StatusEventActionCompleted,
+				At:     now,
+			},
+		}
+	}
+
+	if _, err := v.SaveEntity(task, nil); err != nil {
+		return nil, err
+	}
+
+	return task, nil
+}
+
+// UpdateTask updates an existing Task, safely writes changes to Markdown, and preserves unknown frontmatter.
+func (s *VaultService) UpdateTask(input UpdateTaskInput) (*markdown.Task, error) {
+	s.mu.Lock()
+	v := s.vault
+	s.mu.Unlock()
+	if v == nil {
+		return nil, fmt.Errorf("尚未打开 Vault")
+	}
+
+	if strings.TrimSpace(input.ID) == "" {
+		return nil, fmt.Errorf("任务 ID 不能为空")
+	}
+
+	title := strings.TrimSpace(input.Title)
+	if title == "" {
+		return nil, fmt.Errorf("任务标题不能为空")
+	}
+
+	existing, ok := v.Index.GetTask(input.ID)
+	if !ok {
+		return nil, fmt.Errorf("任务不存在: %s", input.ID)
+	}
+
+	now := time.Now()
+	// Status event semantics: record completion or reopen
+	if existing.Status != markdown.TaskStatusDone && input.Status == markdown.TaskStatusDone {
+		existing.StatusEvents = append(existing.StatusEvents, markdown.StatusEvent{
+			Action: markdown.StatusEventActionCompleted,
+			At:     now,
+		})
+	} else if existing.Status == markdown.TaskStatusDone && (input.Status == markdown.TaskStatusTodo || input.Status == markdown.TaskStatusDoing) {
+		existing.StatusEvents = append(existing.StatusEvents, markdown.StatusEvent{
+			Action: markdown.StatusEventActionReopened,
+			At:     now,
+		})
+	}
+
+	var due *string
+	if input.Due != nil && strings.TrimSpace(*input.Due) != "" {
+		d := strings.TrimSpace(*input.Due)
+		due = &d
+	}
+
+	existing.Title = title
+	existing.Status = input.Status
+	existing.Priority = input.Priority
+	existing.Due = due
+	existing.Tags = input.Tags
+	existing.NoteIDs = input.NoteIDs
+	existing.Body = input.Body
+	existing.UpdatedAt = now
+
+	// SaveEntity preserves Extra (unknown frontmatter)
+	baseline := taskBaseline(v, existing)
+	if _, err := v.SaveEntity(existing, baseline); err != nil {
+		return nil, err
+	}
+
+	return existing, nil
+}
+
+// taskBaseline looks up the baseline for an entity directly from the memory index.
+func taskBaseline(v *markdown.Vault, task *markdown.Task) *markdown.FileBaseline {
+	path := v.ResolveEntityPath(task)
+	if b, ok := v.Index.GetBaseline(path); ok {
+		return &b
+	}
+	return nil
+}
+
+// SetTaskStatus toggles or updates the status of a Task with completion/reopen event semantics.
+func (s *VaultService) SetTaskStatus(id string, status markdown.TaskStatus) (*markdown.Task, error) {
+	s.mu.Lock()
+	v := s.vault
+	s.mu.Unlock()
+	if v == nil {
+		return nil, fmt.Errorf("尚未打开 Vault")
+	}
+
+	if strings.TrimSpace(id) == "" {
+		return nil, fmt.Errorf("任务 ID 不能为空")
+	}
+
+	switch status {
+	case markdown.TaskStatusTodo, markdown.TaskStatusDoing, markdown.TaskStatusDone:
+		// valid
+	default:
+		return nil, fmt.Errorf("无效的任务状态: %s (必须为 todo, doing 或 done)", status)
+	}
+
+	existing, ok := v.Index.GetTask(id)
+	if !ok {
+		return nil, fmt.Errorf("任务不存在: %s", id)
+	}
+
+	if existing.Status == status {
+		return existing, nil
+	}
+
+	now := time.Now()
+	if status == markdown.TaskStatusDone {
+		existing.StatusEvents = append(existing.StatusEvents, markdown.StatusEvent{
+			Action: markdown.StatusEventActionCompleted,
+			At:     now,
+		})
+	} else if existing.Status == markdown.TaskStatusDone {
+		existing.StatusEvents = append(existing.StatusEvents, markdown.StatusEvent{
+			Action: markdown.StatusEventActionReopened,
+			At:     now,
+		})
+	}
+
+	existing.Status = status
+	existing.UpdatedAt = now
+
+	baseline := taskBaseline(v, existing)
+	if _, err := v.SaveEntity(existing, baseline); err != nil {
+		return nil, err
+	}
+
+	return existing, nil
+}
+
+// DeleteTask deletes a task from disk and updates the index, preserving any referencing Memos.
+func (s *VaultService) DeleteTask(id string) error {
+	s.mu.Lock()
+	v := s.vault
+	s.mu.Unlock()
+	if v == nil {
+		return fmt.Errorf("尚未打开 Vault")
+	}
+
+	if strings.TrimSpace(id) == "" {
+		return fmt.Errorf("任务 ID 不能为空")
+	}
+
+	if _, ok := v.Index.GetTask(id); !ok {
+		return fmt.Errorf("任务不存在: %s", id)
+	}
+
+	return v.DeleteEntity(id)
 }
 
 func (s *VaultService) openVault(path string) (*markdown.Vault, error) {

@@ -1,6 +1,7 @@
 package markdown
 
 import (
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -121,3 +122,88 @@ title: Unclosed
 		t.Fatalf("expected unclosed frontmatter reason, got %v", err)
 	}
 }
+
+func TestVault_DeleteEntity_PreservesReferencingMemos(t *testing.T) {
+	tmpDir := t.TempDir()
+	vault, err := NewVault(tmpDir)
+	if err != nil {
+		t.Fatalf("failed to init vault: %v", err)
+	}
+
+	task := &Task{
+		Type:      EntityTypeTask,
+		ID:        "t-del-01",
+		Title:     "待删除任务",
+		Status:    TaskStatusTodo,
+		Priority:  TaskPriorityP2,
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+		Body:      "此任务将被删除",
+	}
+	if _, err := vault.SaveEntity(task, nil); err != nil {
+		t.Fatalf("failed to save task: %v", err)
+	}
+
+	memo := &Memo{
+		Type:      EntityTypeMemo,
+		ID:        "m-ref-01",
+		TaskID:    "t-del-01",
+		CreatedAt: time.Now(),
+		Body:      "关联到待删除任务的 Memo",
+	}
+	if _, err := vault.SaveEntity(memo, nil); err != nil {
+		t.Fatalf("failed to save memo: %v", err)
+	}
+
+	taskPath := vault.ResolveEntityPath(task)
+	memoPath := vault.ResolveEntityPath(memo)
+
+	// Pre-condition: both exist
+	if _, err := os.Stat(taskPath); err != nil {
+		t.Fatalf("task file not found before delete: %v", err)
+	}
+	if _, err := os.Stat(memoPath); err != nil {
+		t.Fatalf("memo file not found before delete: %v", err)
+	}
+	if len(vault.Index.ListDanglingReferences()) != 0 {
+		t.Fatalf("unexpected dangling refs before delete")
+	}
+
+	// Delete task entity
+	if err := vault.DeleteEntity("t-del-01"); err != nil {
+		t.Fatalf("DeleteEntity failed: %v", err)
+	}
+
+	// 1. Task file deleted from disk
+	if _, err := os.Stat(taskPath); !os.IsNotExist(err) {
+		t.Fatalf("task file should have been deleted from disk, but stat err: %v", err)
+	}
+
+	// 2. Task removed from index
+	if _, ok := vault.Index.GetTask("t-del-01"); ok {
+		t.Fatalf("task still exists in index after DeleteEntity")
+	}
+
+	// 3. Memo file still exists on disk
+	if _, err := os.Stat(memoPath); err != nil {
+		t.Fatalf("memo file was deleted or cannot be stated: %v", err)
+	}
+
+	// 4. Memo still exists in index
+	m, ok := vault.Index.GetMemo("m-ref-01")
+	if !ok || m.Body != "关联到待删除任务的 Memo" {
+		t.Fatalf("memo missing or corrupted in index after task delete: %+v", m)
+	}
+
+	// 5. Dangling references recomputed to include deleted task
+	dangling := vault.Index.ListDanglingReferences()
+	if len(dangling) != 1 || dangling[0].TargetID != "t-del-01" {
+		t.Fatalf("expected 1 dangling reference pointing to t-del-01, got: %+v", dangling)
+	}
+
+	// Deleting non-existent entity should return error
+	if err := vault.DeleteEntity("t-nonexistent"); err == nil {
+		t.Fatalf("expected error when deleting non-existent entity")
+	}
+}
+

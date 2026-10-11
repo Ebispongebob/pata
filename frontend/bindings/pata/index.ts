@@ -9,7 +9,9 @@ export {
 };
 
 export type {
+    CreateTaskInput,
     RoundTripResult,
     SystemInfo,
+    UpdateTaskInput,
     VaultStatus
 } from "./models.js";

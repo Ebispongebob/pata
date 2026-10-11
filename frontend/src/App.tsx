@@ -19,8 +19,7 @@ import {
 import * as SpikeService from '../bindings/pata/spikeservice';
 import * as VaultService from '../bindings/pata/vaultservice';
 import { SystemInfo, RoundTripResult, VaultStatus } from '../bindings/pata/models';
-import { Task } from '../bindings/pata/internal/storage/markdown/models';
-import { FolderOpen } from 'lucide-react';
+import { TasksView } from './TasksView';
 
 const SAMPLE_MARKDOWN = `# Pata 阶段 2 架构设计与 Markdown 往返一致性验证
 
@@ -109,19 +108,12 @@ export default function App() {
 
   // Vault state (single vault, D18)
   const [vaultStatus, setVaultStatus] = useState<VaultStatus | null>(null);
-  const [tasks, setTasks] = useState<Task[]>([]);
   const [vaultBusy, setVaultBusy] = useState(false);
 
   const refreshVault = async () => {
     try {
       const st = await VaultService.GetVaultStatus();
       setVaultStatus(st);
-      if (st.open) {
-        const list = (await VaultService.ListTasks()) ?? [];
-        setTasks(list.filter((t): t is Task => t !== null));
-      } else {
-        setTasks([]);
-      }
     } catch (err) {
       console.error('Failed to refresh vault status:', err);
     }
@@ -757,102 +749,12 @@ export default function App() {
           )}
 
           {activeNav === 'tasks' && (
-            <div className="max-w-3xl mx-auto space-y-4">
-              {!vaultStatus?.configured && (
-                <div className="py-12 text-center space-y-3">
-                  <FolderOpen className="w-10 h-10 text-emerald-600 mx-auto opacity-60" />
-                  <h2 className="text-base font-semibold text-stone-800 dark:text-stone-200">尚未配置 Vault</h2>
-                  <p className="text-xs text-stone-500 max-w-sm mx-auto leading-relaxed">
-                    Pata 以单个本地目录作为唯一数据源（Local First），选择后任务将以 Markdown 形式读写。
-                  </p>
-                  <button
-                    onClick={handleSelectVault}
-                    disabled={vaultBusy}
-                    className="mx-auto flex items-center space-x-1.5 px-4 py-2 rounded-md bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-medium transition disabled:opacity-50"
-                  >
-                    <FolderOpen className="w-3.5 h-3.5" />
-                    <span>选择 Vault 目录</span>
-                  </button>
-                </div>
-              )}
-
-              {vaultStatus?.configured && !vaultStatus.open && (
-                <div className="p-4 rounded-lg border border-amber-200 dark:border-amber-900/50 bg-amber-50/60 dark:bg-amber-950/20 text-xs space-y-2">
-                  <div className="text-stone-800 dark:text-stone-200">Vault 未能打开：<code className="font-mono text-[11px]">{vaultStatus.path}</code></div>
-                  <button
-                    onClick={handleSelectVault}
-                    disabled={vaultBusy}
-                    className="px-3 py-1.5 rounded-md bg-emerald-700 hover:bg-emerald-800 text-white font-medium transition disabled:opacity-50"
-                  >
-                    重新选择目录
-                  </button>
-                </div>
-              )}
-
-              {vaultStatus?.open && (
-                <>
-                  <div className="flex items-center justify-between text-xs text-stone-500 dark:text-stone-400">
-                    <span className="font-mono text-[11px] truncate max-w-xs" title={vaultStatus.path}>
-                      {vaultStatus.path}
-                    </span>
-                    <button
-                      onClick={handleRescan}
-                      disabled={vaultBusy}
-                      className="flex items-center space-x-1 px-2 py-1 rounded border border-stone-200 dark:border-stone-800 hover:bg-stone-100 dark:hover:bg-stone-800 transition disabled:opacity-50"
-                    >
-                      <RefreshCw className={`w-3 h-3 ${vaultBusy ? 'animate-spin' : ''}`} />
-                      <span>重新扫描</span>
-                    </button>
-                  </div>
-
-                  {tasks.length === 0 && (
-                    <div className="py-10 text-center text-xs text-stone-500">
-                      Vault 中暂无任务。tasks/ 目录下的 Markdown 任务会显示在这里（创建功能待下一批实现）。
-                    </div>
-                  )}
-
-                  <div className="space-y-2">
-                    {tasks.map((t) => (
-                      <div
-                        key={t.id}
-                        className="p-3.5 rounded-lg border border-stone-200 dark:border-stone-800 bg-white dark:bg-stone-950 hover:border-stone-300 dark:hover:border-stone-700 transition cursor-default"
-                      >
-                        <div className="flex items-center justify-between gap-3">
-                          <span className={`text-sm font-medium truncate ${t.status === 'done' ? 'line-through text-stone-400' : 'text-stone-900 dark:text-stone-100'}`}>
-                            {t.title}
-                          </span>
-                          <div className="flex items-center space-x-1.5 shrink-0">
-                            <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded ${
-                              t.priority === 'p1' ? 'bg-red-100 text-red-700 dark:bg-red-950/60 dark:text-red-300'
-                                : t.priority === 'p2' ? 'bg-amber-100 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300'
-                                : 'bg-stone-100 text-stone-600 dark:bg-stone-800 dark:text-stone-400'}`}>
-                              {t.priority}
-                            </span>
-                            <span className={`text-[10px] px-1.5 py-0.5 rounded ${
-                              t.status === 'done' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300'
-                                : t.status === 'doing' ? 'bg-blue-100 text-blue-700 dark:bg-blue-950/60 dark:text-blue-300'
-                                : 'bg-stone-100 text-stone-600 dark:bg-stone-800 dark:text-stone-400'}`}>
-                              {t.status}
-                            </span>
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-3 mt-1.5 text-[11px] text-stone-400">
-                          {t.due && <span>due {t.due}</span>}
-                          {t.tags && t.tags.length > 0 && (
-                            <span className="flex items-center gap-1">
-                              {t.tags.map((tag) => (
-                                <span key={tag} className="text-emerald-600/80 dark:text-emerald-400/80">#{tag}</span>
-                              ))}
-                            </span>
-                          )}
-                          <span className="ml-auto font-mono">{t.updated_at?.slice(0, 10)}</span>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </>
-              )}
-            </div>
+            <TasksView
+              vaultStatus={vaultStatus}
+              onSelectVault={handleSelectVault}
+              onRescanVault={handleRescan}
+              vaultBusy={vaultBusy}
+            />
           )}
 
           {activeNav === 'notes' && (

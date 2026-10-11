@@ -154,6 +154,29 @@ func (v *Vault) SaveEntity(entity Entity, baseline *FileBaseline) (*FileBaseline
 	return newBaseline, nil
 }
 
+// DeleteEntity removes an entity file from disk and cleans up its index entry.
+// It preserves associated entities (such as Memos referencing a deleted Task).
+func (v *Vault) DeleteEntity(id string) error {
+	if strings.TrimSpace(id) == "" {
+		return fmt.Errorf("entity ID cannot be empty")
+	}
+
+	v.Index.mu.RLock()
+	filePath, exists := v.Index.idToFile[id]
+	v.Index.mu.RUnlock()
+
+	if !exists {
+		return fmt.Errorf("entity %q not found in index", id)
+	}
+
+	if err := os.Remove(filePath); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("failed to delete file %s: %w", filePath, err)
+	}
+
+	v.Index.RemoveFile(filePath)
+	return nil
+}
+
 // StartWatcher starts listening to filesystem changes using fsnotify.
 func (v *Vault) StartWatcher() error {
 	v.mu.Lock()

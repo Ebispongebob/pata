@@ -19,6 +19,27 @@ import * as markdown$0 from "./internal/storage/markdown/models.js";
 import * as $models from "./models.js";
 
 /**
+ * CreateTask creates a new Task, writes it safely as Markdown, and updates the index.
+ */
+export function CreateTask(input: $models.CreateTaskInput): $CancellablePromise<markdown$0.Task | null> {
+    return $Call.ByID(3901450400, input);
+}
+
+/**
+ * DeleteTask deletes a task from disk and updates the index, preserving any referencing Memos.
+ */
+export function DeleteTask(id: string): $CancellablePromise<void> {
+    return $Call.ByID(3037921099, id);
+}
+
+/**
+ * GetTask returns a task by its ID.
+ */
+export function GetTask(id: string): $CancellablePromise<markdown$0.Task | null> {
+    return $Call.ByID(1057197746, id);
+}
+
+/**
  * GetVaultStatus is cheap and callable before any vault is opened.
  */
 export function GetVaultStatus(): $CancellablePromise<$models.VaultStatus> {
@@ -45,4 +66,18 @@ export function RescanVault(): $CancellablePromise<void> {
  */
 export function SelectVaultDirectory(): $CancellablePromise<$models.VaultStatus> {
     return $Call.ByID(2534227418);
+}
+
+/**
+ * SetTaskStatus toggles or updates the status of a Task with completion/reopen event semantics.
+ */
+export function SetTaskStatus(id: string, status: markdown$0.TaskStatus): $CancellablePromise<markdown$0.Task | null> {
+    return $Call.ByID(1569318832, id, status);
+}
+
+/**
+ * UpdateTask updates an existing Task, safely writes changes to Markdown, and preserves unknown frontmatter.
+ */
+export function UpdateTask(input: $models.UpdateTaskInput): $CancellablePromise<markdown$0.Task | null> {
+    return $Call.ByID(12384053, input);
 }
