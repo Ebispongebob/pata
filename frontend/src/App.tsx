@@ -5,6 +5,7 @@ import {
   CheckSquare,
   FileText,
   Hash,
+  PanelLeft,
   Sun,
   Moon,
   Monitor,
@@ -24,7 +25,7 @@ import { SearchOverlay } from './SearchOverlay';
 export default function App() {
   const [activeNav, setActiveNav] = useState<'today' | 'tasks' | 'notes' | 'tag'>('tasks');
   const [selectedTag, setSelectedTag] = useState<string | null>(null);
-  const [sidebarCollapsed] = useState(false); // 收起开关已按走查反馈移除，保留状态位备后续恢复
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [sidebarWidth, setSidebarWidth] = useState(240);
   const [isResizing, setIsResizing] = useState(false);
   const [themeMode, setThemeMode] = useState<'system' | 'light' | 'dark'>('system');
@@ -237,8 +238,16 @@ export default function App() {
 
   return (
     <div className="flex flex-col h-screen w-screen overflow-hidden bg-stone-100/60 dark:bg-transparent text-stone-900 dark:text-stone-100 font-sans">
-      {/* Titlebar strip: traffic lights zone + window drag; islands sit below */}
-      <div className="h-9 shrink-0 drag-region" aria-hidden="true" />
+      {/* Titlebar strip: traffic lights zone + window drag; sidebar toggle sits right of lights */}
+      <div className="h-9 shrink-0 drag-region flex items-center pl-[84px]">
+        <button
+          onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+          className="p-1.5 rounded text-stone-400 hover:text-stone-700 dark:hover:text-stone-200 hover:bg-stone-200/60 dark:hover:bg-stone-800/60 transition no-drag-region"
+          title={sidebarCollapsed ? '展开侧边栏' : '收起侧边栏'}
+        >
+          <PanelLeft className="w-4 h-4" />
+        </button>
+      </div>
 
       <div className="flex flex-1 min-h-0 gap-2 p-2 pl-0">
       {/* Sidebar */}
