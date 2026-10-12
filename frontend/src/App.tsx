@@ -1,4 +1,5 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
+import { Events } from '@wailsio/runtime';
 import {
   Calendar,
   CheckSquare,
@@ -12,12 +13,15 @@ import {
 } from 'lucide-react';
 import * as VaultService from '../bindings/pata/vaultservice';
 import { VaultStatus } from '../bindings/pata/models';
+import { TagOverviewItem } from '../bindings/pata/internal/storage/markdown/models';
 import { TasksView } from './TasksView';
 import { TodayView } from './TodayView';
 import { NotesView } from './NotesView';
+import { TagView } from './TagView';
 
 export default function App() {
-  const [activeNav, setActiveNav] = useState<'today' | 'tasks' | 'notes'>('tasks');
+  const [activeNav, setActiveNav] = useState<'today' | 'tasks' | 'notes' | 'tag'>('tasks');
+  const [selectedTag, setSelectedTag] = useState<string | null>(null);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [themeMode, setThemeMode] = useState<'system' | 'light' | 'dark'>('system');
 
@@ -26,6 +30,10 @@ export default function App() {
   const [vaultBusy, setVaultBusy] = useState(false);
   const [focusTaskId, setFocusTaskId] = useState<string | null>(null);
   const [focusNoteId, setFocusNoteId] = useState<string | null>(null);
+
+  // Global tags state
+  const [tags, setTags] = useState<TagOverviewItem[]>([]);
+  const [tagsLoading, setTagsLoading] = useState(false);
 
   const handleOpenTask = (taskID: string) => {
     setActiveNav('tasks');
@@ -37,19 +45,52 @@ export default function App() {
     setFocusNoteId(noteID);
   };
 
-  const refreshVault = async () => {
+  const handleSelectTag = (tag: string) => {
+    setSelectedTag(tag);
+    setActiveNav('tag');
+  };
+
+  const loadTags = useCallback(async () => {
+    try {
+      setTagsLoading(true);
+      const items = await VaultService.GetTagOverview();
+      setTags((items || []).filter((it): it is TagOverviewItem => it !== null));
+    } catch (err) {
+      console.error('Failed to load tag overview:', err);
+    } finally {
+      setTagsLoading(false);
+    }
+  }, []);
+
+  const refreshVault = useCallback(async () => {
     try {
       const st = await VaultService.GetVaultStatus();
       setVaultStatus(st);
+      if (st && st.open) {
+        await loadTags();
+      } else {
+        setTags([]);
+      }
     } catch (err) {
       console.error('Failed to refresh vault status:', err);
     }
-  };
+  }, [loadTags]);
 
   // Fetch vault status on load
   useEffect(() => {
     refreshVault();
-  }, []);
+  }, [refreshVault]);
+
+  // Subscribe to vault:changed application events
+  useEffect(() => {
+    const unsubscribe = Events.On('vault:changed', () => {
+      refreshVault();
+    });
+
+    return () => {
+      unsubscribe();
+    };
+  }, [refreshVault]);
 
   const handleSelectVault = async () => {
     setVaultBusy(true);
@@ -164,18 +205,39 @@ export default function App() {
             <div className="pt-4">
               <div className="text-[10px] uppercase font-semibold text-stone-400 px-2 mb-1.5 flex items-center justify-between">
                 <span>全局标签</span>
-                <span className="text-[9px] text-stone-400 font-mono">3</span>
+                {vaultStatus?.open && (
+                  <span className="text-[9px] text-stone-400 font-mono">{tags.length}</span>
+                )}
               </div>
               <div className="space-y-0.5 px-1">
-                {['架构设计', 'Flink', 'Doris'].map((tag) => (
-                  <div
-                    key={tag}
-                    className="flex items-center space-x-1.5 px-2 py-1 rounded text-xs text-stone-600 dark:text-stone-400 hover:bg-stone-200/40 dark:hover:bg-stone-800/40 cursor-default"
-                  >
-                    <Hash className="w-3 h-3 text-stone-400" />
-                    <span>{tag}</span>
-                  </div>
-                ))}
+                {!vaultStatus?.open ? (
+                  <div className="px-2 py-1.5 text-xs text-stone-400 italic">Vault 尚未打开</div>
+                ) : tagsLoading && tags.length === 0 ? (
+                  <div className="px-2 py-1.5 text-xs text-stone-400">加载标签...</div>
+                ) : tags.length === 0 ? (
+                  <div className="px-2 py-1.5 text-xs text-stone-400 italic">暂无标签</div>
+                ) : (
+                  tags.map((item) => (
+                    <button
+                      key={item.tag}
+                      onClick={() => handleSelectTag(item.tag)}
+                      className={`w-full flex items-center justify-between px-2 py-1.5 rounded-md text-xs transition-colors min-h-[32px] text-left cursor-pointer ${
+                        activeNav === 'tag' && selectedTag === item.tag
+                          ? 'bg-emerald-100/70 dark:bg-emerald-950/60 text-emerald-900 dark:text-emerald-200 font-medium'
+                          : 'text-stone-600 dark:text-stone-400 hover:bg-stone-200/50 dark:hover:bg-stone-800/50'
+                      }`}
+                      title={`#${item.tag} (共 ${item.total} 项)`}
+                    >
+                      <div className="flex items-center space-x-1.5 truncate mr-2">
+                        <Hash className="w-3.5 h-3.5 shrink-0 opacity-60" />
+                        <span className="truncate">{item.tag}</span>
+                      </div>
+                      <span className="text-[10px] font-mono px-1.5 py-0.5 rounded-full bg-stone-200/70 dark:bg-stone-800 text-stone-500 dark:text-stone-400 shrink-0">
+                        {item.total}
+                      </span>
+                    </button>
+                  ))
+                )}
               </div>
             </div>
           )}
@@ -236,6 +298,7 @@ export default function App() {
               {activeNav === 'today' && 'Today — 今日计划与记录'}
               {activeNav === 'tasks' && 'Tasks — 全量任务池'}
               {activeNav === 'notes' && 'Notes — 单列笔记'}
+              {activeNav === 'tag' && `#${selectedTag || '标签视图'}`}
             </h1>
           </div>
 
@@ -278,6 +341,14 @@ export default function App() {
               vaultBusy={vaultBusy}
               focusNoteId={focusNoteId}
               onClearFocusNote={() => setFocusNoteId(null)}
+            />
+          )}
+
+          {activeNav === 'tag' && (
+            <TagView
+              selectedTag={selectedTag}
+              onOpenTask={handleOpenTask}
+              onOpenNote={handleOpenNote}
             />
           )}
         </div>
