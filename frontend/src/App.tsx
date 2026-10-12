@@ -237,7 +237,10 @@ export default function App() {
   const hasHealthIssues = parseErrorCount > 0 || danglingRefCount > 0;
 
   return (
-    <div className="flex h-screen w-screen overflow-hidden bg-stone-100/60 dark:bg-transparent text-stone-900 dark:text-stone-100 font-sans">
+    <div className="relative flex h-screen w-screen overflow-hidden bg-stone-100/60 dark:bg-transparent text-stone-900 dark:text-stone-100 font-sans">
+      {/* 4px top edge guard: prevents native window resize from triggering wails:drag */}
+      <div className="absolute top-0 left-0 right-0 h-1 no-drag-region z-30 pointer-events-auto" />
+
       {/* Left column: lights+logo strip above sidebar, unified background */}
       <div
         style={{ width: `${sidebarWidth}px` }}

@@ -2,7 +2,7 @@
 @custom-variant dark (&:where(.dark, .dark *));
 
 :root {
-  --wails-draggable: drag;
+  --wails-draggable: no-drag;
   color-scheme: light dark;
 }
 
