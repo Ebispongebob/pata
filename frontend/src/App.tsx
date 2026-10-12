@@ -5,8 +5,7 @@ import {
   CheckSquare,
   FileText,
   Hash,
-  ChevronLeft,
-  ChevronRight,
+  PanelLeft,
   Sun,
   Moon,
   Monitor,
@@ -261,12 +260,19 @@ export default function App() {
           />
         )}
 
-        {/* Sidebar Header with traffic light offset */}
-        <div className="h-12 flex items-center px-4 drag-region border-b border-stone-200/50 dark:border-stone-800/50">
+        {/* Sidebar Header: traffic lights zone → sidebar toggle → logo */}
+        <div className="h-12 flex items-center gap-2 px-4 drag-region border-b border-stone-200/50 dark:border-stone-800/50">
           {!sidebarCollapsed && (
-            <div className="flex items-center space-x-2 pl-20">
+            <>
+              <button
+                onClick={() => setSidebarCollapsed(true)}
+                className="ml-16 p-1.5 rounded text-stone-400 hover:text-stone-700 dark:hover:text-stone-200 hover:bg-stone-200/60 dark:hover:bg-stone-800/60 transition no-drag-region"
+                title="收起侧边栏"
+              >
+                <PanelLeft className="w-4 h-4" />
+              </button>
               <span className="font-semibold text-sm tracking-tight text-emerald-800 dark:text-emerald-400">Pata 啪嗒</span>
-            </div>
+            </>
           )}
         </div>
 
@@ -358,17 +364,9 @@ export default function App() {
           )}
         </div>
 
-        {/* Sidebar Footer */}
-        <div className="p-2 border-t border-stone-200 dark:border-stone-800 flex items-center justify-between no-drag-region">
-          <button
-            onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-            className="p-1.5 rounded text-stone-500 hover:text-stone-900 dark:hover:text-stone-100 hover:bg-stone-200 dark:hover:bg-stone-800 transition"
-            title={sidebarCollapsed ? "展开侧边栏" : "收起侧边栏"}
-          >
-            {sidebarCollapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
-          </button>
-
-          {!sidebarCollapsed && (
+        {/* Sidebar Footer (expanded only: theme switcher) */}
+        {!sidebarCollapsed && (
+          <div className="p-2 border-t border-stone-200 dark:border-stone-800 flex items-center justify-end no-drag-region">
             <div className="flex items-center space-x-1">
               <button
                 onClick={() => setThemeMode('light')}
@@ -392,8 +390,8 @@ export default function App() {
                 <Monitor className="w-3.5 h-3.5" />
               </button>
             </div>
-          )}
-        </div>
+          </div>
+        )}
       </aside>
 
       {/* Main Content Area */}
@@ -401,6 +399,15 @@ export default function App() {
         {/* Top Header / Draggable Toolbar */}
         <header className="h-12 border-b border-stone-200 dark:border-stone-800 flex items-center justify-between px-4 drag-region select-none shrink-0">
           <div className="flex items-center space-x-3">
+            {sidebarCollapsed && (
+              <button
+                onClick={() => setSidebarCollapsed(false)}
+                className="p-1.5 rounded text-stone-400 hover:text-stone-700 dark:hover:text-stone-200 hover:bg-stone-200/60 dark:hover:bg-stone-800/60 transition no-drag-region"
+                title="展开侧边栏"
+              >
+                <PanelLeft className="w-4 h-4" />
+              </button>
+            )}
             <h1 className="text-sm font-semibold text-stone-800 dark:text-stone-200">
               {activeNav === 'today' && 'Today — 今日计划与记录'}
               {activeNav === 'tasks' && 'Tasks — 全量任务池'}
