@@ -277,7 +277,7 @@ export default function App() {
             title="Today"
           >
             <Calendar className="w-4 h-4 shrink-0" />
-            {!sidebarCollapsed && <span>Today 今日</span>}
+            {!sidebarCollapsed && <span>Today</span>}
           </button>
 
           <button
@@ -290,7 +290,7 @@ export default function App() {
             title="Tasks"
           >
             <CheckSquare className="w-4 h-4 shrink-0" />
-            {!sidebarCollapsed && <span>Tasks 任务</span>}
+            {!sidebarCollapsed && <span>Tasks</span>}
           </button>
 
           <button
@@ -303,7 +303,7 @@ export default function App() {
             title="Notes"
           >
             <FileText className="w-4 h-4 shrink-0" />
-            {!sidebarCollapsed && <span>Notes 笔记</span>}
+            {!sidebarCollapsed && <span>Notes</span>}
           </button>
 
           {/* Tags section */}
