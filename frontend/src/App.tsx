@@ -5,7 +5,7 @@ import {
   CheckSquare,
   FileText,
   Hash,
-  PanelLeft,
+  PawPrint,
   Sun,
   Moon,
   Monitor,
@@ -25,7 +25,7 @@ import { SearchOverlay } from './SearchOverlay';
 export default function App() {
   const [activeNav, setActiveNav] = useState<'today' | 'tasks' | 'notes' | 'tag'>('tasks');
   const [selectedTag, setSelectedTag] = useState<string | null>(null);
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [sidebarCollapsed] = useState(false); // 侧栏恒展开，收起功能按走查反馈移除
   const [sidebarWidth, setSidebarWidth] = useState(240);
   const [isResizing, setIsResizing] = useState(false);
   const [themeMode, setThemeMode] = useState<'system' | 'light' | 'dark'>('system');
@@ -238,15 +238,10 @@ export default function App() {
 
   return (
     <div className="flex flex-col h-screen w-screen overflow-hidden bg-stone-100/60 dark:bg-transparent text-stone-900 dark:text-stone-100 font-sans">
-      {/* Titlebar strip: traffic lights zone + window drag; sidebar toggle sits right of lights */}
-      <div className="h-9 shrink-0 drag-region flex items-center pl-[84px]">
-        <button
-          onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-          className="p-1.5 rounded text-stone-400 hover:text-stone-700 dark:hover:text-stone-200 hover:bg-stone-200/60 dark:hover:bg-stone-800/60 transition no-drag-region"
-          title={sidebarCollapsed ? '展开侧边栏' : '收起侧边栏'}
-        >
-          <PanelLeft className="w-4 h-4" />
-        </button>
+      {/* Titlebar strip: traffic lights zone + window drag; app logo sits right of lights */}
+      <div className="h-9 shrink-0 drag-region flex items-center pl-[84px] gap-1.5 select-none">
+        <PawPrint className="w-4 h-4 text-emerald-700 dark:text-emerald-400" />
+        <span className="font-semibold text-sm tracking-tight text-emerald-800 dark:text-emerald-400">Pata 啪嗒</span>
       </div>
 
       <div className="flex flex-1 min-h-0 gap-2 p-2 pl-0">
@@ -271,13 +266,6 @@ export default function App() {
             title="拖拽调整侧边栏宽度"
           />
         )}
-
-        {/* Sidebar Header */}
-        <div className="h-12 flex items-center px-4 drag-region border-b border-stone-200/50 dark:border-stone-800/50">
-          {!sidebarCollapsed && (
-            <span className="font-semibold text-sm tracking-tight text-emerald-800 dark:text-emerald-400">Pata 啪嗒</span>
-          )}
-        </div>
 
         {/* Primary Navigation */}
         <div className="flex-1 overflow-y-auto px-2 py-3 space-y-1">
