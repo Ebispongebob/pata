@@ -237,11 +237,11 @@ export default function App() {
   const hasHealthIssues = parseErrorCount > 0 || danglingRefCount > 0;
 
   return (
-    <div className="flex h-screen w-screen overflow-hidden bg-stone-50 dark:bg-stone-900 text-stone-900 dark:text-stone-100 font-sans">
+    <div className="flex h-screen w-screen overflow-hidden gap-2 p-2 bg-stone-100/60 dark:bg-transparent text-stone-900 dark:text-stone-100 font-sans">
       {/* Sidebar */}
       <aside
         style={sidebarCollapsed ? undefined : { width: `${sidebarWidth}px` }}
-        className={`relative shrink-0 flex flex-col border-r border-stone-200 dark:border-stone-800 bg-stone-100/80 dark:bg-stone-950/80 backdrop-blur select-none ${
+        className={`relative shrink-0 flex flex-col rounded-2xl border border-stone-200/70 dark:border-stone-800/70 shadow-xs overflow-hidden bg-stone-100/80 dark:bg-stone-950/80 backdrop-blur select-none ${
           isResizing ? '' : 'transition-all duration-200'
         } ${sidebarCollapsed ? 'w-20' : ''}`}
       >
@@ -395,7 +395,7 @@ export default function App() {
       </aside>
 
       {/* Main Content Area */}
-      <main className="flex-1 flex flex-col min-w-0 overflow-hidden bg-stone-50 dark:bg-stone-900">
+      <main className="flex-1 flex flex-col min-w-0 overflow-hidden rounded-2xl border border-stone-200/70 dark:border-stone-800/70 shadow-xs bg-stone-50 dark:bg-stone-900">
         {/* Top Header / Draggable Toolbar */}
         <header className="h-12 border-b border-stone-200 dark:border-stone-800 flex items-center justify-between px-4 drag-region select-none shrink-0">
           <div className="flex items-center space-x-3">
