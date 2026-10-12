@@ -248,7 +248,7 @@ export default function App() {
       {/* Sidebar */}
       <aside
         style={sidebarCollapsed ? undefined : { width: `${sidebarWidth}px` }}
-        className={`relative shrink-0 flex flex-col border-r border-stone-200 dark:border-stone-800 bg-stone-100/80 dark:bg-stone-950/80 backdrop-blur select-none ${
+        className={`relative shrink-0 flex flex-col bg-stone-100/80 dark:bg-stone-950/80 backdrop-blur select-none ${
           isResizing ? '' : 'transition-all duration-200'
         } ${sidebarCollapsed ? 'w-20' : ''}`}
       >
@@ -268,11 +268,7 @@ export default function App() {
         )}
 
         {/* Primary Navigation */}
-        <div className="flex-1 overflow-y-auto px-2 py-3 space-y-1">
-          <div className="text-[10px] uppercase font-semibold text-stone-400 px-2 mb-1">
-            {!sidebarCollapsed && '主视图'}
-          </div>
-
+        <div className="flex-1 overflow-y-auto px-2 py-2 space-y-0.5">
           <button
             onClick={() => setActiveNav('today')}
             className={`w-full flex items-center space-x-2.5 px-2.5 py-2 rounded-md text-xs font-medium transition-colors ${
@@ -314,8 +310,8 @@ export default function App() {
 
           {/* Tags section */}
           {!sidebarCollapsed && (
-            <div className="pt-4">
-              <div className="text-[10px] uppercase font-semibold text-stone-400 px-2 mb-1.5 flex items-center justify-between">
+            <div className="pt-3">
+              <div className="text-[10px] uppercase font-semibold text-stone-400 px-2 mb-1 flex items-center justify-between">
                 <span>全局标签</span>
                 {vaultStatus?.open && (
                   <span className="text-[9px] text-stone-400 font-mono">{tags.length}</span>
@@ -357,7 +353,7 @@ export default function App() {
 
         {/* Sidebar Footer (expanded only: theme switcher) */}
         {!sidebarCollapsed && (
-          <div className="p-2 border-t border-stone-200 dark:border-stone-800 flex items-center justify-end no-drag-region">
+          <div className="p-2 flex items-center justify-end no-drag-region">
             <div className="flex items-center space-x-1">
               <button
                 onClick={() => setThemeMode('light')}
