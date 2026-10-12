@@ -30,3 +30,5 @@
 - main 提交链: bedaf16(P6-001) → 643ea24(P6-002 merge) → 3b6f185(P6-003)
 - P6-004 可行性预检（只读源码）: Wails v3.0.0-beta.28 SystemTray 支持 SetTemplateIcon/SetDarkModeIcon/OnClick/OnRightClick/Menu → 静态托盘+点击回调可行; 帧动画需逐帧 SetIcon 重设，平滑度未验证
 - 待用户: 菜单栏是否实施; 剩实机走查（标题栏图标/Dock/动画/减少动态）
+- P6-004 completed（用户决定: 仅静态托盘）: main.go 16行(embed tray.png + SetTemplateIcon + OnClick 聚焦); P6-R4 通过（2 Low: 删4个无引用 iconTemplate 副本、tooltip macOS no-op 措辞）→ Lead 直改后提交 66e0d30; Tab t11/t12 已关闭
+- 阶段6代码侧全部完成: bedaf16 → 643ea24 → 3b6f185 → 66e0d30; 剩用户实机走查 + proposal 完成标准回填
