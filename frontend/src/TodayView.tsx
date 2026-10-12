@@ -24,6 +24,7 @@ import {
 import * as VaultService from '../bindings/pata/vaultservice';
 import { Task, TaskStatus, TaskPriority } from '../bindings/pata/internal/storage/markdown/models';
 import { VaultStatus, CreateTaskInput, TimelineItem, CreateMemoInput } from '../bindings/pata/models';
+import { playLogoSuccess } from './logoAnimation';
 
 interface TodayViewProps {
   vaultStatus: VaultStatus | null;
@@ -172,6 +173,7 @@ export function TodayView({
         tags: [],
       };
       await VaultService.CreateMemo(input);
+      playLogoSuccess();
       setQuickMemoBody('');
       await loadData();
     } catch (err: any) {

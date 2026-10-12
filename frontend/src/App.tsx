@@ -21,8 +21,10 @@ import { NotesView } from './NotesView';
 import { TagView } from './TagView';
 import { SearchOverlay } from './SearchOverlay';
 import { PataLogo } from './components/PataLogo';
+import { registerTitlebarLogo, playLogoLaunch } from './logoAnimation';
 
 export default function App() {
+  const titlebarLogoRef = useRef<SVGSVGElement | null>(null);
   const [activeNav, setActiveNav] = useState<'today' | 'tasks' | 'notes' | 'tag'>('tasks');
   const [selectedTag, setSelectedTag] = useState<string | null>(null);
   const [sidebarCollapsed] = useState(false); // 侧栏恒展开，收起功能按走查反馈移除
@@ -61,6 +63,15 @@ export default function App() {
       }
     }
   }, [showHealthModal]);
+
+  // Titlebar logo initialization: play launch animation once on initial app ready
+  useEffect(() => {
+    const unregister = registerTitlebarLogo(titlebarLogoRef.current);
+    playLogoLaunch();
+    return () => {
+      unregister();
+    };
+  }, []);
 
   // Global search overlay state
   const [isSearchOpen, setIsSearchOpen] = useState(false);
@@ -247,7 +258,7 @@ export default function App() {
         className="relative shrink-0 flex flex-col bg-stone-100/80 dark:bg-stone-950/80 backdrop-blur select-none"
       >
         <div className="h-9 shrink-0 drag-region flex items-center pl-[84px] gap-1.5 select-none">
-          <PataLogo className="w-4 h-4 shrink-0" />
+          <PataLogo ref={titlebarLogoRef} className="w-4 h-4 shrink-0" />
           <span className="text-sm text-stone-600 dark:text-stone-300">Pata 啪嗒</span>
         </div>
 

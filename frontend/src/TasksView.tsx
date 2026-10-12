@@ -24,6 +24,7 @@ import {
 import * as VaultService from '../bindings/pata/vaultservice';
 import { Task, TaskStatus, TaskPriority, Memo, Note } from '../bindings/pata/internal/storage/markdown/models';
 import { VaultStatus, CreateTaskInput, UpdateTaskInput, CreateMemoInput } from '../bindings/pata/models';
+import { playLogoSuccess } from './logoAnimation';
 
 function formatMemoTimestamp(isoString: string): string {
   if (!isoString) return '';
@@ -376,6 +377,7 @@ export function TasksView({
         task_id: selectedTaskId,
       };
       await VaultService.CreateMemo(input);
+      playLogoSuccess();
       setNewMemoBody('');
       await loadMemos(selectedTaskId);
     } catch (err: any) {

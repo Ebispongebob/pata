@@ -74,3 +74,76 @@ wails3 task package
    sips -g all /tmp/check_bundle_icons.iconset/icon_512x512@2x.png
    ```
    - **结果**: 成功解包出 `icon_16x16@2x.png` 至 `icon_512x512@2x.png`（1024x1024 sRGB）；解包图像均为三层卡片 V2 品牌图，无任何 Wails 默认图标残留。
+
+## P6-003: 业务触发接入与运行时动画集成
+
+### 1. 变更实施内容
+
+#### 1.1 动画样式移植与类名适配
+- 将 `docs/06-branding/preview/logo-animation.css` 移植至前端 `frontend/src/logo-animation.css`，并在 `frontend/src/main.tsx` 全局导入一次。
+- 集中保留 CSS 变量定义（`--pata-ease-spring-out`、`--pata-ease-tactile`、`--pata-launch-dur`、`--pata-success-dur` 等延时与缓动曲线）。
+- 选择器完整适配组件现有图元类名：
+  - 卡片图元：`.pata-card, .pata-card-back, .pata-card-middle, .pata-card-front`
+  - 光芒与辉光：`.pata-sparkle, .pata-sparkle-1, .pata-sparkle-2, .pata-sparkle-3` 及 `rect[filter]` / `g[filter] .pata-sparkle-*`
+  - 辅助功能：保留 `@media (prefers-reduced-motion: reduce)` 媒体查询与 `[data-reduced-motion="true"]` 回退，开启时强制所有图元 `animation: none !important; transform: none !important; opacity: 1 !important;` 立即锁死静态基线。
+
+#### 1.2 SVG 组件图元随动与 Ref 改造
+- `frontend/src/components/PataLogo.tsx`：
+  - 采用 `forwardRef<SVGSVGElement>` 支持外层传递 ref 获取根节点。
+  - 根 SVG 默认附加 `pata-logo-svg` 类名。
+  - 结构优化：将粉紫底层、橙黄中层、白卡顶层的柔和阴影路径（`pata-card-shadow`）内嵌至各自卡片组首位，确保卡片弹跳回弹时阴影完美同步随动，避免阴影停在原地脱节。
+  - 光芒图元补充 `pata-sparkle` 类名。
+
+#### 1.3 极简动画控制器（无通用事件系统）
+- 新建轻量控制器 `frontend/src/logoAnimation.ts`（控制在 100 行内，无第三方依赖）：
+  - `registerTitlebarLogo(el)`：供 `App.tsx` 在应用初始化时注册标题栏 Logo 元素，并在组件卸载时注销清理。
+  - 自动绑定 `visibilitychange` 事件：当窗口隐藏（`document.visibilityState === 'hidden'`）时立即停止动画并移除动效类。
+  - 监听 `animationend` 事件：在完整编舞终点（成功反馈结束于 `pata-success-card-front` ~750ms，启动结束于 `pata-sparkle-3` ~660ms）准确清理类名并恢复静态基线；辅以安全超时器兜底。
+  - 并发合并：连续多次触发保存成功时立即重置并重新播放，绝不创建动画队列或堆叠。
+  - 异常隔离：所有 DOM/动画操作以 `try-catch` 保护，动画异常绝不阻塞主业务流程。
+  - 辅助功能拦截：JS 层主动检测 `prefers-reduced-motion: reduce`，匹配时直接跳过动画播放。
+
+#### 1.4 业务触发点接线
+- **启动触发**：`frontend/src/App.tsx` 在组件初次挂载就绪的 `useEffect` 中调用 `playLogoLaunch()`，仅播放一次；全局布尔标志保障即使导航切换、列表刷新或 Vault 切换也绝不重复播放，主界面立即可操作。
+- **保存成功触发**：
+  - `frontend/src/TodayView.tsx` 中的 `handleCreateQuickMemo`：在 `await VaultService.CreateMemo(input)` 成功写入后调用 `playLogoSuccess()`；输入校验未通过或写入异常均不播放。
+  - `frontend/src/TasksView.tsx` 中的 `handleAddMemo`：在 `await VaultService.CreateMemo(input)` 成功写入后调用 `playLogoSuccess()`；校验失败或写入异常不播放。
+  - Notes 自动保存、后台扫描（`vault:changed`）、外部文件刷新一律不调用触发，完全静默。
+
+#### 1.5 源文件辨识度调整注释
+- 在 `assets/branding/logo.svg` 的 `leafEdge` 渐变前追加注释，记录组件层为浅色标题栏辨识度将起点微调为 `#E2DAF0` 的设计背景（P6-R1 遗留观察项），防止后续从矢量源重新派生时丢失。
+
+### 2. 验证命令与结果
+
+#### 2.1 前端类型检查与生产构建
+```bash
+cd frontend
+npm install
+npm run build
+```
+- **结果**: `tsc` 类型检查零错误；`vite build --mode production` 成功构建生产资源。
+
+#### 2.2 控制器逻辑自动化测试
+```bash
+node --experimental-strip-types scratch/test_logo_anim.mjs
+```
+- **覆盖用例**:
+  1. 启动动画仅播放一次，再次调用被自动忽略。
+  2. 成功动画触发后可在 `animationend` 正常移除类名并归于静态。
+  3. 连续保存成功时合并重置，无类名叠加或队列堆积。
+  4. 窗口切至后台隐藏时自动停止动画并清理。
+  5. 系统开启 `prefers-reduced-motion` 时自动拦截并保持静态。
+  6. 组件注销清理后不再响应动画。
+- **结果**: 6 项断言全部通过。
+
+#### 2.3 后端与二进制兼容性
+```bash
+go build -tags production -trimpath -buildvcs=false -o /dev/null .
+```
+- **结果**: 编译通过，与前端构建无缝联动。
+
+#### 2.4 实机目视与交互走查
+- 标注：前端构建与逻辑链路已闭环，浏览器及桌面原生容器内目视检查（启动弹出、Memo 轻压回弹、光芒时序、深浅色模式与系统减弱动态效果）移交 Lead 验收走查。
+
+
+**Lead 直改（P6-R3 审查期间）**：registerTitlebarLogo 重置 hasPlayedLaunch——StrictMode 开发双挂载下 mount#2 可正常播放启动动画；生产单挂载行为不变。

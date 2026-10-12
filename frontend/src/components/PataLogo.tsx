@@ -1,10 +1,13 @@
-import { useId, SVGProps } from 'react';
+import { useId, forwardRef, SVGProps } from 'react';
 
-interface PataLogoProps extends SVGProps<SVGSVGElement> {
+export interface PataLogoProps extends SVGProps<SVGSVGElement> {
   className?: string;
 }
 
-export function PataLogo({ className = 'w-4 h-4', ...props }: PataLogoProps) {
+export const PataLogo = forwardRef<SVGSVGElement, PataLogoProps>(function PataLogo(
+  { className = 'w-4 h-4', ...props }: PataLogoProps,
+  ref
+) {
   const rawId = useId();
   // 清理 React useId 中可能含有的冒号等字符，确保在 SVG id 与 url(#id) 中安全
   const id = rawId.replace(/[^a-zA-Z0-9_-]/g, '');
@@ -20,11 +23,12 @@ export function PataLogo({ className = 'w-4 h-4', ...props }: PataLogoProps) {
 
   return (
     <svg
+      ref={ref}
       xmlns="http://www.w3.org/2000/svg"
       viewBox="0 0 828 816"
       role="img"
       aria-label="啪嗒 Pata 品牌标识"
-      className={className}
+      className={`pata-logo-svg ${className}`.trim()}
       {...props}
     >
       <defs>
@@ -69,16 +73,16 @@ export function PataLogo({ className = 'w-4 h-4', ...props }: PataLogoProps) {
         </filter>
       </defs>
       <g id="pata-symbol" className="pata-symbol">
-        {/* 底层卡片投影 */}
-        <path
-          d="M166 343 C176 330 188 322 204 318 C221 313 237 314 254 319 L477 365 C517 374 550 414 579 475 C604 527 601 566 567 586 C559 592 546 597 533 602 L344 668 C297 683 265 663 243 630 C222 596 198 538 177 490 L143 408 C132 375 150 354 166 343 Z"
-          fill="#803ACD"
-          opacity=".22"
-          transform="translate(5 12)"
-          filter={`url(#${sceneShadowId})`}
-        />
-        {/* 底层卡片 (粉紫) */}
-        <g id="pata-card-back" className="pata-card-back">
+        {/* 底层卡片 (粉紫，内含首位柔和投影以实现回弹随动) */}
+        <g id="pata-card-back" className="pata-card pata-card-back">
+          <path
+            className="pata-card-shadow pata-shadow-back"
+            d="M166 343 C176 330 188 322 204 318 C221 313 237 314 254 319 L477 365 C517 374 550 414 579 475 C604 527 601 566 567 586 C559 592 546 597 533 602 L344 668 C297 683 265 663 243 630 C222 596 198 538 177 490 L143 408 C132 375 150 354 166 343 Z"
+            fill="#803ACD"
+            opacity=".22"
+            transform="translate(5 12)"
+            filter={`url(#${sceneShadowId})`}
+          />
           <path
             d="M166 343 C176 330 188 322 204 318 C221 313 237 314 254 319 L477 365 C517 374 550 414 579 475 C604 527 601 566 567 586 C559 592 546 597 533 602 L344 668 C297 683 265 663 243 630 C222 596 198 538 177 490 L143 408 C132 375 150 354 166 343 Z"
             fill={`url(#${purpleBackId})`}
@@ -96,16 +100,16 @@ export function PataLogo({ className = 'w-4 h-4', ...props }: PataLogoProps) {
             strokeLinecap="round"
           />
         </g>
-        {/* 中层卡片投影 */}
-        <path
-          d="M211 279 C231 270 248 269 266 275 L479 326 C523 340 553 380 575 441 C597 496 610 532 591 562 C584 573 571 581 551 588 L405 625 C354 642 320 626 295 586 C266 542 245 499 220 442 C193 382 184 345 193 304 C196 292 201 284 211 279 Z"
-          fill="#DD747F"
-          opacity=".22"
-          transform="translate(3 7)"
-          filter={`url(#${paperShadowId})`}
-        />
-        {/* 中层卡片 (橙黄) */}
-        <g id="pata-card-middle" className="pata-card-middle">
+        {/* 中层卡片 (橙黄，内含首位柔和投影以实现回弹随动) */}
+        <g id="pata-card-middle" className="pata-card pata-card-middle">
+          <path
+            className="pata-card-shadow pata-shadow-middle"
+            d="M211 279 C231 270 248 269 266 275 L479 326 C523 340 553 380 575 441 C597 496 610 532 591 562 C584 573 571 581 551 588 L405 625 C354 642 320 626 295 586 C266 542 245 499 220 442 C193 382 184 345 193 304 C196 292 201 284 211 279 Z"
+            fill="#DD747F"
+            opacity=".22"
+            transform="translate(3 7)"
+            filter={`url(#${paperShadowId})`}
+          />
           <path
             d="M211 279 C231 270 248 269 266 275 L479 326 C523 340 553 380 575 441 C597 496 610 532 591 562 C584 573 571 581 551 588 L405 625 C354 642 320 626 295 586 C266 542 245 499 220 442 C193 382 184 345 193 304 C196 292 201 284 211 279 Z"
             fill="#EC9770"
@@ -128,16 +132,16 @@ export function PataLogo({ className = 'w-4 h-4', ...props }: PataLogoProps) {
             strokeLinecap="round"
           />
         </g>
-        {/* 顶层卡片投影 */}
-        <path
-          d="M310 224 C331 224 345 229 362 236 L484 279 C527 295 539 316 560 366 C569 388 579 409 591 432 C607 456 639 470 664 487 C688 504 684 523 661 538 C648 547 633 550 610 556 L453 583 C402 592 366 577 342 544 C307 496 285 444 260 383 C243 341 234 301 240 269 C245 238 272 221 310 224 Z"
-          fill="#9E8FC3"
-          opacity=".17"
-          transform="translate(5 9)"
-          filter={`url(#${paperShadowId})`}
-        />
-        {/* 顶层卡片 (折叠白卡) */}
-        <g id="pata-card-front" className="pata-card-front">
+        {/* 顶层卡片 (折叠白卡，内含首位柔和投影以实现回弹随动) */}
+        <g id="pata-card-front" className="pata-card pata-card-front">
+          <path
+            className="pata-card-shadow pata-shadow-front"
+            d="M310 224 C331 224 345 229 362 236 L484 279 C527 295 539 316 560 366 C569 388 579 409 591 432 C607 456 639 470 664 487 C688 504 684 523 661 538 C648 547 633 550 610 556 L453 583 C402 592 366 577 342 544 C307 496 285 444 260 383 C243 341 234 301 240 269 C245 238 272 221 310 224 Z"
+            fill="#9E8FC3"
+            opacity=".17"
+            transform="translate(5 9)"
+            filter={`url(#${paperShadowId})`}
+          />
           <path
             d="M310 224 C331 224 345 229 362 236 L484 279 C527 295 539 316 560 366 C569 388 579 409 591 432 C607 456 639 470 664 487 C688 504 684 523 661 538 C648 547 633 550 610 556 L453 583 C402 592 366 577 342 544 C307 496 285 444 260 383 C243 341 234 301 240 269 C245 238 272 221 310 224 Z"
             fill="#D7D0F2"
@@ -171,17 +175,17 @@ export function PataLogo({ className = 'w-4 h-4', ...props }: PataLogoProps) {
         {/* 三道光芒 */}
         <g id="pata-sparkles" className="pata-sparkles">
           <g opacity=".14" fill="#FF9923" filter={`url(#${sparkGlowId})`}>
-            <rect className="pata-sparkle-1" x="488" y="143" width="44" height="105" rx="23" />
-            <rect className="pata-sparkle-2" x="575" y="169" width="47" height="109" rx="24" transform="rotate(47 599 222)" />
-            <rect className="pata-sparkle-3" x="605" y="316" width="96" height="44" rx="22" transform="rotate(8 653 338)" />
+            <rect className="pata-sparkle pata-sparkle-1" x="488" y="143" width="44" height="105" rx="23" />
+            <rect className="pata-sparkle pata-sparkle-2" x="575" y="169" width="47" height="109" rx="24" transform="rotate(47 599 222)" />
+            <rect className="pata-sparkle pata-sparkle-3" x="605" y="316" width="96" height="44" rx="22" transform="rotate(8 653 338)" />
           </g>
           <g fill={`url(#${sparkYellowId})`} stroke="#FFE277" strokeWidth="1.5">
-            <rect className="pata-sparkle-1" x="490" y="143" width="42" height="103" rx="21" transform="rotate(-1 511 195)" />
-            <rect className="pata-sparkle-2" x="575" y="171" width="45" height="105" rx="22.5" transform="rotate(46 598 224)" />
-            <rect className="pata-sparkle-3" x="602" y="318" width="103" height="43" rx="21.5" transform="rotate(6 653 339)" />
+            <rect className="pata-sparkle pata-sparkle-1" x="490" y="143" width="42" height="103" rx="21" transform="rotate(-1 511 195)" />
+            <rect className="pata-sparkle pata-sparkle-2" x="575" y="171" width="45" height="105" rx="22.5" transform="rotate(46 598 224)" />
+            <rect className="pata-sparkle pata-sparkle-3" x="602" y="318" width="103" height="43" rx="21.5" transform="rotate(6 653 339)" />
           </g>
         </g>
       </g>
     </svg>
   );
-}
+});
