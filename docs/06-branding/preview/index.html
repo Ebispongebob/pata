@@ -1,0 +1,1544 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="light" data-reduced-motion="false">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Pata 啪嗒 · 品牌标识动画规格与预览</title>
+  <link rel="stylesheet" href="./logo-animation.css">
+  <style>
+    /* ======================================================================
+       PREVIEW SHELL & PAGE DESIGN (macOS Native HIG Style, Zero External Dep)
+       ====================================================================== */
+    :root {
+      --bg-primary: #F5F5F7;
+      --bg-card: #FFFFFF;
+      --bg-card-subtle: #F9F9FA;
+      --border-color: rgba(0, 0, 0, 0.08);
+      --border-focus: #007AFF;
+      --text-main: #1D1D1F;
+      --text-secondary: #86868B;
+      --text-muted: #A1A1A6;
+      --accent: #E05C38;
+      --accent-soft: rgba(224, 92, 56, 0.12);
+      --code-bg: rgba(0, 0, 0, 0.04);
+      --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.04), 0 2px 6px rgba(0, 0, 0, 0.02);
+      --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.06), 0 1px 3px rgba(0, 0, 0, 0.04);
+      --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.08), 0 2px 6px rgba(0, 0, 0, 0.03);
+    }
+
+    [data-theme="dark"] {
+      --bg-primary: #19191C;
+      --bg-card: #232326;
+      --bg-card-subtle: #2C2C30;
+      --border-color: rgba(255, 255, 255, 0.1);
+      --border-focus: #0A84FF;
+      --text-main: #F5F5F7;
+      --text-secondary: #A1A1A6;
+      --text-muted: #6E6E73;
+      --accent: #FF7B54;
+      --accent-soft: rgba(255, 123, 84, 0.18);
+      --code-bg: rgba(255, 255, 255, 0.06);
+      --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.2);
+      --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.35);
+      --shadow-lg: 0 12px 36px rgba(0, 0, 0, 0.5);
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "PingFang SC", "Helvetica Neue", sans-serif;
+      background-color: var(--bg-primary);
+      color: var(--text-main);
+      line-height: 1.5;
+      padding: 32px 24px 64px;
+      -webkit-font-smoothing: antialiased;
+      transition: background-color 0.25s ease, color 0.25s ease;
+    }
+
+    .container {
+      max-width: 1040px;
+      margin: 0 auto;
+    }
+
+    /* Header */
+    header.header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: 28px;
+      padding-bottom: 20px;
+      border-bottom: 1px solid var(--border-color);
+    }
+
+    .header-title-group h1 {
+      font-size: 24px;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      margin-bottom: 4px;
+    }
+
+    .header-title-group p {
+      font-size: 14px;
+      color: var(--text-secondary);
+    }
+
+    .header-controls {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+
+    /* macOS Segmented / Button Style */
+    .btn {
+      appearance: none;
+      border: 1px solid var(--border-color);
+      background: var(--bg-card);
+      color: var(--text-main);
+      padding: 7px 14px;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      box-shadow: var(--shadow-sm);
+      transition: all 0.15s ease;
+      user-select: none;
+    }
+
+    .btn:hover {
+      background: var(--bg-card-subtle);
+      border-color: rgba(0, 0, 0, 0.16);
+    }
+
+    [data-theme="dark"] .btn:hover {
+      border-color: rgba(255, 255, 255, 0.2);
+    }
+
+    .btn:active {
+      transform: scale(0.98);
+    }
+
+    .btn.btn-primary {
+      background: var(--accent);
+      color: #FFFFFF;
+      border-color: transparent;
+    }
+
+    .btn.btn-primary:hover {
+      opacity: 0.92;
+    }
+
+    .btn.active {
+      background: var(--accent-soft);
+      border-color: var(--accent);
+      color: var(--accent);
+      font-weight: 600;
+    }
+
+    /* Global Playback Toolbar */
+    .toolbar {
+      position: sticky;
+      top: 16px;
+      z-index: 100;
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: 12px;
+      padding: 12px 18px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 32px;
+      box-shadow: var(--shadow-md);
+      backdrop-filter: blur(12px);
+    }
+
+    .toolbar-actions {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+
+    .toolbar-toggles {
+      display: flex;
+      gap: 16px;
+      align-items: center;
+    }
+
+    .switch-label {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 13px;
+      color: var(--text-secondary);
+      cursor: pointer;
+      user-select: none;
+    }
+
+    .switch-label input[type="checkbox"] {
+      appearance: none;
+      width: 36px;
+      height: 20px;
+      background: var(--border-color);
+      border-radius: 20px;
+      position: relative;
+      outline: none;
+      cursor: pointer;
+      transition: background 0.2s ease;
+    }
+
+    .switch-label input[type="checkbox"]::after {
+      content: "";
+      position: absolute;
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background: #FFFFFF;
+      top: 2px;
+      left: 2px;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+      transition: transform 0.2s ease;
+    }
+
+    .switch-label input[type="checkbox"]:checked {
+      background: var(--accent);
+    }
+
+    .switch-label input[type="checkbox"]:checked::after {
+      transform: translateX(16px);
+    }
+
+    /* Sections */
+    .section {
+      margin-bottom: 36px;
+    }
+
+    .section-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      margin-bottom: 14px;
+    }
+
+    .section-title {
+      font-size: 17px;
+      font-weight: 600;
+      letter-spacing: -0.01em;
+    }
+
+    .section-desc {
+      font-size: 13px;
+      color: var(--text-secondary);
+    }
+
+    /* Stage: Hero Display */
+    .hero-stage {
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: 16px;
+      padding: 36px 32px;
+      display: grid;
+      grid-template-columns: 340px 1fr;
+      gap: 36px;
+      align-items: center;
+      box-shadow: var(--shadow-sm);
+    }
+
+    .hero-logo-box {
+      width: 100%;
+      height: 280px;
+      background: var(--bg-card-subtle);
+      border-radius: 12px;
+      border: 1px dashed var(--border-color);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      position: relative;
+      /* Leave padding to guarantee zero clipping */
+      padding: 24px;
+    }
+
+    .hero-meta {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .badge-status {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 10px;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 600;
+      width: fit-content;
+      background: var(--accent-soft);
+      color: var(--accent);
+    }
+
+    .specs-list {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      font-size: 13px;
+      color: var(--text-secondary);
+    }
+
+    .specs-list li {
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+    }
+
+    .specs-list li::before {
+      content: "✓";
+      color: var(--accent);
+      font-weight: bold;
+    }
+
+    /* Titlebar Mockup Stage */
+    .titlebar-stage {
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: 16px;
+      overflow: hidden;
+      box-shadow: var(--shadow-sm);
+    }
+
+    .window-chrome {
+      background: var(--bg-card-subtle);
+      border-bottom: 1px solid var(--border-color);
+      height: 38px;
+      display: flex;
+      align-items: center;
+      padding: 0 16px;
+      gap: 16px;
+      user-select: none;
+    }
+
+    .traffic-lights {
+      display: flex;
+      gap: 8px;
+    }
+
+    .traffic-light {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+    }
+
+    .tl-close { background: #FF5F56; }
+    .tl-min { background: #FFBD2E; }
+    .tl-zoom { background: #27C93F; }
+
+    .app-titlebar-brand {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding-left: 20px;
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--text-main);
+    }
+
+    .window-body {
+      padding: 24px;
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 20px;
+    }
+
+    .size-card {
+      background: var(--bg-card-subtle);
+      border: 1px solid var(--border-color);
+      border-radius: 10px;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 12px;
+      text-align: center;
+    }
+
+    .size-box {
+      height: 72px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      /* Anti-clipping safety margin */
+      padding: 8px;
+    }
+
+    .size-label {
+      font-size: 13px;
+      font-weight: 600;
+    }
+
+    .size-sub {
+      font-size: 11px;
+      color: var(--text-secondary);
+    }
+
+    /* Multi-State Grid */
+    .matrix-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 16px;
+    }
+
+    @media (max-width: 860px) {
+      .matrix-grid {
+        grid-template-columns: repeat(2, 1fr);
+      }
+      .hero-stage {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .matrix-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: 12px;
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      text-align: center;
+      box-shadow: var(--shadow-sm);
+    }
+
+    .matrix-box {
+      height: 120px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 12px;
+      padding: 12px;
+    }
+
+    .matrix-title {
+      font-size: 14px;
+      font-weight: 600;
+      margin-bottom: 4px;
+    }
+
+    .matrix-timing {
+      font-size: 12px;
+      color: var(--accent);
+      font-family: ui-monospace, Menlo, Monaco, monospace;
+      margin-bottom: 8px;
+    }
+
+    .matrix-desc {
+      font-size: 12px;
+      color: var(--text-secondary);
+      line-height: 1.4;
+    }
+
+    /* Information & Spec Table */
+    .spec-table-box {
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: 12px;
+      overflow: hidden;
+      margin-bottom: 24px;
+      box-shadow: var(--shadow-sm);
+    }
+
+    table.spec-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+      text-align: left;
+    }
+
+    table.spec-table th,
+    table.spec-table td {
+      padding: 12px 18px;
+      border-bottom: 1px solid var(--border-color);
+    }
+
+    table.spec-table th {
+      background: var(--bg-card-subtle);
+      font-weight: 600;
+      color: var(--text-secondary);
+    }
+
+    table.spec-table tr:last-child td {
+      border-bottom: none;
+    }
+
+    .info-callout {
+      background: var(--accent-soft);
+      border-left: 3px solid var(--accent);
+      padding: 14px 18px;
+      border-radius: 0 8px 8px 0;
+      font-size: 13px;
+      color: var(--text-main);
+      margin-bottom: 24px;
+      line-height: 1.5;
+    }
+
+    .code-tag {
+      display: inline-block;
+      font-family: ui-monospace, Menlo, Monaco, monospace;
+      font-size: 12px;
+      background: var(--code-bg);
+      padding: 2px 6px;
+      border-radius: 4px;
+      color: var(--text-main);
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <!-- Header -->
+    <header class="header">
+      <div class="header-title-group">
+        <h1>Pata (啪嗒) Logo 动画系统预览</h1>
+        <p>阶段 6 · 品牌接入与动效规格实机走查 (单文件/离线就绪/零外链)</p>
+      </div>
+      <div class="header-controls">
+        <button type="button" class="btn" id="btn-theme-light" title="浅色模式">☀️ 浅色</button>
+        <button type="button" class="btn" id="btn-theme-dark" title="深色模式">🌙 深色</button>
+        <button type="button" class="btn" id="btn-theme-sys" title="跟随系统">💻 系统</button>
+      </div>
+    </header>
+
+    <!-- Global Floating Action Bar -->
+    <nav class="toolbar" aria-label="动画控制栏">
+      <div class="toolbar-actions">
+        <button type="button" class="btn btn-primary" id="btn-play-launch">🚀 启动动画 (~600ms)</button>
+        <button type="button" class="btn btn-primary" id="btn-play-success">✨ 保存成功 (~700ms)</button>
+        <button type="button" class="btn" id="btn-set-static">⏹️ 静态基线</button>
+        <button type="button" class="btn" id="btn-replay" title="重播当前动作">🔄 重播</button>
+      </div>
+      <div class="toolbar-toggles">
+        <label class="switch-label" title="慢速模式用于仔细检视卡片位移与光芒时序">
+          <input type="checkbox" id="chk-slow-mo">
+          <span>慢速 0.3x</span>
+        </label>
+        <label class="switch-label" title="模拟开启 macOS 减少动态效果辅助功能，开启时立刻恢复静态">
+          <input type="checkbox" id="chk-reduced-motion">
+          <span>减少动态效果</span>
+        </label>
+      </div>
+    </nav>
+
+    <!-- Info Callout: Reduced Motion Notice -->
+    <div class="info-callout" id="reduced-motion-banner" style="display: none;">
+      <strong>♿ 减少动态效果 (prefers-reduced-motion) 已模拟激活：</strong>
+      依据设计规范，此时应用内所有 Logo 立即回归静态无动效基线，不执行弹起、压缩与光芒动画，确保前庭觉障碍或偏好安静的用户免受干扰。
+    </div>
+
+    <!-- Section 1: Hero Showcase (Regular Size ~200px) -->
+    <section class="section" id="section-hero">
+      <div class="section-header">
+        <h2 class="section-title">1. 常规尺寸动效展台 (Hero Showcase · 200px)</h2>
+        <span class="section-desc">观察卡片位移、柔和投影同步随动与三道光芒时序</span>
+      </div>
+      <div class="hero-stage">
+        <div class="hero-logo-box" id="hero-box">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 828 816" width="200" height="200" class="pata-logo-svg anim-static anim-hoverable" role="img" aria-label="啪嗒 Pata 品牌标识" data-instance="hero">
+  <defs>
+    <linearGradient id="hero-purpleBack" x1="0" y1=".1" x2="1" y2="1">
+      <stop stop-color="#FF9D40"/><stop offset=".4" stop-color="#FF5DAE"/><stop offset=".74" stop-color="#AD50F0"/><stop offset="1" stop-color="#606FFB"/>
+    </linearGradient>
+    <linearGradient id="hero-yellowMiddle" x1=".1" y1=".03" x2=".83" y2="1">
+      <stop stop-color="#FFEE57"/><stop offset=".3" stop-color="#FFC63B"/><stop offset=".69" stop-color="#FF9C46"/><stop offset="1" stop-color="#FFBB76"/>
+    </linearGradient>
+    <linearGradient id="hero-whiteLeaf" x1=".15" y1="0" x2=".92" y2="1">
+      <stop stop-color="#FFFFF7"/><stop offset=".26" stop-color="#FFF6ED"/><stop offset=".57" stop-color="#F9F5FE"/><stop offset=".83" stop-color="#E8ECFF"/><stop offset="1" stop-color="#FFFDFB"/>
+    </linearGradient>
+    <linearGradient id="hero-leafEdge" x1=".1" y1="0" x2=".5" y2="1">
+      <stop stop-color="#FFFFFF"/><stop offset=".6" stop-color="#FFF7F3"/><stop offset="1" stop-color="#E1D5FF"/>
+    </linearGradient>
+    <linearGradient id="hero-sparkYellow" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#FFE843"/><stop offset=".57" stop-color="#FFBD17"/><stop offset="1" stop-color="#FF8E25"/>
+    </linearGradient>
+    <filter id="hero-sceneShadow" x="-40%" y="-40%" width="180%" height="190%">
+      <feGaussianBlur stdDeviation="16"/>
+    </filter>
+    <filter id="hero-paperShadow" x="-30%" y="-30%" width="170%" height="180%">
+      <feGaussianBlur stdDeviation="10"/>
+    </filter>
+    <filter id="hero-sparkGlow" x="-90%" y="-90%" width="300%" height="300%">
+      <feGaussianBlur stdDeviation="7"/>
+    </filter>
+  </defs>
+  <g id="hero-symbol" class="pata-symbol">
+    <!-- Card Back (Purple) with its soft shadow inside the group -->
+    <g id="hero-card-back" class="pata-card pata-card-back">
+      <path class="pata-card-shadow pata-shadow-back" d="M166 343 C176 330 188 322 204 318 C221 313 237 314 254 319 L477 365 C517 374 550 414 579 475 C604 527 601 566 567 586 C559 592 546 597 533 602 L344 668 C297 683 265 663 243 630 C222 596 198 538 177 490 L143 408 C132 375 150 354 166 343 Z" fill="#803ACD" opacity=".22" transform="translate(5 12)" filter="url(#hero-sceneShadow)"/>
+      <path d="M166 343 C176 330 188 322 204 318 C221 313 237 314 254 319 L477 365 C517 374 550 414 579 475 C604 527 601 566 567 586 C559 592 546 597 533 602 L344 668 C297 683 265 663 243 630 C222 596 198 538 177 490 L143 408 C132 375 150 354 166 343 Z" fill="url(#hero-purpleBack)" stroke="#F7B6E5" stroke-opacity=".55" stroke-width="2.4" stroke-linejoin="round"/>
+      <path d="M150 400 C159 445 202 551 245 630 C271 669 304 682 346 664" fill="none" stroke="#FFD1E8" stroke-opacity=".42" stroke-width="3" stroke-linecap="round"/>
+    </g>
+
+    <!-- Card Middle (Yellow) with its soft shadow inside the group -->
+    <g id="hero-card-middle" class="pata-card pata-card-middle">
+      <path class="pata-card-shadow pata-shadow-middle" d="M211 279 C231 270 248 269 266 275 L479 326 C523 340 553 380 575 441 C597 496 610 532 591 562 C584 573 571 581 551 588 L405 625 C354 642 320 626 295 586 C266 542 245 499 220 442 C193 382 184 345 193 304 C196 292 201 284 211 279 Z" fill="#DD747F" opacity=".22" transform="translate(3 7)" filter="url(#hero-paperShadow)"/>
+      <path d="M211 279 C231 270 248 269 266 275 L479 326 C523 340 553 380 575 441 C597 496 610 532 591 562 C584 573 571 581 551 588 L405 625 C354 642 320 626 295 586 C266 542 245 499 220 442 C193 382 184 345 193 304 C196 292 201 284 211 279 Z" fill="#EC9770" opacity=".4" transform="translate(1.5 5)"/>
+      <path d="M211 279 C231 270 248 269 266 275 L479 326 C523 340 553 380 575 441 C597 496 610 532 591 562 C584 573 571 581 551 588 L405 625 C354 642 320 626 295 586 C266 542 245 499 220 442 C193 382 184 345 193 304 C196 292 201 284 211 279 Z" fill="url(#hero-yellowMiddle)" stroke="#FFE596" stroke-width="3.1" stroke-linejoin="round"/>
+      <path d="M202 304 C191 347 203 397 228 452 C255 511 281 559 307 595 C331 629 366 639 407 621" fill="none" stroke="#FFEFBA" stroke-opacity=".55" stroke-width="3" stroke-linecap="round"/>
+    </g>
+
+    <!-- Card Front (White Folded) with its soft shadow inside the group -->
+    <g id="hero-card-front" class="pata-card pata-card-front">
+      <path class="pata-card-shadow pata-shadow-front" d="M310 224 C331 224 345 229 362 236 L484 279 C527 295 539 316 560 366 C569 388 579 409 591 432 C607 456 639 470 664 487 C688 504 684 523 661 538 C648 547 633 550 610 556 L453 583 C402 592 366 577 342 544 C307 496 285 444 260 383 C243 341 234 301 240 269 C245 238 272 221 310 224 Z" fill="#9E8FC3" opacity=".17" transform="translate(5 9)" filter="url(#hero-paperShadow)"/>
+      <path d="M310 224 C331 224 345 229 362 236 L484 279 C527 295 539 316 560 366 C569 388 579 409 591 432 C607 456 639 470 664 487 C688 504 684 523 661 538 C648 547 633 550 610 556 L453 583 C402 592 366 577 342 544 C307 496 285 444 260 383 C243 341 234 301 240 269 C245 238 272 221 310 224 Z" fill="#D7D0F2" opacity=".72" transform="translate(1 5)"/>
+      <path d="M310 224 C331 224 345 229 362 236 L484 279 C527 295 539 316 560 366 C569 388 579 409 591 432 C607 456 639 470 664 487 C688 504 684 523 661 538 C648 547 633 550 610 556 L453 583 C402 592 366 577 342 544 C307 496 285 444 260 383 C243 341 234 301 240 269 C245 238 272 221 310 224 Z" fill="url(#hero-whiteLeaf)" stroke="url(#hero-leafEdge)" stroke-width="3.5" stroke-linejoin="round"/>
+      <path d="M308 227 C277 223 252 237 246 270 C241 302 251 352 270 402 C290 454 317 515 346 547 C370 581 404 589 451 582" fill="none" stroke="#FFFFFF" stroke-opacity=".82" stroke-width="3" stroke-linecap="round"/>
+      <path d="M341 545 C368 582 403 592 453 586 L611 560 C634 555 648 550 664 539" fill="none" stroke="#C6BEEF" stroke-opacity=".4" stroke-width="2.4" stroke-linecap="round"/>
+    </g>
+
+    <!-- Sparkles: 3 distinct groups sequenced 1 -> 2 -> 3 -->
+    <g id="hero-sparkles" class="pata-sparkles">
+      <g id="hero-sparkle-1" class="pata-sparkle pata-sparkle-1" data-sparkle="1">
+        <rect x="488" y="143" width="44" height="105" rx="23" opacity=".14" fill="#FF9923" filter="url(#hero-sparkGlow)"/>
+        <rect x="490" y="143" width="42" height="103" rx="21" fill="url(#hero-sparkYellow)" stroke="#FFE277" stroke-width="1.5" transform="rotate(-1 511 195)"/>
+      </g>
+      <g id="hero-sparkle-2" class="pata-sparkle pata-sparkle-2" data-sparkle="2">
+        <rect x="575" y="169" width="47" height="109" rx="24" transform="rotate(47 599 222)" opacity=".14" fill="#FF9923" filter="url(#hero-sparkGlow)"/>
+        <rect x="575" y="171" width="45" height="105" rx="22.5" transform="rotate(46 598 224)" fill="url(#hero-sparkYellow)" stroke="#FFE277" stroke-width="1.5"/>
+      </g>
+      <g id="hero-sparkle-3" class="pata-sparkle pata-sparkle-3" data-sparkle="3">
+        <rect x="605" y="316" width="96" height="44" rx="22" transform="rotate(8 653 338)" opacity=".14" fill="#FF9923" filter="url(#hero-sparkGlow)"/>
+        <rect x="602" y="318" width="103" height="43" rx="21.5" transform="rotate(6 653 339)" fill="url(#hero-sparkYellow)" stroke="#FFE277" stroke-width="1.5"/>
+      </g>
+    </g>
+  </g>
+</svg>
+        </div>
+        <div class="hero-meta">
+          <div>
+            <span class="badge-status" id="hero-status-badge">当前状态: 静态基线 (Static)</span>
+          </div>
+          <p style="font-size: 13px; color: var(--text-main);">
+            三层卡片设计以「轻压-回弹」传达「啪嗒」的触觉反馈感，右上角三道光芒呈放射状亮起，保持工作界面安静克制。
+          </p>
+          <ul class="specs-list">
+            <li><strong>投影随动：</strong>归档 SVG 原有柔和投影已内嵌至对应卡片内部首位，回弹时投影与卡片绝对同步，无脱节漂移。</li>
+            <li><strong>光芒独立编组：</strong>三道光芒独立标注为 <span class="code-tag">.pata-sparkle-1/2/3</span>，按 1 → 2 → 3 依次绽放/亮起。</li>
+            <li><strong>防裁切：</strong>容器预留安全内边距，SVG 标注 <span class="code-tag">overflow: visible</span>，高斯模糊光晕与边缘位移不被裁切。</li>
+            <li><strong>保真轮廓：</strong>仅施加微量 translateY、scale 与 opacity，绝不畸变精修三次贝塞尔轮廓，无剧烈倾斜旋转。</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <!-- Section 2: Real Titlebar Small-Scale Mockup -->
+    <section class="section" id="section-titlebar">
+      <div class="section-header">
+        <h2 class="section-title">2. 真实标题栏与小尺寸展示 (Titlebar & Small Scales)</h2>
+        <span class="section-desc">验证在 16px、20px、24px、32px 微小尺寸下动效的可辨识度与稳定性</span>
+      </div>
+      <div class="titlebar-stage">
+        <!-- Mock Titlebar Header matching frontend/src/App.tsx line 249 -->
+        <div class="window-chrome">
+          <div class="traffic-lights">
+            <div class="traffic-light tl-close"></div>
+            <div class="traffic-light tl-min"></div>
+            <div class="traffic-light tl-zoom"></div>
+          </div>
+          <div class="app-titlebar-brand" title="匹配 App.tsx 实际标题栏位置">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 828 816" width="16" height="16" class="pata-logo-svg anim-static" role="img" aria-label="啪嗒 Pata 品牌标识" data-instance="tb16">
+  <defs>
+    <linearGradient id="tb16-purpleBack" x1="0" y1=".1" x2="1" y2="1">
+      <stop stop-color="#FF9D40"/><stop offset=".4" stop-color="#FF5DAE"/><stop offset=".74" stop-color="#AD50F0"/><stop offset="1" stop-color="#606FFB"/>
+    </linearGradient>
+    <linearGradient id="tb16-yellowMiddle" x1=".1" y1=".03" x2=".83" y2="1">
+      <stop stop-color="#FFEE57"/><stop offset=".3" stop-color="#FFC63B"/><stop offset=".69" stop-color="#FF9C46"/><stop offset="1" stop-color="#FFBB76"/>
+    </linearGradient>
+    <linearGradient id="tb16-whiteLeaf" x1=".15" y1="0" x2=".92" y2="1">
+      <stop stop-color="#FFFFF7"/><stop offset=".26" stop-color="#FFF6ED"/><stop offset=".57" stop-color="#F9F5FE"/><stop offset=".83" stop-color="#E8ECFF"/><stop offset="1" stop-color="#FFFDFB"/>
+    </linearGradient>
+    <linearGradient id="tb16-leafEdge" x1=".1" y1="0" x2=".5" y2="1">
+      <stop stop-color="#FFFFFF"/><stop offset=".6" stop-color="#FFF7F3"/><stop offset="1" stop-color="#E1D5FF"/>
+    </linearGradient>
+    <linearGradient id="tb16-sparkYellow" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#FFE843"/><stop offset=".57" stop-color="#FFBD17"/><stop offset="1" stop-color="#FF8E25"/>
+    </linearGradient>
+    <filter id="tb16-sceneShadow" x="-40%" y="-40%" width="180%" height="190%">
+      <feGaussianBlur stdDeviation="16"/>
+    </filter>
+    <filter id="tb16-paperShadow" x="-30%" y="-30%" width="170%" height="180%">
+      <feGaussianBlur stdDeviation="10"/>
+    </filter>
+    <filter id="tb16-sparkGlow" x="-90%" y="-90%" width="300%" height="300%">
+      <feGaussianBlur stdDeviation="7"/>
+    </filter>
+  </defs>
+  <g id="tb16-symbol" class="pata-symbol">
+    <!-- Card Back (Purple) with its soft shadow inside the group -->
+    <g id="tb16-card-back" class="pata-card pata-card-back">
+      <path class="pata-card-shadow pata-shadow-back" d="M166 343 C176 330 188 322 204 318 C221 313 237 314 254 319 L477 365 C517 374 550 414 579 475 C604 527 601 566 567 586 C559 592 546 597 533 602 L344 668 C297 683 265 663 243 630 C222 596 198 538 177 490 L143 408 C132 375 150 354 166 343 Z" fill="#803ACD" opacity=".22" transform="translate(5 12)" filter="url(#tb16-sceneShadow)"/>
+      <path d="M166 343 C176 330 188 322 204 318 C221 313 237 314 254 319 L477 365 C517 374 550 414 579 475 C604 527 601 566 567 586 C559 592 546 597 533 602 L344 668 C297 683 265 663 243 630 C222 596 198 538 177 490 L143 408 C132 375 150 354 166 343 Z" fill="url(#tb16-purpleBack)" stroke="#F7B6E5" stroke-opacity=".55" stroke-width="2.4" stroke-linejoin="round"/>
+      <path d="M150 400 C159 445 202 551 245 630 C271 669 304 682 346 664" fill="none" stroke="#FFD1E8" stroke-opacity=".42" stroke-width="3" stroke-linecap="round"/>
+    </g>
+
+    <!-- Card Middle (Yellow) with its soft shadow inside the group -->
+    <g id="tb16-card-middle" class="pata-card pata-card-middle">
+      <path class="pata-card-shadow pata-shadow-middle" d="M211 279 C231 270 248 269 266 275 L479 326 C523 340 553 380 575 441 C597 496 610 532 591 562 C584 573 571 581 551 588 L405 625 C354 642 320 626 295 586 C266 542 245 499 220 442 C193 382 184 345 193 304 C196 292 201 284 211 279 Z" fill="#DD747F" opacity=".22" transform="translate(3 7)" filter="url(#tb16-paperShadow)"/>
+      <path d="M211 279 C231 270 248 269 266 275 L479 326 C523 340 553 380 575 441 C597 496 610 532 591 562 C584 573 571 581 551 588 L405 625 C354 642 320 626 295 586 C266 542 245 499 220 442 C193 382 184 345 193 304 C196 292 201 284 211 279 Z" fill="#EC9770" opacity=".4" transform="translate(1.5 5)"/>
+      <path d="M211 279 C231 270 248 269 266 275 L479 326 C523 340 553 380 575 441 C597 496 610 532 591 562 C584 573 571 581 551 588 L405 625 C354 642 320 626 295 586 C266 542 245 499 220 442 C193 382 184 345 193 304 C196 292 201 284 211 279 Z" fill="url(#tb16-yellowMiddle)" stroke="#FFE596" stroke-width="3.1" stroke-linejoin="round"/>
+      <path d="M202 304 C191 347 203 397 228 452 C255 511 281 559 307 595 C331 629 366 639 407 621" fill="none" stroke="#FFEFBA" stroke-opacity=".55" stroke-width="3" stroke-linecap="round"/>
+    </g>
+
+    <!-- Card Front (White Folded) with its soft shadow inside the group -->
+    <g id="tb16-card-front" class="pata-card pata-card-front">
+      <path class="pata-card-shadow pata-shadow-front" d="M310 224 C331 224 345 229 362 236 L484 279 C527 295 539 316 560 366 C569 388 579 409 591 432 C607 456 639 470 664 487 C688 504 684 523 661 538 C648 547 633 550 610 556 L453 583 C402 592 366 577 342 544 C307 496 285 444 260 383 C243 341 234 301 240 269 C245 238 272 221 310 224 Z" fill="#9E8FC3" opacity=".17" transform="translate(5 9)" filter="url(#tb16-paperShadow)"/>
+      <path d="M310 224 C331 224 345 229 362 236 L484 279 C527 295 539 316 560 366 C569 388 579 409 591 432 C607 456 639 470 664 487 C688 504 684 523 661 538 C648 547 633 550 610 556 L453 583 C402 592 366 577 342 544 C307 496 285 444 260 383 C243 341 234 301 240 269 C245 238 272 221 310 224 Z" fill="#D7D0F2" opacity=".72" transform="translate(1 5)"/>
+      <path d="M310 224 C331 224 345 229 362 236 L484 279 C527 295 539 316 560 366 C569 388 579 409 591 432 C607 456 639 470 664 487 C688 504 684 523 661 538 C648 547 633 550 610 556 L453 583 C402 592 366 577 342 544 C307 496 285 444 260 383 C243 341 234 301 240 269 C245 238 272 221 310 224 Z" fill="url(#tb16-whiteLeaf)" stroke="url(#tb16-leafEdge)" stroke-width="3.5" stroke-linejoin="round"/>
+      <path d="M308 227 C277 223 252 237 246 270 C241 302 251 352 270 402 C290 454 317 515 346 547 C370 581 404 589 451 582" fill="none" stroke="#FFFFFF" stroke-opacity=".82" stroke-width="3" stroke-linecap="round"/>
+      <path d="M341 545 C368 582 403 592 453 586 L611 560 C634 555 648 550 664 539" fill="none" stroke="#C6BEEF" stroke-opacity=".4" stroke-width="2.4" stroke-linecap="round"/>
+    </g>
+
+    <!-- Sparkles: 3 distinct groups sequenced 1 -> 2 -> 3 -->
+    <g id="tb16-sparkles" class="pata-sparkles">
+      <g id="tb16-sparkle-1" class="pata-sparkle pata-sparkle-1" data-sparkle="1">
+        <rect x="488" y="143" width="44" height="105" rx="23" opacity=".14" fill="#FF9923" filter="url(#tb16-sparkGlow)"/>
+        <rect x="490" y="143" width="42" height="103" rx="21" fill="url(#tb16-sparkYellow)" stroke="#FFE277" stroke-width="1.5" transform="rotate(-1 511 195)"/>
+      </g>
+      <g id="tb16-sparkle-2" class="pata-sparkle pata-sparkle-2" data-sparkle="2">
+        <rect x="575" y="169" width="47" height="109" rx="24" transform="rotate(47 599 222)" opacity=".14" fill="#FF9923" filter="url(#tb16-sparkGlow)"/>
+        <rect x="575" y="171" width="45" height="105" rx="22.5" transform="rotate(46 598 224)" fill="url(#tb16-sparkYellow)" stroke="#FFE277" stroke-width="1.5"/>
+      </g>
+      <g id="tb16-sparkle-3" class="pata-sparkle pata-sparkle-3" data-sparkle="3">
+        <rect x="605" y="316" width="96" height="44" rx="22" transform="rotate(8 653 338)" opacity=".14" fill="#FF9923" filter="url(#tb16-sparkGlow)"/>
+        <rect x="602" y="318" width="103" height="43" rx="21.5" transform="rotate(6 653 339)" fill="url(#tb16-sparkYellow)" stroke="#FFE277" stroke-width="1.5"/>
+      </g>
+    </g>
+  </g>
+</svg>
+            <span>Pata 啪嗒</span>
+          </div>
+          <span style="font-size: 11px; color: var(--text-muted); margin-left: auto;">macOS 标题栏微尺寸 (16x16px) 实景对照</span>
+        </div>
+        <div class="window-body">
+          <div class="size-card">
+            <div class="size-box">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 828 816" width="16" height="16" class="pata-logo-svg anim-static" role="img" aria-label="啪嗒 Pata 品牌标识" data-instance="tb16-card">
+  <defs>
+    <linearGradient id="tb16-card-purpleBack" x1="0" y1=".1" x2="1" y2="1">
+      <stop stop-color="#FF9D40"/><stop offset=".4" stop-color="#FF5DAE"/><stop offset=".74" stop-color="#AD50F0"/><stop offset="1" stop-color="#606FFB"/>
+    </linearGradient>
+    <linearGradient id="tb16-card-yellowMiddle" x1=".1" y1=".03" x2=".83" y2="1">
+      <stop stop-color="#FFEE57"/><stop offset=".3" stop-color="#FFC63B"/><stop offset=".69" stop-color="#FF9C46"/><stop offset="1" stop-color="#FFBB76"/>
+    </linearGradient>
+    <linearGradient id="tb16-card-whiteLeaf" x1=".15" y1="0" x2=".92" y2="1">
+      <stop stop-color="#FFFFF7"/><stop offset=".26" stop-color="#FFF6ED"/><stop offset=".57" stop-color="#F9F5FE"/><stop offset=".83" stop-color="#E8ECFF"/><stop offset="1" stop-color="#FFFDFB"/>
+    </linearGradient>
+    <linearGradient id="tb16-card-leafEdge" x1=".1" y1="0" x2=".5" y2="1">
+      <stop stop-color="#FFFFFF"/><stop offset=".6" stop-color="#FFF7F3"/><stop offset="1" stop-color="#E1D5FF"/>
+    </linearGradient>
+    <linearGradient id="tb16-card-sparkYellow" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#FFE843"/><stop offset=".57" stop-color="#FFBD17"/><stop offset="1" stop-color="#FF8E25"/>
+    </linearGradient>
+    <filter id="tb16-card-sceneShadow" x="-40%" y="-40%" width="180%" height="190%">
+      <feGaussianBlur stdDeviation="16"/>
+    </filter>
+    <filter id="tb16-card-paperShadow" x="-30%" y="-30%" width="170%" height="180%">
+      <feGaussianBlur stdDeviation="10"/>
+    </filter>
+    <filter id="tb16-card-sparkGlow" x="-90%" y="-90%" width="300%" height="300%">
+      <feGaussianBlur stdDeviation="7"/>
+    </filter>
+  </defs>
+  <g id="tb16-card-symbol" class="pata-symbol">
+    <!-- Card Back (Purple) with its soft shadow inside the group -->
+    <g id="tb16-card-card-back" class="pata-card pata-card-back">
+      <path class="pata-card-shadow pata-shadow-back" d="M166 343 C176 330 188 322 204 318 C221 313 237 314 254 319 L477 365 C517 374 550 414 579 475 C604 527 601 566 567 586 C559 592 546 597 533 602 L344 668 C297 683 265 663 243 630 C222 596 198 538 177 490 L143 408 C132 375 150 354 166 343 Z" fill="#803ACD" opacity=".22" transform="translate(5 12)" filter="url(#tb16-card-sceneShadow)"/>
+      <path d="M166 343 C176 330 188 322 204 318 C221 313 237 314 254 319 L477 365 C517 374 550 414 579 475 C604 527 601 566 567 586 C559 592 546 597 533 602 L344 668 C297 683 265 663 243 630 C222 596 198 538 177 490 L143 408 C132 375 150 354 166 343 Z" fill="url(#tb16-card-purpleBack)" stroke="#F7B6E5" stroke-opacity=".55" stroke-width="2.4" stroke-linejoin="round"/>
+      <path d="M150 400 C159 445 202 551 245 630 C271 669 304 682 346 664" fill="none" stroke="#FFD1E8" stroke-opacity=".42" stroke-width="3" stroke-linecap="round"/>
+    </g>
+
+    <!-- Card Middle (Yellow) with its soft shadow inside the group -->
+    <g id="tb16-card-card-middle" class="pata-card pata-card-middle">
+      <path class="pata-card-shadow pata-shadow-middle" d="M211 279 C231 270 248 269 266 275 L479 326 C523 340 553 380 575 441 C597 496 610 532 591 562 C584 573 571 581 551 588 L405 625 C354 642 320 626 295 586 C266 542 245 499 220 442 C193 382 184 345 193 304 C196 292 201 284 211 279 Z" fill="#DD747F" opacity=".22" transform="translate(3 7)" filter="url(#tb16-card-paperShadow)"/>
+      <path d="M211 279 C231 270 248 269 266 275 L479 326 C523 340 553 380 575 441 C597 496 610 532 591 562 C584 573 571 581 551 588 L405 625 C354 642 320 626 295 586 C266 542 245 499 220 442 C193 382 184 345 193 304 C196 292 201 284 211 279 Z" fill="#EC9770" opacity=".4" transform="translate(1.5 5)"/>
+      <path d="M211 279 C231 270 248 269 266 275 L479 326 C523 340 553 380 575 441 C597 496 610 532 591 562 C584 573 571 581 551 588 L405 625 C354 642 320 626 295 586 C266 542 245 499 220 442 C193 382 184 345 193 304 C196 292 201 284 211 279 Z" fill="url(#tb16-card-yellowMiddle)" stroke="#FFE596" stroke-width="3.1" stroke-linejoin="round"/>
+      <path d="M202 304 C191 347 203 397 228 452 C255 511 281 559 307 595 C331 629 366 639 407 621" fill="none" stroke="#FFEFBA" stroke-opacity=".55" stroke-width="3" stroke-linecap="round"/>
+    </g>
+
+    <!-- Card Front (White Folded) with its soft shadow inside the group -->
+    <g id="tb16-card-card-front" class="pata-card pata-card-front">
+      <path class="pata-card-shadow pata-shadow-front" d="M310 224 C331 224 345 229 362 236 L484 279 C527 295 539 316 560 366 C569 388 579 409 591 432 C607 456 639 470 664 487 C688 504 684 523 661 538 C648 547 633 550 610 556 L453 583 C402 592 366 577 342 544 C307 496 285 444 260 383 C243 341 234 301 240 269 C245 238 272 221 310 224 Z" fill="#9E8FC3" opacity=".17" transform="translate(5 9)" filter="url(#tb16-card-paperShadow)"/>
+      <path d="M310 224 C331 224 345 229 362 236 L484 279 C527 295 539 316 560 366 C569 388 579 409 591 432 C607 456 639 470 664 487 C688 504 684 523 661 538 C648 547 633 550 610 556 L453 583 C402 592 366 577 342 544 C307 496 285 444 260 383 C243 341 234 301 240 269 C245 238 272 221 310 224 Z" fill="#D7D0F2" opacity=".72" transform="translate(1 5)"/>
+      <path d="M310 224 C331 224 345 229 362 236 L484 279 C527 295 539 316 560 366 C569 388 579 409 591 432 C607 456 639 470 664 487 C688 504 684 523 661 538 C648 547 633 550 610 556 L453 583 C402 592 366 577 342 544 C307 496 285 444 260 383 C243 341 234 301 240 269 C245 238 272 221 310 224 Z" fill="url(#tb16-card-whiteLeaf)" stroke="url(#tb16-card-leafEdge)" stroke-width="3.5" stroke-linejoin="round"/>
+      <path d="M308 227 C277 223 252 237 246 270 C241 302 251 352 270 402 C290 454 317 515 346 547 C370 581 404 589 451 582" fill="none" stroke="#FFFFFF" stroke-opacity=".82" stroke-width="3" stroke-linecap="round"/>
+      <path d="M341 545 C368 582 403 592 453 586 L611 560 C634 555 648 550 664 539" fill="none" stroke="#C6BEEF" stroke-opacity=".4" stroke-width="2.4" stroke-linecap="round"/>
+    </g>
+
+    <!-- Sparkles: 3 distinct groups sequenced 1 -> 2 -> 3 -->
+    <g id="tb16-card-sparkles" class="pata-sparkles">
+      <g id="tb16-card-sparkle-1" class="pata-sparkle pata-sparkle-1" data-sparkle="1">
+        <rect x="488" y="143" width="44" height="105" rx="23" opacity=".14" fill="#FF9923" filter="url(#tb16-card-sparkGlow)"/>
+        <rect x="490" y="143" width="42" height="103" rx="21" fill="url(#tb16-card-sparkYellow)" stroke="#FFE277" stroke-width="1.5" transform="rotate(-1 511 195)"/>
+      </g>
+      <g id="tb16-card-sparkle-2" class="pata-sparkle pata-sparkle-2" data-sparkle="2">
+        <rect x="575" y="169" width="47" height="109" rx="24" transform="rotate(47 599 222)" opacity=".14" fill="#FF9923" filter="url(#tb16-card-sparkGlow)"/>
+        <rect x="575" y="171" width="45" height="105" rx="22.5" transform="rotate(46 598 224)" fill="url(#tb16-card-sparkYellow)" stroke="#FFE277" stroke-width="1.5"/>
+      </g>
+      <g id="tb16-card-sparkle-3" class="pata-sparkle pata-sparkle-3" data-sparkle="3">
+        <rect x="605" y="316" width="96" height="44" rx="22" transform="rotate(8 653 338)" opacity=".14" fill="#FF9923" filter="url(#tb16-card-sparkGlow)"/>
+        <rect x="602" y="318" width="103" height="43" rx="21.5" transform="rotate(6 653 339)" fill="url(#tb16-card-sparkYellow)" stroke="#FFE277" stroke-width="1.5"/>
+      </g>
+    </g>
+  </g>
+</svg>
+            </div>
+            <div class="size-label">16 × 16 px</div>
+            <div class="size-sub">标题栏默认图标 (App.tsx PawPrint 位置)</div>
+          </div>
+          <div class="size-card">
+            <div class="size-box">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 828 816" width="20" height="20" class="pata-logo-svg anim-static" role="img" aria-label="啪嗒 Pata 品牌标识" data-instance="tb20-card">
+  <defs>
+    <linearGradient id="tb20-card-purpleBack" x1="0" y1=".1" x2="1" y2="1">
+      <stop stop-color="#FF9D40"/><stop offset=".4" stop-color="#FF5DAE"/><stop offset=".74" stop-color="#AD50F0"/><stop offset="1" stop-color="#606FFB"/>
+    </linearGradient>
+    <linearGradient id="tb20-card-yellowMiddle" x1=".1" y1=".03" x2=".83" y2="1">
+      <stop stop-color="#FFEE57"/><stop offset=".3" stop-color="#FFC63B"/><stop offset=".69" stop-color="#FF9C46"/><stop offset="1" stop-color="#FFBB76"/>
+    </linearGradient>
+    <linearGradient id="tb20-card-whiteLeaf" x1=".15" y1="0" x2=".92" y2="1">
+      <stop stop-color="#FFFFF7"/><stop offset=".26" stop-color="#FFF6ED"/><stop offset=".57" stop-color="#F9F5FE"/><stop offset=".83" stop-color="#E8ECFF"/><stop offset="1" stop-color="#FFFDFB"/>
+    </linearGradient>
+    <linearGradient id="tb20-card-leafEdge" x1=".1" y1="0" x2=".5" y2="1">
+      <stop stop-color="#FFFFFF"/><stop offset=".6" stop-color="#FFF7F3"/><stop offset="1" stop-color="#E1D5FF"/>
+    </linearGradient>
+    <linearGradient id="tb20-card-sparkYellow" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#FFE843"/><stop offset=".57" stop-color="#FFBD17"/><stop offset="1" stop-color="#FF8E25"/>
+    </linearGradient>
+    <filter id="tb20-card-sceneShadow" x="-40%" y="-40%" width="180%" height="190%">
+      <feGaussianBlur stdDeviation="16"/>
+    </filter>
+    <filter id="tb20-card-paperShadow" x="-30%" y="-30%" width="170%" height="180%">
+      <feGaussianBlur stdDeviation="10"/>
+    </filter>
+    <filter id="tb20-card-sparkGlow" x="-90%" y="-90%" width="300%" height="300%">
+      <feGaussianBlur stdDeviation="7"/>
+    </filter>
+  </defs>
+  <g id="tb20-card-symbol" class="pata-symbol">
+    <!-- Card Back (Purple) with its soft shadow inside the group -->
+    <g id="tb20-card-card-back" class="pata-card pata-card-back">
+      <path class="pata-card-shadow pata-shadow-back" d="M166 343 C176 330 188 322 204 318 C221 313 237 314 254 319 L477 365 C517 374 550 414 579 475 C604 527 601 566 567 586 C559 592 546 597 533 602 L344 668 C297 683 265 663 243 630 C222 596 198 538 177 490 L143 408 C132 375 150 354 166 343 Z" fill="#803ACD" opacity=".22" transform="translate(5 12)" filter="url(#tb20-card-sceneShadow)"/>
+      <path d="M166 343 C176 330 188 322 204 318 C221 313 237 314 254 319 L477 365 C517 374 550 414 579 475 C604 527 601 566 567 586 C559 592 546 597 533 602 L344 668 C297 683 265 663 243 630 C222 596 198 538 177 490 L143 408 C132 375 150 354 166 343 Z" fill="url(#tb20-card-purpleBack)" stroke="#F7B6E5" stroke-opacity=".55" stroke-width="2.4" stroke-linejoin="round"/>
+      <path d="M150 400 C159 445 202 551 245 630 C271 669 304 682 346 664" fill="none" stroke="#FFD1E8" stroke-opacity=".42" stroke-width="3" stroke-linecap="round"/>
+    </g>
+
+    <!-- Card Middle (Yellow) with its soft shadow inside the group -->
+    <g id="tb20-card-card-middle" class="pata-card pata-card-middle">
+      <path class="pata-card-shadow pata-shadow-middle" d="M211 279 C231 270 248 269 266 275 L479 326 C523 340 553 380 575 441 C597 496 610 532 591 562 C584 573 571 581 551 588 L405 625 C354 642 320 626 295 586 C266 542 245 499 220 442 C193 382 184 345 193 304 C196 292 201 284 211 279 Z" fill="#DD747F" opacity=".22" transform="translate(3 7)" filter="url(#tb20-card-paperShadow)"/>
+      <path d="M211 279 C231 270 248 269 266 275 L479 326 C523 340 553 380 575 441 C597 496 610 532 591 562 C584 573 571 581 551 588 L405 625 C354 642 320 626 295 586 C266 542 245 499 220 442 C193 382 184 345 193 304 C196 292 201 284 211 279 Z" fill="#EC9770" opacity=".4" transform="translate(1.5 5)"/>
+      <path d="M211 279 C231 270 248 269 266 275 L479 326 C523 340 553 380 575 441 C597 496 610 532 591 562 C584 573 571 581 551 588 L405 625 C354 642 320 626 295 586 C266 542 245 499 220 442 C193 382 184 345 193 304 C196 292 201 284 211 279 Z" fill="url(#tb20-card-yellowMiddle)" stroke="#FFE596" stroke-width="3.1" stroke-linejoin="round"/>
+      <path d="M202 304 C191 347 203 397 228 452 C255 511 281 559 307 595 C331 629 366 639 407 621" fill="none" stroke="#FFEFBA" stroke-opacity=".55" stroke-width="3" stroke-linecap="round"/>
+    </g>
+
+    <!-- Card Front (White Folded) with its soft shadow inside the group -->
+    <g id="tb20-card-card-front" class="pata-card pata-card-front">
+      <path class="pata-card-shadow pata-shadow-front" d="M310 224 C331 224 345 229 362 236 L484 279 C527 295 539 316 560 366 C569 388 579 409 591 432 C607 456 639 470 664 487 C688 504 684 523 661 538 C648 547 633 550 610 556 L453 583 C402 592 366 577 342 544 C307 496 285 444 260 383 C243 341 234 301 240 269 C245 238 272 221 310 224 Z" fill="#9E8FC3" opacity=".17" transform="translate(5 9)" filter="url(#tb20-card-paperShadow)"/>
+      <path d="M310 224 C331 224 345 229 362 236 L484 279 C527 295 539 316 560 366 C569 388 579 409 591 432 C607 456 639 470 664 487 C688 504 684 523 661 538 C648 547 633 550 610 556 L453 583 C402 592 366 577 342 544 C307 496 285 444 260 383 C243 341 234 301 240 269 C245 238 272 221 310 224 Z" fill="#D7D0F2" opacity=".72" transform="translate(1 5)"/>
+      <path d="M310 224 C331 224 345 229 362 236 L484 279 C527 295 539 316 560 366 C569 388 579 409 591 432 C607 456 639 470 664 487 C688 504 684 523 661 538 C648 547 633 550 610 556 L453 583 C402 592 366 577 342 544 C307 496 285 444 260 383 C243 341 234 301 240 269 C245 238 272 221 310 224 Z" fill="url(#tb20-card-whiteLeaf)" stroke="url(#tb20-card-leafEdge)" stroke-width="3.5" stroke-linejoin="round"/>
+      <path d="M308 227 C277 223 252 237 246 270 C241 302 251 352 270 402 C290 454 317 515 346 547 C370 581 404 589 451 582" fill="none" stroke="#FFFFFF" stroke-opacity=".82" stroke-width="3" stroke-linecap="round"/>
+      <path d="M341 545 C368 582 403 592 453 586 L611 560 C634 555 648 550 664 539" fill="none" stroke="#C6BEEF" stroke-opacity=".4" stroke-width="2.4" stroke-linecap="round"/>
+    </g>
+
+    <!-- Sparkles: 3 distinct groups sequenced 1 -> 2 -> 3 -->
+    <g id="tb20-card-sparkles" class="pata-sparkles">
+      <g id="tb20-card-sparkle-1" class="pata-sparkle pata-sparkle-1" data-sparkle="1">
+        <rect x="488" y="143" width="44" height="105" rx="23" opacity=".14" fill="#FF9923" filter="url(#tb20-card-sparkGlow)"/>
+        <rect x="490" y="143" width="42" height="103" rx="21" fill="url(#tb20-card-sparkYellow)" stroke="#FFE277" stroke-width="1.5" transform="rotate(-1 511 195)"/>
+      </g>
+      <g id="tb20-card-sparkle-2" class="pata-sparkle pata-sparkle-2" data-sparkle="2">
+        <rect x="575" y="169" width="47" height="109" rx="24" transform="rotate(47 599 222)" opacity=".14" fill="#FF9923" filter="url(#tb20-card-sparkGlow)"/>
+        <rect x="575" y="171" width="45" height="105" rx="22.5" transform="rotate(46 598 224)" fill="url(#tb20-card-sparkYellow)" stroke="#FFE277" stroke-width="1.5"/>
+      </g>
+      <g id="tb20-card-sparkle-3" class="pata-sparkle pata-sparkle-3" data-sparkle="3">
+        <rect x="605" y="316" width="96" height="44" rx="22" transform="rotate(8 653 338)" opacity=".14" fill="#FF9923" filter="url(#tb20-card-sparkGlow)"/>
+        <rect x="602" y="318" width="103" height="43" rx="21.5" transform="rotate(6 653 339)" fill="url(#tb20-card-sparkYellow)" stroke="#FFE277" stroke-width="1.5"/>
+      </g>
+    </g>
+  </g>
+</svg>
+            </div>
+            <div class="size-label">20 × 20 px</div>
+            <div class="size-sub">常用 macOS 菜单/工具栏标准尺寸</div>
+          </div>
+          <div class="size-card">
+            <div class="size-box">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 828 816" width="24" height="24" class="pata-logo-svg anim-static" role="img" aria-label="啪嗒 Pata 品牌标识" data-instance="tb24-card">
+  <defs>
+    <linearGradient id="tb24-card-purpleBack" x1="0" y1=".1" x2="1" y2="1">
+      <stop stop-color="#FF9D40"/><stop offset=".4" stop-color="#FF5DAE"/><stop offset=".74" stop-color="#AD50F0"/><stop offset="1" stop-color="#606FFB"/>
+    </linearGradient>
+    <linearGradient id="tb24-card-yellowMiddle" x1=".1" y1=".03" x2=".83" y2="1">
+      <stop stop-color="#FFEE57"/><stop offset=".3" stop-color="#FFC63B"/><stop offset=".69" stop-color="#FF9C46"/><stop offset="1" stop-color="#FFBB76"/>
+    </linearGradient>
+    <linearGradient id="tb24-card-whiteLeaf" x1=".15" y1="0" x2=".92" y2="1">
+      <stop stop-color="#FFFFF7"/><stop offset=".26" stop-color="#FFF6ED"/><stop offset=".57" stop-color="#F9F5FE"/><stop offset=".83" stop-color="#E8ECFF"/><stop offset="1" stop-color="#FFFDFB"/>
+    </linearGradient>
+    <linearGradient id="tb24-card-leafEdge" x1=".1" y1="0" x2=".5" y2="1">
+      <stop stop-color="#FFFFFF"/><stop offset=".6" stop-color="#FFF7F3"/><stop offset="1" stop-color="#E1D5FF"/>
+    </linearGradient>
+    <linearGradient id="tb24-card-sparkYellow" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#FFE843"/><stop offset=".57" stop-color="#FFBD17"/><stop offset="1" stop-color="#FF8E25"/>
+    </linearGradient>
+    <filter id="tb24-card-sceneShadow" x="-40%" y="-40%" width="180%" height="190%">
+      <feGaussianBlur stdDeviation="16"/>
+    </filter>
+    <filter id="tb24-card-paperShadow" x="-30%" y="-30%" width="170%" height="180%">
+      <feGaussianBlur stdDeviation="10"/>
+    </filter>
+    <filter id="tb24-card-sparkGlow" x="-90%" y="-90%" width="300%" height="300%">
+      <feGaussianBlur stdDeviation="7"/>
+    </filter>
+  </defs>
+  <g id="tb24-card-symbol" class="pata-symbol">
+    <!-- Card Back (Purple) with its soft shadow inside the group -->
+    <g id="tb24-card-card-back" class="pata-card pata-card-back">
+      <path class="pata-card-shadow pata-shadow-back" d="M166 343 C176 330 188 322 204 318 C221 313 237 314 254 319 L477 365 C517 374 550 414 579 475 C604 527 601 566 567 586 C559 592 546 597 533 602 L344 668 C297 683 265 663 243 630 C222 596 198 538 177 490 L143 408 C132 375 150 354 166 343 Z" fill="#803ACD" opacity=".22" transform="translate(5 12)" filter="url(#tb24-card-sceneShadow)"/>
+      <path d="M166 343 C176 330 188 322 204 318 C221 313 237 314 254 319 L477 365 C517 374 550 414 579 475 C604 527 601 566 567 586 C559 592 546 597 533 602 L344 668 C297 683 265 663 243 630 C222 596 198 538 177 490 L143 408 C132 375 150 354 166 343 Z" fill="url(#tb24-card-purpleBack)" stroke="#F7B6E5" stroke-opacity=".55" stroke-width="2.4" stroke-linejoin="round"/>
+      <path d="M150 400 C159 445 202 551 245 630 C271 669 304 682 346 664" fill="none" stroke="#FFD1E8" stroke-opacity=".42" stroke-width="3" stroke-linecap="round"/>
+    </g>
+
+    <!-- Card Middle (Yellow) with its soft shadow inside the group -->
+    <g id="tb24-card-card-middle" class="pata-card pata-card-middle">
+      <path class="pata-card-shadow pata-shadow-middle" d="M211 279 C231 270 248 269 266 275 L479 326 C523 340 553 380 575 441 C597 496 610 532 591 562 C584 573 571 581 551 588 L405 625 C354 642 320 626 295 586 C266 542 245 499 220 442 C193 382 184 345 193 304 C196 292 201 284 211 279 Z" fill="#DD747F" opacity=".22" transform="translate(3 7)" filter="url(#tb24-card-paperShadow)"/>
+      <path d="M211 279 C231 270 248 269 266 275 L479 326 C523 340 553 380 575 441 C597 496 610 532 591 562 C584 573 571 581 551 588 L405 625 C354 642 320 626 295 586 C266 542 245 499 220 442 C193 382 184 345 193 304 C196 292 201 284 211 279 Z" fill="#EC9770" opacity=".4" transform="translate(1.5 5)"/>
+      <path d="M211 279 C231 270 248 269 266 275 L479 326 C523 340 553 380 575 441 C597 496 610 532 591 562 C584 573 571 581 551 588 L405 625 C354 642 320 626 295 586 C266 542 245 499 220 442 C193 382 184 345 193 304 C196 292 201 284 211 279 Z" fill="url(#tb24-card-yellowMiddle)" stroke="#FFE596" stroke-width="3.1" stroke-linejoin="round"/>
+      <path d="M202 304 C191 347 203 397 228 452 C255 511 281 559 307 595 C331 629 366 639 407 621" fill="none" stroke="#FFEFBA" stroke-opacity=".55" stroke-width="3" stroke-linecap="round"/>
+    </g>
+
+    <!-- Card Front (White Folded) with its soft shadow inside the group -->
+    <g id="tb24-card-card-front" class="pata-card pata-card-front">
+      <path class="pata-card-shadow pata-shadow-front" d="M310 224 C331 224 345 229 362 236 L484 279 C527 295 539 316 560 366 C569 388 579 409 591 432 C607 456 639 470 664 487 C688 504 684 523 661 538 C648 547 633 550 610 556 L453 583 C402 592 366 577 342 544 C307 496 285 444 260 383 C243 341 234 301 240 269 C245 238 272 221 310 224 Z" fill="#9E8FC3" opacity=".17" transform="translate(5 9)" filter="url(#tb24-card-paperShadow)"/>
+      <path d="M310 224 C331 224 345 229 362 236 L484 279 C527 295 539 316 560 366 C569 388 579 409 591 432 C607 456 639 470 664 487 C688 504 684 523 661 538 C648 547 633 550 610 556 L453 583 C402 592 366 577 342 544 C307 496 285 444 260 383 C243 341 234 301 240 269 C245 238 272 221 310 224 Z" fill="#D7D0F2" opacity=".72" transform="translate(1 5)"/>
+      <path d="M310 224 C331 224 345 229 362 236 L484 279 C527 295 539 316 560 366 C569 388 579 409 591 432 C607 456 639 470 664 487 C688 504 684 523 661 538 C648 547 633 550 610 556 L453 583 C402 592 366 577 342 544 C307 496 285 444 260 383 C243 341 234 301 240 269 C245 238 272 221 310 224 Z" fill="url(#tb24-card-whiteLeaf)" stroke="url(#tb24-card-leafEdge)" stroke-width="3.5" stroke-linejoin="round"/>
+      <path d="M308 227 C277 223 252 237 246 270 C241 302 251 352 270 402 C290 454 317 515 346 547 C370 581 404 589 451 582" fill="none" stroke="#FFFFFF" stroke-opacity=".82" stroke-width="3" stroke-linecap="round"/>
+      <path d="M341 545 C368 582 403 592 453 586 L611 560 C634 555 648 550 664 539" fill="none" stroke="#C6BEEF" stroke-opacity=".4" stroke-width="2.4" stroke-linecap="round"/>
+    </g>
+
+    <!-- Sparkles: 3 distinct groups sequenced 1 -> 2 -> 3 -->
+    <g id="tb24-card-sparkles" class="pata-sparkles">
+      <g id="tb24-card-sparkle-1" class="pata-sparkle pata-sparkle-1" data-sparkle="1">
+        <rect x="488" y="143" width="44" height="105" rx="23" opacity=".14" fill="#FF9923" filter="url(#tb24-card-sparkGlow)"/>
+        <rect x="490" y="143" width="42" height="103" rx="21" fill="url(#tb24-card-sparkYellow)" stroke="#FFE277" stroke-width="1.5" transform="rotate(-1 511 195)"/>
+      </g>
+      <g id="tb24-card-sparkle-2" class="pata-sparkle pata-sparkle-2" data-sparkle="2">
+        <rect x="575" y="169" width="47" height="109" rx="24" transform="rotate(47 599 222)" opacity=".14" fill="#FF9923" filter="url(#tb24-card-sparkGlow)"/>
+        <rect x="575" y="171" width="45" height="105" rx="22.5" transform="rotate(46 598 224)" fill="url(#tb24-card-sparkYellow)" stroke="#FFE277" stroke-width="1.5"/>
+      </g>
+      <g id="tb24-card-sparkle-3" class="pata-sparkle pata-sparkle-3" data-sparkle="3">
+        <rect x="605" y="316" width="96" height="44" rx="22" transform="rotate(8 653 338)" opacity=".14" fill="#FF9923" filter="url(#tb24-card-sparkGlow)"/>
+        <rect x="602" y="318" width="103" height="43" rx="21.5" transform="rotate(6 653 339)" fill="url(#tb24-card-sparkYellow)" stroke="#FFE277" stroke-width="1.5"/>
+      </g>
+    </g>
+  </g>
+</svg>
+            </div>
+            <div class="size-label">24 × 24 px</div>
+            <div class="size-sub">Retina 紧凑按钮尺寸</div>
+          </div>
+          <div class="size-card">
+            <div class="size-box">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 828 816" width="32" height="32" class="pata-logo-svg anim-static" role="img" aria-label="啪嗒 Pata 品牌标识" data-instance="tb32-card">
+  <defs>
+    <linearGradient id="tb32-card-purpleBack" x1="0" y1=".1" x2="1" y2="1">
+      <stop stop-color="#FF9D40"/><stop offset=".4" stop-color="#FF5DAE"/><stop offset=".74" stop-color="#AD50F0"/><stop offset="1" stop-color="#606FFB"/>
+    </linearGradient>
+    <linearGradient id="tb32-card-yellowMiddle" x1=".1" y1=".03" x2=".83" y2="1">
+      <stop stop-color="#FFEE57"/><stop offset=".3" stop-color="#FFC63B"/><stop offset=".69" stop-color="#FF9C46"/><stop offset="1" stop-color="#FFBB76"/>
+    </linearGradient>
+    <linearGradient id="tb32-card-whiteLeaf" x1=".15" y1="0" x2=".92" y2="1">
+      <stop stop-color="#FFFFF7"/><stop offset=".26" stop-color="#FFF6ED"/><stop offset=".57" stop-color="#F9F5FE"/><stop offset=".83" stop-color="#E8ECFF"/><stop offset="1" stop-color="#FFFDFB"/>
+    </linearGradient>
+    <linearGradient id="tb32-card-leafEdge" x1=".1" y1="0" x2=".5" y2="1">
+      <stop stop-color="#FFFFFF"/><stop offset=".6" stop-color="#FFF7F3"/><stop offset="1" stop-color="#E1D5FF"/>
+    </linearGradient>
+    <linearGradient id="tb32-card-sparkYellow" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#FFE843"/><stop offset=".57" stop-color="#FFBD17"/><stop offset="1" stop-color="#FF8E25"/>
+    </linearGradient>
+    <filter id="tb32-card-sceneShadow" x="-40%" y="-40%" width="180%" height="190%">
+      <feGaussianBlur stdDeviation="16"/>
+    </filter>
+    <filter id="tb32-card-paperShadow" x="-30%" y="-30%" width="170%" height="180%">
+      <feGaussianBlur stdDeviation="10"/>
+    </filter>
+    <filter id="tb32-card-sparkGlow" x="-90%" y="-90%" width="300%" height="300%">
+      <feGaussianBlur stdDeviation="7"/>
+    </filter>
+  </defs>
+  <g id="tb32-card-symbol" class="pata-symbol">
+    <!-- Card Back (Purple) with its soft shadow inside the group -->
+    <g id="tb32-card-card-back" class="pata-card pata-card-back">
+      <path class="pata-card-shadow pata-shadow-back" d="M166 343 C176 330 188 322 204 318 C221 313 237 314 254 319 L477 365 C517 374 550 414 579 475 C604 527 601 566 567 586 C559 592 546 597 533 602 L344 668 C297 683 265 663 243 630 C222 596 198 538 177 490 L143 408 C132 375 150 354 166 343 Z" fill="#803ACD" opacity=".22" transform="translate(5 12)" filter="url(#tb32-card-sceneShadow)"/>
+      <path d="M166 343 C176 330 188 322 204 318 C221 313 237 314 254 319 L477 365 C517 374 550 414 579 475 C604 527 601 566 567 586 C559 592 546 597 533 602 L344 668 C297 683 265 663 243 630 C222 596 198 538 177 490 L143 408 C132 375 150 354 166 343 Z" fill="url(#tb32-card-purpleBack)" stroke="#F7B6E5" stroke-opacity=".55" stroke-width="2.4" stroke-linejoin="round"/>
+      <path d="M150 400 C159 445 202 551 245 630 C271 669 304 682 346 664" fill="none" stroke="#FFD1E8" stroke-opacity=".42" stroke-width="3" stroke-linecap="round"/>
+    </g>
+
+    <!-- Card Middle (Yellow) with its soft shadow inside the group -->
+    <g id="tb32-card-card-middle" class="pata-card pata-card-middle">
+      <path class="pata-card-shadow pata-shadow-middle" d="M211 279 C231 270 248 269 266 275 L479 326 C523 340 553 380 575 441 C597 496 610 532 591 562 C584 573 571 581 551 588 L405 625 C354 642 320 626 295 586 C266 542 245 499 220 442 C193 382 184 345 193 304 C196 292 201 284 211 279 Z" fill="#DD747F" opacity=".22" transform="translate(3 7)" filter="url(#tb32-card-paperShadow)"/>
+      <path d="M211 279 C231 270 248 269 266 275 L479 326 C523 340 553 380 575 441 C597 496 610 532 591 562 C584 573 571 581 551 588 L405 625 C354 642 320 626 295 586 C266 542 245 499 220 442 C193 382 184 345 193 304 C196 292 201 284 211 279 Z" fill="#EC9770" opacity=".4" transform="translate(1.5 5)"/>
+      <path d="M211 279 C231 270 248 269 266 275 L479 326 C523 340 553 380 575 441 C597 496 610 532 591 562 C584 573 571 581 551 588 L405 625 C354 642 320 626 295 586 C266 542 245 499 220 442 C193 382 184 345 193 304 C196 292 201 284 211 279 Z" fill="url(#tb32-card-yellowMiddle)" stroke="#FFE596" stroke-width="3.1" stroke-linejoin="round"/>
+      <path d="M202 304 C191 347 203 397 228 452 C255 511 281 559 307 595 C331 629 366 639 407 621" fill="none" stroke="#FFEFBA" stroke-opacity=".55" stroke-width="3" stroke-linecap="round"/>
+    </g>
+
+    <!-- Card Front (White Folded) with its soft shadow inside the group -->
+    <g id="tb32-card-card-front" class="pata-card pata-card-front">
+      <path class="pata-card-shadow pata-shadow-front" d="M310 224 C331 224 345 229 362 236 L484 279 C527 295 539 316 560 366 C569 388 579 409 591 432 C607 456 639 470 664 487 C688 504 684 523 661 538 C648 547 633 550 610 556 L453 583 C402 592 366 577 342 544 C307 496 285 444 260 383 C243 341 234 301 240 269 C245 238 272 221 310 224 Z" fill="#9E8FC3" opacity=".17" transform="translate(5 9)" filter="url(#tb32-card-paperShadow)"/>
+      <path d="M310 224 C331 224 345 229 362 236 L484 279 C527 295 539 316 560 366 C569 388 579 409 591 432 C607 456 639 470 664 487 C688 504 684 523 661 538 C648 547 633 550 610 556 L453 583 C402 592 366 577 342 544 C307 496 285 444 260 383 C243 341 234 301 240 269 C245 238 272 221 310 224 Z" fill="#D7D0F2" opacity=".72" transform="translate(1 5)"/>
+      <path d="M310 224 C331 224 345 229 362 236 L484 279 C527 295 539 316 560 366 C569 388 579 409 591 432 C607 456 639 470 664 487 C688 504 684 523 661 538 C648 547 633 550 610 556 L453 583 C402 592 366 577 342 544 C307 496 285 444 260 383 C243 341 234 301 240 269 C245 238 272 221 310 224 Z" fill="url(#tb32-card-whiteLeaf)" stroke="url(#tb32-card-leafEdge)" stroke-width="3.5" stroke-linejoin="round"/>
+      <path d="M308 227 C277 223 252 237 246 270 C241 302 251 352 270 402 C290 454 317 515 346 547 C370 581 404 589 451 582" fill="none" stroke="#FFFFFF" stroke-opacity=".82" stroke-width="3" stroke-linecap="round"/>
+      <path d="M341 545 C368 582 403 592 453 586 L611 560 C634 555 648 550 664 539" fill="none" stroke="#C6BEEF" stroke-opacity=".4" stroke-width="2.4" stroke-linecap="round"/>
+    </g>
+
+    <!-- Sparkles: 3 distinct groups sequenced 1 -> 2 -> 3 -->
+    <g id="tb32-card-sparkles" class="pata-sparkles">
+      <g id="tb32-card-sparkle-1" class="pata-sparkle pata-sparkle-1" data-sparkle="1">
+        <rect x="488" y="143" width="44" height="105" rx="23" opacity=".14" fill="#FF9923" filter="url(#tb32-card-sparkGlow)"/>
+        <rect x="490" y="143" width="42" height="103" rx="21" fill="url(#tb32-card-sparkYellow)" stroke="#FFE277" stroke-width="1.5" transform="rotate(-1 511 195)"/>
+      </g>
+      <g id="tb32-card-sparkle-2" class="pata-sparkle pata-sparkle-2" data-sparkle="2">
+        <rect x="575" y="169" width="47" height="109" rx="24" transform="rotate(47 599 222)" opacity=".14" fill="#FF9923" filter="url(#tb32-card-sparkGlow)"/>
+        <rect x="575" y="171" width="45" height="105" rx="22.5" transform="rotate(46 598 224)" fill="url(#tb32-card-sparkYellow)" stroke="#FFE277" stroke-width="1.5"/>
+      </g>
+      <g id="tb32-card-sparkle-3" class="pata-sparkle pata-sparkle-3" data-sparkle="3">
+        <rect x="605" y="316" width="96" height="44" rx="22" transform="rotate(8 653 338)" opacity=".14" fill="#FF9923" filter="url(#tb32-card-sparkGlow)"/>
+        <rect x="602" y="318" width="103" height="43" rx="21.5" transform="rotate(6 653 339)" fill="url(#tb32-card-sparkYellow)" stroke="#FFE277" stroke-width="1.5"/>
+      </g>
+    </g>
+  </g>
+</svg>
+            </div>
+            <div class="size-label">32 × 32 px</div>
+            <div class="size-sub">关于弹窗 / 对话框卡片图标</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Section 3: Parallel Comparison Matrix -->
+    <section class="section" id="section-matrix">
+      <div class="section-header">
+        <h2 class="section-title">3. 多状态矩阵对照 (Multi-State Matrix)</h2>
+        <span class="section-desc">并排固定各模式，便于直接核验静态基线与不同反馈</span>
+      </div>
+      <div class="matrix-grid">
+        <!-- Static Baseline -->
+        <div class="matrix-card">
+          <div class="matrix-box">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 828 816" width="88" height="88" class="pata-logo-svg anim-static" role="img" aria-label="啪嗒 Pata 品牌标识" data-instance="mat-static">
+  <defs>
+    <linearGradient id="mat-static-purpleBack" x1="0" y1=".1" x2="1" y2="1">
+      <stop stop-color="#FF9D40"/><stop offset=".4" stop-color="#FF5DAE"/><stop offset=".74" stop-color="#AD50F0"/><stop offset="1" stop-color="#606FFB"/>
+    </linearGradient>
+    <linearGradient id="mat-static-yellowMiddle" x1=".1" y1=".03" x2=".83" y2="1">
+      <stop stop-color="#FFEE57"/><stop offset=".3" stop-color="#FFC63B"/><stop offset=".69" stop-color="#FF9C46"/><stop offset="1" stop-color="#FFBB76"/>
+    </linearGradient>
+    <linearGradient id="mat-static-whiteLeaf" x1=".15" y1="0" x2=".92" y2="1">
+      <stop stop-color="#FFFFF7"/><stop offset=".26" stop-color="#FFF6ED"/><stop offset=".57" stop-color="#F9F5FE"/><stop offset=".83" stop-color="#E8ECFF"/><stop offset="1" stop-color="#FFFDFB"/>
+    </linearGradient>
+    <linearGradient id="mat-static-leafEdge" x1=".1" y1="0" x2=".5" y2="1">
+      <stop stop-color="#FFFFFF"/><stop offset=".6" stop-color="#FFF7F3"/><stop offset="1" stop-color="#E1D5FF"/>
+    </linearGradient>
+    <linearGradient id="mat-static-sparkYellow" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#FFE843"/><stop offset=".57" stop-color="#FFBD17"/><stop offset="1" stop-color="#FF8E25"/>
+    </linearGradient>
+    <filter id="mat-static-sceneShadow" x="-40%" y="-40%" width="180%" height="190%">
+      <feGaussianBlur stdDeviation="16"/>
+    </filter>
+    <filter id="mat-static-paperShadow" x="-30%" y="-30%" width="170%" height="180%">
+      <feGaussianBlur stdDeviation="10"/>
+    </filter>
+    <filter id="mat-static-sparkGlow" x="-90%" y="-90%" width="300%" height="300%">
+      <feGaussianBlur stdDeviation="7"/>
+    </filter>
+  </defs>
+  <g id="mat-static-symbol" class="pata-symbol">
+    <!-- Card Back (Purple) with its soft shadow inside the group -->
+    <g id="mat-static-card-back" class="pata-card pata-card-back">
+      <path class="pata-card-shadow pata-shadow-back" d="M166 343 C176 330 188 322 204 318 C221 313 237 314 254 319 L477 365 C517 374 550 414 579 475 C604 527 601 566 567 586 C559 592 546 597 533 602 L344 668 C297 683 265 663 243 630 C222 596 198 538 177 490 L143 408 C132 375 150 354 166 343 Z" fill="#803ACD" opacity=".22" transform="translate(5 12)" filter="url(#mat-static-sceneShadow)"/>
+      <path d="M166 343 C176 330 188 322 204 318 C221 313 237 314 254 319 L477 365 C517 374 550 414 579 475 C604 527 601 566 567 586 C559 592 546 597 533 602 L344 668 C297 683 265 663 243 630 C222 596 198 538 177 490 L143 408 C132 375 150 354 166 343 Z" fill="url(#mat-static-purpleBack)" stroke="#F7B6E5" stroke-opacity=".55" stroke-width="2.4" stroke-linejoin="round"/>
+      <path d="M150 400 C159 445 202 551 245 630 C271 669 304 682 346 664" fill="none" stroke="#FFD1E8" stroke-opacity=".42" stroke-width="3" stroke-linecap="round"/>
+    </g>
+
+    <!-- Card Middle (Yellow) with its soft shadow inside the group -->
+    <g id="mat-static-card-middle" class="pata-card pata-card-middle">
+      <path class="pata-card-shadow pata-shadow-middle" d="M211 279 C231 270 248 269 266 275 L479 326 C523 340 553 380 575 441 C597 496 610 532 591 562 C584 573 571 581 551 588 L405 625 C354 642 320 626 295 586 C266 542 245 499 220 442 C193 382 184 345 193 304 C196 292 201 284 211 279 Z" fill="#DD747F" opacity=".22" transform="translate(3 7)" filter="url(#mat-static-paperShadow)"/>
+      <path d="M211 279 C231 270 248 269 266 275 L479 326 C523 340 553 380 575 441 C597 496 610 532 591 562 C584 573 571 581 551 588 L405 625 C354 642 320 626 295 586 C266 542 245 499 220 442 C193 382 184 345 193 304 C196 292 201 284 211 279 Z" fill="#EC9770" opacity=".4" transform="translate(1.5 5)"/>
+      <path d="M211 279 C231 270 248 269 266 275 L479 326 C523 340 553 380 575 441 C597 496 610 532 591 562 C584 573 571 581 551 588 L405 625 C354 642 320 626 295 586 C266 542 245 499 220 442 C193 382 184 345 193 304 C196 292 201 284 211 279 Z" fill="url(#mat-static-yellowMiddle)" stroke="#FFE596" stroke-width="3.1" stroke-linejoin="round"/>
+      <path d="M202 304 C191 347 203 397 228 452 C255 511 281 559 307 595 C331 629 366 639 407 621" fill="none" stroke="#FFEFBA" stroke-opacity=".55" stroke-width="3" stroke-linecap="round"/>
+    </g>
+
+    <!-- Card Front (White Folded) with its soft shadow inside the group -->
+    <g id="mat-static-card-front" class="pata-card pata-card-front">
+      <path class="pata-card-shadow pata-shadow-front" d="M310 224 C331 224 345 229 362 236 L484 279 C527 295 539 316 560 366 C569 388 579 409 591 432 C607 456 639 470 664 487 C688 504 684 523 661 538 C648 547 633 550 610 556 L453 583 C402 592 366 577 342 544 C307 496 285 444 260 383 C243 341 234 301 240 269 C245 238 272 221 310 224 Z" fill="#9E8FC3" opacity=".17" transform="translate(5 9)" filter="url(#mat-static-paperShadow)"/>
+      <path d="M310 224 C331 224 345 229 362 236 L484 279 C527 295 539 316 560 366 C569 388 579 409 591 432 C607 456 639 470 664 487 C688 504 684 523 661 538 C648 547 633 550 610 556 L453 583 C402 592 366 577 342 544 C307 496 285 444 260 383 C243 341 234 301 240 269 C245 238 272 221 310 224 Z" fill="#D7D0F2" opacity=".72" transform="translate(1 5)"/>
+      <path d="M310 224 C331 224 345 229 362 236 L484 279 C527 295 539 316 560 366 C569 388 579 409 591 432 C607 456 639 470 664 487 C688 504 684 523 661 538 C648 547 633 550 610 556 L453 583 C402 592 366 577 342 544 C307 496 285 444 260 383 C243 341 234 301 240 269 C245 238 272 221 310 224 Z" fill="url(#mat-static-whiteLeaf)" stroke="url(#mat-static-leafEdge)" stroke-width="3.5" stroke-linejoin="round"/>
+      <path d="M308 227 C277 223 252 237 246 270 C241 302 251 352 270 402 C290 454 317 515 346 547 C370 581 404 589 451 582" fill="none" stroke="#FFFFFF" stroke-opacity=".82" stroke-width="3" stroke-linecap="round"/>
+      <path d="M341 545 C368 582 403 592 453 586 L611 560 C634 555 648 550 664 539" fill="none" stroke="#C6BEEF" stroke-opacity=".4" stroke-width="2.4" stroke-linecap="round"/>
+    </g>
+
+    <!-- Sparkles: 3 distinct groups sequenced 1 -> 2 -> 3 -->
+    <g id="mat-static-sparkles" class="pata-sparkles">
+      <g id="mat-static-sparkle-1" class="pata-sparkle pata-sparkle-1" data-sparkle="1">
+        <rect x="488" y="143" width="44" height="105" rx="23" opacity=".14" fill="#FF9923" filter="url(#mat-static-sparkGlow)"/>
+        <rect x="490" y="143" width="42" height="103" rx="21" fill="url(#mat-static-sparkYellow)" stroke="#FFE277" stroke-width="1.5" transform="rotate(-1 511 195)"/>
+      </g>
+      <g id="mat-static-sparkle-2" class="pata-sparkle pata-sparkle-2" data-sparkle="2">
+        <rect x="575" y="169" width="47" height="109" rx="24" transform="rotate(47 599 222)" opacity=".14" fill="#FF9923" filter="url(#mat-static-sparkGlow)"/>
+        <rect x="575" y="171" width="45" height="105" rx="22.5" transform="rotate(46 598 224)" fill="url(#mat-static-sparkYellow)" stroke="#FFE277" stroke-width="1.5"/>
+      </g>
+      <g id="mat-static-sparkle-3" class="pata-sparkle pata-sparkle-3" data-sparkle="3">
+        <rect x="605" y="316" width="96" height="44" rx="22" transform="rotate(8 653 338)" opacity=".14" fill="#FF9923" filter="url(#mat-static-sparkGlow)"/>
+        <rect x="602" y="318" width="103" height="43" rx="21.5" transform="rotate(6 653 339)" fill="url(#mat-static-sparkYellow)" stroke="#FFE277" stroke-width="1.5"/>
+      </g>
+    </g>
+  </g>
+</svg>
+          </div>
+          <div class="matrix-title">静态基线 (Static)</div>
+          <div class="matrix-timing">持续稳定</div>
+          <div class="matrix-desc">无任何位移与透明度变动，与归档 V2 矢量图严格像素一致。</div>
+        </div>
+
+        <!-- Launch -->
+        <div class="matrix-card">
+          <div class="matrix-box">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 828 816" width="88" height="88" class="pata-logo-svg anim-launch" role="img" aria-label="啪嗒 Pata 品牌标识" data-instance="mat-launch">
+  <defs>
+    <linearGradient id="mat-launch-purpleBack" x1="0" y1=".1" x2="1" y2="1">
+      <stop stop-color="#FF9D40"/><stop offset=".4" stop-color="#FF5DAE"/><stop offset=".74" stop-color="#AD50F0"/><stop offset="1" stop-color="#606FFB"/>
+    </linearGradient>
+    <linearGradient id="mat-launch-yellowMiddle" x1=".1" y1=".03" x2=".83" y2="1">
+      <stop stop-color="#FFEE57"/><stop offset=".3" stop-color="#FFC63B"/><stop offset=".69" stop-color="#FF9C46"/><stop offset="1" stop-color="#FFBB76"/>
+    </linearGradient>
+    <linearGradient id="mat-launch-whiteLeaf" x1=".15" y1="0" x2=".92" y2="1">
+      <stop stop-color="#FFFFF7"/><stop offset=".26" stop-color="#FFF6ED"/><stop offset=".57" stop-color="#F9F5FE"/><stop offset=".83" stop-color="#E8ECFF"/><stop offset="1" stop-color="#FFFDFB"/>
+    </linearGradient>
+    <linearGradient id="mat-launch-leafEdge" x1=".1" y1="0" x2=".5" y2="1">
+      <stop stop-color="#FFFFFF"/><stop offset=".6" stop-color="#FFF7F3"/><stop offset="1" stop-color="#E1D5FF"/>
+    </linearGradient>
+    <linearGradient id="mat-launch-sparkYellow" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#FFE843"/><stop offset=".57" stop-color="#FFBD17"/><stop offset="1" stop-color="#FF8E25"/>
+    </linearGradient>
+    <filter id="mat-launch-sceneShadow" x="-40%" y="-40%" width="180%" height="190%">
+      <feGaussianBlur stdDeviation="16"/>
+    </filter>
+    <filter id="mat-launch-paperShadow" x="-30%" y="-30%" width="170%" height="180%">
+      <feGaussianBlur stdDeviation="10"/>
+    </filter>
+    <filter id="mat-launch-sparkGlow" x="-90%" y="-90%" width="300%" height="300%">
+      <feGaussianBlur stdDeviation="7"/>
+    </filter>
+  </defs>
+  <g id="mat-launch-symbol" class="pata-symbol">
+    <!-- Card Back (Purple) with its soft shadow inside the group -->
+    <g id="mat-launch-card-back" class="pata-card pata-card-back">
+      <path class="pata-card-shadow pata-shadow-back" d="M166 343 C176 330 188 322 204 318 C221 313 237 314 254 319 L477 365 C517 374 550 414 579 475 C604 527 601 566 567 586 C559 592 546 597 533 602 L344 668 C297 683 265 663 243 630 C222 596 198 538 177 490 L143 408 C132 375 150 354 166 343 Z" fill="#803ACD" opacity=".22" transform="translate(5 12)" filter="url(#mat-launch-sceneShadow)"/>
+      <path d="M166 343 C176 330 188 322 204 318 C221 313 237 314 254 319 L477 365 C517 374 550 414 579 475 C604 527 601 566 567 586 C559 592 546 597 533 602 L344 668 C297 683 265 663 243 630 C222 596 198 538 177 490 L143 408 C132 375 150 354 166 343 Z" fill="url(#mat-launch-purpleBack)" stroke="#F7B6E5" stroke-opacity=".55" stroke-width="2.4" stroke-linejoin="round"/>
+      <path d="M150 400 C159 445 202 551 245 630 C271 669 304 682 346 664" fill="none" stroke="#FFD1E8" stroke-opacity=".42" stroke-width="3" stroke-linecap="round"/>
+    </g>
+
+    <!-- Card Middle (Yellow) with its soft shadow inside the group -->
+    <g id="mat-launch-card-middle" class="pata-card pata-card-middle">
+      <path class="pata-card-shadow pata-shadow-middle" d="M211 279 C231 270 248 269 266 275 L479 326 C523 340 553 380 575 441 C597 496 610 532 591 562 C584 573 571 581 551 588 L405 625 C354 642 320 626 295 586 C266 542 245 499 220 442 C193 382 184 345 193 304 C196 292 201 284 211 279 Z" fill="#DD747F" opacity=".22" transform="translate(3 7)" filter="url(#mat-launch-paperShadow)"/>
+      <path d="M211 279 C231 270 248 269 266 275 L479 326 C523 340 553 380 575 441 C597 496 610 532 591 562 C584 573 571 581 551 588 L405 625 C354 642 320 626 295 586 C266 542 245 499 220 442 C193 382 184 345 193 304 C196 292 201 284 211 279 Z" fill="#EC9770" opacity=".4" transform="translate(1.5 5)"/>
+      <path d="M211 279 C231 270 248 269 266 275 L479 326 C523 340 553 380 575 441 C597 496 610 532 591 562 C584 573 571 581 551 588 L405 625 C354 642 320 626 295 586 C266 542 245 499 220 442 C193 382 184 345 193 304 C196 292 201 284 211 279 Z" fill="url(#mat-launch-yellowMiddle)" stroke="#FFE596" stroke-width="3.1" stroke-linejoin="round"/>
+      <path d="M202 304 C191 347 203 397 228 452 C255 511 281 559 307 595 C331 629 366 639 407 621" fill="none" stroke="#FFEFBA" stroke-opacity=".55" stroke-width="3" stroke-linecap="round"/>
+    </g>
+
+    <!-- Card Front (White Folded) with its soft shadow inside the group -->
+    <g id="mat-launch-card-front" class="pata-card pata-card-front">
+      <path class="pata-card-shadow pata-shadow-front" d="M310 224 C331 224 345 229 362 236 L484 279 C527 295 539 316 560 366 C569 388 579 409 591 432 C607 456 639 470 664 487 C688 504 684 523 661 538 C648 547 633 550 610 556 L453 583 C402 592 366 577 342 544 C307 496 285 444 260 383 C243 341 234 301 240 269 C245 238 272 221 310 224 Z" fill="#9E8FC3" opacity=".17" transform="translate(5 9)" filter="url(#mat-launch-paperShadow)"/>
+      <path d="M310 224 C331 224 345 229 362 236 L484 279 C527 295 539 316 560 366 C569 388 579 409 591 432 C607 456 639 470 664 487 C688 504 684 523 661 538 C648 547 633 550 610 556 L453 583 C402 592 366 577 342 544 C307 496 285 444 260 383 C243 341 234 301 240 269 C245 238 272 221 310 224 Z" fill="#D7D0F2" opacity=".72" transform="translate(1 5)"/>
+      <path d="M310 224 C331 224 345 229 362 236 L484 279 C527 295 539 316 560 366 C569 388 579 409 591 432 C607 456 639 470 664 487 C688 504 684 523 661 538 C648 547 633 550 610 556 L453 583 C402 592 366 577 342 544 C307 496 285 444 260 383 C243 341 234 301 240 269 C245 238 272 221 310 224 Z" fill="url(#mat-launch-whiteLeaf)" stroke="url(#mat-launch-leafEdge)" stroke-width="3.5" stroke-linejoin="round"/>
+      <path d="M308 227 C277 223 252 237 246 270 C241 302 251 352 270 402 C290 454 317 515 346 547 C370 581 404 589 451 582" fill="none" stroke="#FFFFFF" stroke-opacity=".82" stroke-width="3" stroke-linecap="round"/>
+      <path d="M341 545 C368 582 403 592 453 586 L611 560 C634 555 648 550 664 539" fill="none" stroke="#C6BEEF" stroke-opacity=".4" stroke-width="2.4" stroke-linecap="round"/>
+    </g>
+
+    <!-- Sparkles: 3 distinct groups sequenced 1 -> 2 -> 3 -->
+    <g id="mat-launch-sparkles" class="pata-sparkles">
+      <g id="mat-launch-sparkle-1" class="pata-sparkle pata-sparkle-1" data-sparkle="1">
+        <rect x="488" y="143" width="44" height="105" rx="23" opacity=".14" fill="#FF9923" filter="url(#mat-launch-sparkGlow)"/>
+        <rect x="490" y="143" width="42" height="103" rx="21" fill="url(#mat-launch-sparkYellow)" stroke="#FFE277" stroke-width="1.5" transform="rotate(-1 511 195)"/>
+      </g>
+      <g id="mat-launch-sparkle-2" class="pata-sparkle pata-sparkle-2" data-sparkle="2">
+        <rect x="575" y="169" width="47" height="109" rx="24" transform="rotate(47 599 222)" opacity=".14" fill="#FF9923" filter="url(#mat-launch-sparkGlow)"/>
+        <rect x="575" y="171" width="45" height="105" rx="22.5" transform="rotate(46 598 224)" fill="url(#mat-launch-sparkYellow)" stroke="#FFE277" stroke-width="1.5"/>
+      </g>
+      <g id="mat-launch-sparkle-3" class="pata-sparkle pata-sparkle-3" data-sparkle="3">
+        <rect x="605" y="316" width="96" height="44" rx="22" transform="rotate(8 653 338)" opacity=".14" fill="#FF9923" filter="url(#mat-launch-sparkGlow)"/>
+        <rect x="602" y="318" width="103" height="43" rx="21.5" transform="rotate(6 653 339)" fill="url(#mat-launch-sparkYellow)" stroke="#FFE277" stroke-width="1.5"/>
+      </g>
+    </g>
+  </g>
+</svg>
+          </div>
+          <div class="matrix-title">启动微弹 (Launch)</div>
+          <div class="matrix-timing">约 600ms · 播一次</div>
+          <div class="matrix-desc">应用就绪时，三层卡片轻微弹出就位，三道光芒依次绽放。</div>
+        </div>
+
+        <!-- Success -->
+        <div class="matrix-card">
+          <div class="matrix-box">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 828 816" width="88" height="88" class="pata-logo-svg anim-success" role="img" aria-label="啪嗒 Pata 品牌标识" data-instance="mat-success">
+  <defs>
+    <linearGradient id="mat-success-purpleBack" x1="0" y1=".1" x2="1" y2="1">
+      <stop stop-color="#FF9D40"/><stop offset=".4" stop-color="#FF5DAE"/><stop offset=".74" stop-color="#AD50F0"/><stop offset="1" stop-color="#606FFB"/>
+    </linearGradient>
+    <linearGradient id="mat-success-yellowMiddle" x1=".1" y1=".03" x2=".83" y2="1">
+      <stop stop-color="#FFEE57"/><stop offset=".3" stop-color="#FFC63B"/><stop offset=".69" stop-color="#FF9C46"/><stop offset="1" stop-color="#FFBB76"/>
+    </linearGradient>
+    <linearGradient id="mat-success-whiteLeaf" x1=".15" y1="0" x2=".92" y2="1">
+      <stop stop-color="#FFFFF7"/><stop offset=".26" stop-color="#FFF6ED"/><stop offset=".57" stop-color="#F9F5FE"/><stop offset=".83" stop-color="#E8ECFF"/><stop offset="1" stop-color="#FFFDFB"/>
+    </linearGradient>
+    <linearGradient id="mat-success-leafEdge" x1=".1" y1="0" x2=".5" y2="1">
+      <stop stop-color="#FFFFFF"/><stop offset=".6" stop-color="#FFF7F3"/><stop offset="1" stop-color="#E1D5FF"/>
+    </linearGradient>
+    <linearGradient id="mat-success-sparkYellow" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#FFE843"/><stop offset=".57" stop-color="#FFBD17"/><stop offset="1" stop-color="#FF8E25"/>
+    </linearGradient>
+    <filter id="mat-success-sceneShadow" x="-40%" y="-40%" width="180%" height="190%">
+      <feGaussianBlur stdDeviation="16"/>
+    </filter>
+    <filter id="mat-success-paperShadow" x="-30%" y="-30%" width="170%" height="180%">
+      <feGaussianBlur stdDeviation="10"/>
+    </filter>
+    <filter id="mat-success-sparkGlow" x="-90%" y="-90%" width="300%" height="300%">
+      <feGaussianBlur stdDeviation="7"/>
+    </filter>
+  </defs>
+  <g id="mat-success-symbol" class="pata-symbol">
+    <!-- Card Back (Purple) with its soft shadow inside the group -->
+    <g id="mat-success-card-back" class="pata-card pata-card-back">
+      <path class="pata-card-shadow pata-shadow-back" d="M166 343 C176 330 188 322 204 318 C221 313 237 314 254 319 L477 365 C517 374 550 414 579 475 C604 527 601 566 567 586 C559 592 546 597 533 602 L344 668 C297 683 265 663 243 630 C222 596 198 538 177 490 L143 408 C132 375 150 354 166 343 Z" fill="#803ACD" opacity=".22" transform="translate(5 12)" filter="url(#mat-success-sceneShadow)"/>
+      <path d="M166 343 C176 330 188 322 204 318 C221 313 237 314 254 319 L477 365 C517 374 550 414 579 475 C604 527 601 566 567 586 C559 592 546 597 533 602 L344 668 C297 683 265 663 243 630 C222 596 198 538 177 490 L143 408 C132 375 150 354 166 343 Z" fill="url(#mat-success-purpleBack)" stroke="#F7B6E5" stroke-opacity=".55" stroke-width="2.4" stroke-linejoin="round"/>
+      <path d="M150 400 C159 445 202 551 245 630 C271 669 304 682 346 664" fill="none" stroke="#FFD1E8" stroke-opacity=".42" stroke-width="3" stroke-linecap="round"/>
+    </g>
+
+    <!-- Card Middle (Yellow) with its soft shadow inside the group -->
+    <g id="mat-success-card-middle" class="pata-card pata-card-middle">
+      <path class="pata-card-shadow pata-shadow-middle" d="M211 279 C231 270 248 269 266 275 L479 326 C523 340 553 380 575 441 C597 496 610 532 591 562 C584 573 571 581 551 588 L405 625 C354 642 320 626 295 586 C266 542 245 499 220 442 C193 382 184 345 193 304 C196 292 201 284 211 279 Z" fill="#DD747F" opacity=".22" transform="translate(3 7)" filter="url(#mat-success-paperShadow)"/>
+      <path d="M211 279 C231 270 248 269 266 275 L479 326 C523 340 553 380 575 441 C597 496 610 532 591 562 C584 573 571 581 551 588 L405 625 C354 642 320 626 295 586 C266 542 245 499 220 442 C193 382 184 345 193 304 C196 292 201 284 211 279 Z" fill="#EC9770" opacity=".4" transform="translate(1.5 5)"/>
+      <path d="M211 279 C231 270 248 269 266 275 L479 326 C523 340 553 380 575 441 C597 496 610 532 591 562 C584 573 571 581 551 588 L405 625 C354 642 320 626 295 586 C266 542 245 499 220 442 C193 382 184 345 193 304 C196 292 201 284 211 279 Z" fill="url(#mat-success-yellowMiddle)" stroke="#FFE596" stroke-width="3.1" stroke-linejoin="round"/>
+      <path d="M202 304 C191 347 203 397 228 452 C255 511 281 559 307 595 C331 629 366 639 407 621" fill="none" stroke="#FFEFBA" stroke-opacity=".55" stroke-width="3" stroke-linecap="round"/>
+    </g>
+
+    <!-- Card Front (White Folded) with its soft shadow inside the group -->
+    <g id="mat-success-card-front" class="pata-card pata-card-front">
+      <path class="pata-card-shadow pata-shadow-front" d="M310 224 C331 224 345 229 362 236 L484 279 C527 295 539 316 560 366 C569 388 579 409 591 432 C607 456 639 470 664 487 C688 504 684 523 661 538 C648 547 633 550 610 556 L453 583 C402 592 366 577 342 544 C307 496 285 444 260 383 C243 341 234 301 240 269 C245 238 272 221 310 224 Z" fill="#9E8FC3" opacity=".17" transform="translate(5 9)" filter="url(#mat-success-paperShadow)"/>
+      <path d="M310 224 C331 224 345 229 362 236 L484 279 C527 295 539 316 560 366 C569 388 579 409 591 432 C607 456 639 470 664 487 C688 504 684 523 661 538 C648 547 633 550 610 556 L453 583 C402 592 366 577 342 544 C307 496 285 444 260 383 C243 341 234 301 240 269 C245 238 272 221 310 224 Z" fill="#D7D0F2" opacity=".72" transform="translate(1 5)"/>
+      <path d="M310 224 C331 224 345 229 362 236 L484 279 C527 295 539 316 560 366 C569 388 579 409 591 432 C607 456 639 470 664 487 C688 504 684 523 661 538 C648 547 633 550 610 556 L453 583 C402 592 366 577 342 544 C307 496 285 444 260 383 C243 341 234 301 240 269 C245 238 272 221 310 224 Z" fill="url(#mat-success-whiteLeaf)" stroke="url(#mat-success-leafEdge)" stroke-width="3.5" stroke-linejoin="round"/>
+      <path d="M308 227 C277 223 252 237 246 270 C241 302 251 352 270 402 C290 454 317 515 346 547 C370 581 404 589 451 582" fill="none" stroke="#FFFFFF" stroke-opacity=".82" stroke-width="3" stroke-linecap="round"/>
+      <path d="M341 545 C368 582 403 592 453 586 L611 560 C634 555 648 550 664 539" fill="none" stroke="#C6BEEF" stroke-opacity=".4" stroke-width="2.4" stroke-linecap="round"/>
+    </g>
+
+    <!-- Sparkles: 3 distinct groups sequenced 1 -> 2 -> 3 -->
+    <g id="mat-success-sparkles" class="pata-sparkles">
+      <g id="mat-success-sparkle-1" class="pata-sparkle pata-sparkle-1" data-sparkle="1">
+        <rect x="488" y="143" width="44" height="105" rx="23" opacity=".14" fill="#FF9923" filter="url(#mat-success-sparkGlow)"/>
+        <rect x="490" y="143" width="42" height="103" rx="21" fill="url(#mat-success-sparkYellow)" stroke="#FFE277" stroke-width="1.5" transform="rotate(-1 511 195)"/>
+      </g>
+      <g id="mat-success-sparkle-2" class="pata-sparkle pata-sparkle-2" data-sparkle="2">
+        <rect x="575" y="169" width="47" height="109" rx="24" transform="rotate(47 599 222)" opacity=".14" fill="#FF9923" filter="url(#mat-success-sparkGlow)"/>
+        <rect x="575" y="171" width="45" height="105" rx="22.5" transform="rotate(46 598 224)" fill="url(#mat-success-sparkYellow)" stroke="#FFE277" stroke-width="1.5"/>
+      </g>
+      <g id="mat-success-sparkle-3" class="pata-sparkle pata-sparkle-3" data-sparkle="3">
+        <rect x="605" y="316" width="96" height="44" rx="22" transform="rotate(8 653 338)" opacity=".14" fill="#FF9923" filter="url(#mat-success-sparkGlow)"/>
+        <rect x="602" y="318" width="103" height="43" rx="21.5" transform="rotate(6 653 339)" fill="url(#mat-success-sparkYellow)" stroke="#FFE277" stroke-width="1.5"/>
+      </g>
+    </g>
+  </g>
+</svg>
+          </div>
+          <div class="matrix-title">保存成功 (Success)</div>
+          <div class="matrix-timing">约 700ms · 播一次</div>
+          <div class="matrix-desc">Memo/Task 写入确认，卡片受压下沉轻巧回弹，三道光芒依次闪亮。</div>
+        </div>
+
+        <!-- Reduced Motion -->
+        <div class="matrix-card">
+          <div class="matrix-box" data-reduced-motion="true">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 828 816" width="88" height="88" class="pata-logo-svg anim-success" role="img" aria-label="啪嗒 Pata 品牌标识" data-instance="mat-rm">
+  <defs>
+    <linearGradient id="mat-rm-purpleBack" x1="0" y1=".1" x2="1" y2="1">
+      <stop stop-color="#FF9D40"/><stop offset=".4" stop-color="#FF5DAE"/><stop offset=".74" stop-color="#AD50F0"/><stop offset="1" stop-color="#606FFB"/>
+    </linearGradient>
+    <linearGradient id="mat-rm-yellowMiddle" x1=".1" y1=".03" x2=".83" y2="1">
+      <stop stop-color="#FFEE57"/><stop offset=".3" stop-color="#FFC63B"/><stop offset=".69" stop-color="#FF9C46"/><stop offset="1" stop-color="#FFBB76"/>
+    </linearGradient>
+    <linearGradient id="mat-rm-whiteLeaf" x1=".15" y1="0" x2=".92" y2="1">
+      <stop stop-color="#FFFFF7"/><stop offset=".26" stop-color="#FFF6ED"/><stop offset=".57" stop-color="#F9F5FE"/><stop offset=".83" stop-color="#E8ECFF"/><stop offset="1" stop-color="#FFFDFB"/>
+    </linearGradient>
+    <linearGradient id="mat-rm-leafEdge" x1=".1" y1="0" x2=".5" y2="1">
+      <stop stop-color="#FFFFFF"/><stop offset=".6" stop-color="#FFF7F3"/><stop offset="1" stop-color="#E1D5FF"/>
+    </linearGradient>
+    <linearGradient id="mat-rm-sparkYellow" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#FFE843"/><stop offset=".57" stop-color="#FFBD17"/><stop offset="1" stop-color="#FF8E25"/>
+    </linearGradient>
+    <filter id="mat-rm-sceneShadow" x="-40%" y="-40%" width="180%" height="190%">
+      <feGaussianBlur stdDeviation="16"/>
+    </filter>
+    <filter id="mat-rm-paperShadow" x="-30%" y="-30%" width="170%" height="180%">
+      <feGaussianBlur stdDeviation="10"/>
+    </filter>
+    <filter id="mat-rm-sparkGlow" x="-90%" y="-90%" width="300%" height="300%">
+      <feGaussianBlur stdDeviation="7"/>
+    </filter>
+  </defs>
+  <g id="mat-rm-symbol" class="pata-symbol">
+    <!-- Card Back (Purple) with its soft shadow inside the group -->
+    <g id="mat-rm-card-back" class="pata-card pata-card-back">
+      <path class="pata-card-shadow pata-shadow-back" d="M166 343 C176 330 188 322 204 318 C221 313 237 314 254 319 L477 365 C517 374 550 414 579 475 C604 527 601 566 567 586 C559 592 546 597 533 602 L344 668 C297 683 265 663 243 630 C222 596 198 538 177 490 L143 408 C132 375 150 354 166 343 Z" fill="#803ACD" opacity=".22" transform="translate(5 12)" filter="url(#mat-rm-sceneShadow)"/>
+      <path d="M166 343 C176 330 188 322 204 318 C221 313 237 314 254 319 L477 365 C517 374 550 414 579 475 C604 527 601 566 567 586 C559 592 546 597 533 602 L344 668 C297 683 265 663 243 630 C222 596 198 538 177 490 L143 408 C132 375 150 354 166 343 Z" fill="url(#mat-rm-purpleBack)" stroke="#F7B6E5" stroke-opacity=".55" stroke-width="2.4" stroke-linejoin="round"/>
+      <path d="M150 400 C159 445 202 551 245 630 C271 669 304 682 346 664" fill="none" stroke="#FFD1E8" stroke-opacity=".42" stroke-width="3" stroke-linecap="round"/>
+    </g>
+
+    <!-- Card Middle (Yellow) with its soft shadow inside the group -->
+    <g id="mat-rm-card-middle" class="pata-card pata-card-middle">
+      <path class="pata-card-shadow pata-shadow-middle" d="M211 279 C231 270 248 269 266 275 L479 326 C523 340 553 380 575 441 C597 496 610 532 591 562 C584 573 571 581 551 588 L405 625 C354 642 320 626 295 586 C266 542 245 499 220 442 C193 382 184 345 193 304 C196 292 201 284 211 279 Z" fill="#DD747F" opacity=".22" transform="translate(3 7)" filter="url(#mat-rm-paperShadow)"/>
+      <path d="M211 279 C231 270 248 269 266 275 L479 326 C523 340 553 380 575 441 C597 496 610 532 591 562 C584 573 571 581 551 588 L405 625 C354 642 320 626 295 586 C266 542 245 499 220 442 C193 382 184 345 193 304 C196 292 201 284 211 279 Z" fill="#EC9770" opacity=".4" transform="translate(1.5 5)"/>
+      <path d="M211 279 C231 270 248 269 266 275 L479 326 C523 340 553 380 575 441 C597 496 610 532 591 562 C584 573 571 581 551 588 L405 625 C354 642 320 626 295 586 C266 542 245 499 220 442 C193 382 184 345 193 304 C196 292 201 284 211 279 Z" fill="url(#mat-rm-yellowMiddle)" stroke="#FFE596" stroke-width="3.1" stroke-linejoin="round"/>
+      <path d="M202 304 C191 347 203 397 228 452 C255 511 281 559 307 595 C331 629 366 639 407 621" fill="none" stroke="#FFEFBA" stroke-opacity=".55" stroke-width="3" stroke-linecap="round"/>
+    </g>
+
+    <!-- Card Front (White Folded) with its soft shadow inside the group -->
+    <g id="mat-rm-card-front" class="pata-card pata-card-front">
+      <path class="pata-card-shadow pata-shadow-front" d="M310 224 C331 224 345 229 362 236 L484 279 C527 295 539 316 560 366 C569 388 579 409 591 432 C607 456 639 470 664 487 C688 504 684 523 661 538 C648 547 633 550 610 556 L453 583 C402 592 366 577 342 544 C307 496 285 444 260 383 C243 341 234 301 240 269 C245 238 272 221 310 224 Z" fill="#9E8FC3" opacity=".17" transform="translate(5 9)" filter="url(#mat-rm-paperShadow)"/>
+      <path d="M310 224 C331 224 345 229 362 236 L484 279 C527 295 539 316 560 366 C569 388 579 409 591 432 C607 456 639 470 664 487 C688 504 684 523 661 538 C648 547 633 550 610 556 L453 583 C402 592 366 577 342 544 C307 496 285 444 260 383 C243 341 234 301 240 269 C245 238 272 221 310 224 Z" fill="#D7D0F2" opacity=".72" transform="translate(1 5)"/>
+      <path d="M310 224 C331 224 345 229 362 236 L484 279 C527 295 539 316 560 366 C569 388 579 409 591 432 C607 456 639 470 664 487 C688 504 684 523 661 538 C648 547 633 550 610 556 L453 583 C402 592 366 577 342 544 C307 496 285 444 260 383 C243 341 234 301 240 269 C245 238 272 221 310 224 Z" fill="url(#mat-rm-whiteLeaf)" stroke="url(#mat-rm-leafEdge)" stroke-width="3.5" stroke-linejoin="round"/>
+      <path d="M308 227 C277 223 252 237 246 270 C241 302 251 352 270 402 C290 454 317 515 346 547 C370 581 404 589 451 582" fill="none" stroke="#FFFFFF" stroke-opacity=".82" stroke-width="3" stroke-linecap="round"/>
+      <path d="M341 545 C368 582 403 592 453 586 L611 560 C634 555 648 550 664 539" fill="none" stroke="#C6BEEF" stroke-opacity=".4" stroke-width="2.4" stroke-linecap="round"/>
+    </g>
+
+    <!-- Sparkles: 3 distinct groups sequenced 1 -> 2 -> 3 -->
+    <g id="mat-rm-sparkles" class="pata-sparkles">
+      <g id="mat-rm-sparkle-1" class="pata-sparkle pata-sparkle-1" data-sparkle="1">
+        <rect x="488" y="143" width="44" height="105" rx="23" opacity=".14" fill="#FF9923" filter="url(#mat-rm-sparkGlow)"/>
+        <rect x="490" y="143" width="42" height="103" rx="21" fill="url(#mat-rm-sparkYellow)" stroke="#FFE277" stroke-width="1.5" transform="rotate(-1 511 195)"/>
+      </g>
+      <g id="mat-rm-sparkle-2" class="pata-sparkle pata-sparkle-2" data-sparkle="2">
+        <rect x="575" y="169" width="47" height="109" rx="24" transform="rotate(47 599 222)" opacity=".14" fill="#FF9923" filter="url(#mat-rm-sparkGlow)"/>
+        <rect x="575" y="171" width="45" height="105" rx="22.5" transform="rotate(46 598 224)" fill="url(#mat-rm-sparkYellow)" stroke="#FFE277" stroke-width="1.5"/>
+      </g>
+      <g id="mat-rm-sparkle-3" class="pata-sparkle pata-sparkle-3" data-sparkle="3">
+        <rect x="605" y="316" width="96" height="44" rx="22" transform="rotate(8 653 338)" opacity=".14" fill="#FF9923" filter="url(#mat-rm-sparkGlow)"/>
+        <rect x="602" y="318" width="103" height="43" rx="21.5" transform="rotate(6 653 339)" fill="url(#mat-rm-sparkYellow)" stroke="#FFE277" stroke-width="1.5"/>
+      </g>
+    </g>
+  </g>
+</svg>
+          </div>
+          <div class="matrix-title">减少动态 (Reduced)</div>
+          <div class="matrix-timing">立即静态</div>
+          <div class="matrix-desc">用户系统开启偏好时，强行覆盖为静态，不触发任何动效。</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Section 4: Specifications & Migration Guide -->
+    <section class="section" id="section-specs">
+      <div class="section-header">
+        <h2 class="section-title">4. 动效参数规范表 (依据 Proposal 实施顺序第 2 节)</h2>
+        <span class="section-desc">已集中为 CSS 变量与 class 触发，零外链，后续无缝接入 React</span>
+      </div>
+      <div class="spec-table-box">
+        <table class="spec-table">
+          <thead>
+            <tr>
+              <th>触发时机</th>
+              <th>动作与编排</th>
+              <th>时长</th>
+              <th>播放规则</th>
+              <th>对应 CSS 触发 Class</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>应用首次就绪</strong></td>
+              <td>三层卡片轻微弹出就位，光芒 1→2→3 依次出现</td>
+              <td>约 600ms</td>
+              <td>启动时仅播一次，页面切换不重复</td>
+              <td><span class="code-tag">.anim-launch</span></td>
+            </tr>
+            <tr>
+              <td><strong>记录保存成功</strong></td>
+              <td>卡片轻压（0-160ms）后回弹（160-450ms），三道光芒依次亮起（200-680ms）</td>
+              <td>约 700ms</td>
+              <td>Go 真正保存成功后播放，连续成功合并</td>
+              <td><span class="code-tag">.anim-success</span></td>
+            </tr>
+            <tr>
+              <td><strong>标识悬停 (可选)</strong></td>
+              <td>顶层折角微弹微光</td>
+              <td>约 400ms</td>
+              <td>鼠标划过一次，不循环抖动</td>
+              <td><span class="code-tag">.anim-hoverable</span></td>
+            </tr>
+            <tr>
+              <td><strong>辅助功能</strong></td>
+              <td>prefers-reduced-motion: reduce 激活时立即恢复静态</td>
+              <td>0ms</td>
+              <td>立即生效，不等待播放完成</td>
+              <td><span class="code-tag">[data-reduced-motion="true"]</span></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </div>
+
+  <!-- Interactive JavaScript Logic (Zero External Dependencies) -->
+  <script>
+    (function() {
+      'use strict';
+
+      // Elements
+      const htmlEl = document.documentElement;
+      const btnThemeLight = document.getElementById('btn-theme-light');
+      const btnThemeDark = document.getElementById('btn-theme-dark');
+      const btnThemeSys = document.getElementById('btn-theme-sys');
+      const btnPlayLaunch = document.getElementById('btn-play-launch');
+      const btnPlaySuccess = document.getElementById('btn-play-success');
+      const btnSetStatic = document.getElementById('btn-set-static');
+      const btnReplay = document.getElementById('btn-replay');
+      const chkSlowMo = document.getElementById('chk-slow-mo');
+      const chkReducedMotion = document.getElementById('chk-reduced-motion');
+      const reducedMotionBanner = document.getElementById('reduced-motion-banner');
+      const heroStatusBadge = document.getElementById('hero-status-badge');
+
+      // Controlled logo SVG targets (All interactive instances)
+      const interactiveSvgs = [
+        document.querySelector('svg[data-instance="hero"]'),
+        document.querySelector('svg[data-instance="tb16"]'),
+        document.querySelector('svg[data-instance="tb16-card"]'),
+        document.querySelector('svg[data-instance="tb20-card"]'),
+        document.querySelector('svg[data-instance="tb24-card"]'),
+        document.querySelector('svg[data-instance="tb32-card"]')
+      ].filter(Boolean);
+
+      let currentMode = 'anim-static';
+
+      // 1. Theme Management
+      function setTheme(theme) {
+        if (theme === 'system') {
+          const isDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+          htmlEl.setAttribute('data-theme', isDark ? 'dark' : 'light');
+        } else {
+          htmlEl.setAttribute('data-theme', theme);
+        }
+        [btnThemeLight, btnThemeDark, btnThemeSys].forEach(b => b.classList.remove('active'));
+        if (theme === 'light') btnThemeLight.classList.add('active');
+        else if (theme === 'dark') btnThemeDark.classList.add('active');
+        else btnThemeSys.classList.add('active');
+      }
+
+      btnThemeLight.addEventListener('click', () => setTheme('light'));
+      btnThemeDark.addEventListener('click', () => setTheme('dark'));
+      btnThemeSys.addEventListener('click', () => setTheme('system'));
+      setTheme('light'); // Default to light mode preview
+
+      // 2. Reduced Motion Toggle
+      chkReducedMotion.addEventListener('change', function() {
+        const isReduced = this.checked;
+        htmlEl.setAttribute('data-reduced-motion', isReduced ? 'true' : 'false');
+        reducedMotionBanner.style.display = isReduced ? 'block' : 'none';
+        if (isReduced) {
+          heroStatusBadge.textContent = '当前状态: 减少动态效果已激活 (静态锁死)';
+        } else {
+          updateStatusText(currentMode);
+        }
+      });
+
+      // 3. Slow Motion Toggle
+      chkSlowMo.addEventListener('change', function() {
+        if (this.checked) {
+          htmlEl.style.setProperty('--pata-launch-dur', '1800ms');
+          htmlEl.style.setProperty('--pata-success-dur', '2100ms');
+          htmlEl.style.setProperty('--pata-launch-card-back-delay', '0ms');
+          htmlEl.style.setProperty('--pata-launch-card-mid-delay', '135ms');
+          htmlEl.style.setProperty('--pata-launch-card-front-delay', '270ms');
+          htmlEl.style.setProperty('--pata-launch-sparkle-1-delay', '720ms');
+          htmlEl.style.setProperty('--pata-launch-sparkle-2-delay', '960ms');
+          htmlEl.style.setProperty('--pata-launch-sparkle-3-delay', '1200ms');
+
+          htmlEl.style.setProperty('--pata-success-card-back-delay', '0ms');
+          htmlEl.style.setProperty('--pata-success-card-mid-delay', '75ms');
+          htmlEl.style.setProperty('--pata-success-card-front-delay', '150ms');
+          htmlEl.style.setProperty('--pata-success-sparkle-1-delay', '600ms');
+          htmlEl.style.setProperty('--pata-success-sparkle-2-delay', '840ms');
+          htmlEl.style.setProperty('--pata-success-sparkle-3-delay', '1080ms');
+        } else {
+          htmlEl.style.removeProperty('--pata-launch-dur');
+          htmlEl.style.removeProperty('--pata-success-dur');
+          htmlEl.style.removeProperty('--pata-launch-card-back-delay');
+          htmlEl.style.removeProperty('--pata-launch-card-mid-delay');
+          htmlEl.style.removeProperty('--pata-launch-card-front-delay');
+          htmlEl.style.removeProperty('--pata-launch-sparkle-1-delay');
+          htmlEl.style.removeProperty('--pata-launch-sparkle-2-delay');
+          htmlEl.style.removeProperty('--pata-launch-sparkle-3-delay');
+          htmlEl.style.removeProperty('--pata-success-card-back-delay');
+          htmlEl.style.removeProperty('--pata-success-card-mid-delay');
+          htmlEl.style.removeProperty('--pata-success-card-front-delay');
+          htmlEl.style.removeProperty('--pata-success-sparkle-1-delay');
+          htmlEl.style.removeProperty('--pata-success-sparkle-2-delay');
+          htmlEl.style.removeProperty('--pata-success-sparkle-3-delay');
+        }
+        // Re-trigger current animation
+        triggerAnimation(currentMode);
+      });
+
+      // 4. Animation Trigger Core
+      function triggerAnimation(modeClass) {
+        currentMode = modeClass;
+
+        // Force reflow to cleanly restart CSS keyframe animations
+        interactiveSvgs.forEach(svg => {
+          svg.classList.remove('anim-launch', 'anim-success', 'anim-static');
+          void svg.offsetWidth; // DOM reflow
+          svg.classList.add(modeClass);
+        });
+
+        updateStatusText(modeClass);
+      }
+
+      function updateStatusText(mode) {
+        if (chkReducedMotion.checked) {
+          heroStatusBadge.textContent = '当前状态: 减少动态效果已激活 (静态锁死)';
+          return;
+        }
+        if (mode === 'anim-launch') {
+          heroStatusBadge.textContent = '当前状态: 启动动画播放中 (~600ms)';
+        } else if (mode === 'anim-success') {
+          heroStatusBadge.textContent = '当前状态: 保存成功动画播放中 (~700ms)';
+        } else {
+          heroStatusBadge.textContent = '当前状态: 静态基线 (Static)';
+        }
+      }
+
+      btnPlayLaunch.addEventListener('click', () => triggerAnimation('anim-launch'));
+      btnPlaySuccess.addEventListener('click', () => triggerAnimation('anim-success'));
+      btnSetStatic.addEventListener('click', () => triggerAnimation('anim-static'));
+      btnReplay.addEventListener('click', () => triggerAnimation(currentMode));
+
+      // Initial state: play launch animation once on initial page load as in app boot
+      window.addEventListener('DOMContentLoaded', () => {
+        triggerAnimation('anim-launch');
+      });
+    })();
+  </script>
+</body>
+</html>
