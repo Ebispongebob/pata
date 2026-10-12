@@ -13,14 +13,17 @@
 
 | P5-004 | 后端:GetVaultHealth 错误报告暴露 + 服务层回归审计补缺 | P5-001 | ✅ 完成(R4 一次通过) |
 | P5-005 | 前端:健康UI/基础无障碍/快捷键与首启审计/macOS 打包验证 | P5-004 | ✅ 完成(尝试 2,含 P5-R5 返工) |
-| 剩余 | proposal 步骤 5:真实资料走查 + 实机 macOS 回归 + MVP 验收清单 | 需用户实机 | ⏸ 留用户 |
+| 剩余 | proposal 步骤 5:真实资料走查 + 实机 macOS 回归 + MVP 验收清单 | 需用户实机 | 🔄 走查中 |
+| P5-006 | 走查修复:主题切换/交通灯重叠/侧栏拖拽调宽 | 用户反馈 | ✅ 完成(尝试 2,含 P5-R6 返工) |
 
 ## Worker 运行映射
 
 | Worker | Tab/Pane | 组合 | 实际模型(证据) | 状态 |
 |---|---|---|---|---|
-| p5-backend | w17:tF / w17:pF | agy | Gemini 3.8 Flash · high(终端页脚) | ✅ P5-001~005 全部完成(004 一次过,余各含 1 次返工),待关闭 |
-| p5-reviewer | w17:tG / w17:pG | pi + zoesoft/glm-5.3 | glm-5.3(状态栏) | ✅ P5-R1~R5 全部完成(0 must 累计 1;R4 一次通过),待关闭 |
+| p5-backend | w17:tF(已关) | agy | Gemini 3.8 Flash · high(终端页脚) | ✅ P5-001~005 全部完成，已关闭 |
+| p5-reviewer | w17:tG(已关) | pi + zoesoft/glm-5.3 | glm-5.3(状态栏) | ✅ P5-R1~R5 全部完成，已关闭 |
+| p5-fix | w17:tK / w17:pK | agy | Gemini 3.8 Flash · high(Google 授权后) | ✅ P5-006 完成(尝试 2),待关闭 |
+| p5-reviewer2 | w17:tM / w17:pM | pi + zoesoft/glm-5.3 | glm-5.3(状态栏) | ✅ P5-R6 完成(1 should/3 nice),待关闭 |
 
 ## P5-001 委派快照
 
