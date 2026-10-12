@@ -50,6 +50,44 @@ export class DayPlan {
 }
 
 /**
+ * EntityRef represents a reference to an entity returned from queries.
+ */
+export class EntityRef {
+    "type": EntityType;
+    "id": string;
+    "title"?: string;
+    "path": string;
+
+    /**
+     * true if matched via parent task tag
+     */
+    "inherited"?: boolean;
+
+    /** Creates a new EntityRef instance. */
+    constructor($$source: Partial<EntityRef> = {}) {
+        if (!("type" in $$source)) {
+            this["type"] = EntityType.$zero;
+        }
+        if (!("id" in $$source)) {
+            this["id"] = "";
+        }
+        if (!("path" in $$source)) {
+            this["path"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new EntityRef instance from a string or object.
+     */
+    static createFrom($$source: any = {}): EntityRef {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new EntityRef($$parsedSource as Partial<EntityRef>);
+    }
+}
+
+/**
  * EntityType represents the type of a Pata entity.
  */
 export enum EntityType {
@@ -156,6 +194,40 @@ export class Note {
 }
 
 /**
+ * SearchResultItem represents a matched entity in cross-type search.
+ */
+export class SearchResultItem {
+    "type": EntityType;
+    "id": string;
+    "title"?: string;
+    "snippet"?: string;
+    "path": string;
+
+    /** Creates a new SearchResultItem instance. */
+    constructor($$source: Partial<SearchResultItem> = {}) {
+        if (!("type" in $$source)) {
+            this["type"] = EntityType.$zero;
+        }
+        if (!("id" in $$source)) {
+            this["id"] = "";
+        }
+        if (!("path" in $$source)) {
+            this["path"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new SearchResultItem instance from a string or object.
+     */
+    static createFrom($$source: any = {}): SearchResultItem {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new SearchResultItem($$parsedSource as Partial<SearchResultItem>);
+    }
+}
+
+/**
  * StatusEvent records completion and reopen events.
  */
 export class StatusEvent {
@@ -195,6 +267,46 @@ export enum StatusEventAction {
     StatusEventActionCompleted = "completed",
     StatusEventActionReopened = "reopened",
 };
+
+/**
+ * TagOverviewItem represents a tag aggregated across tasks, notes, and memos.
+ */
+export class TagOverviewItem {
+    "tag": string;
+    "task_count": number;
+    "note_count": number;
+    "memo_count": number;
+    "total": number;
+
+    /** Creates a new TagOverviewItem instance. */
+    constructor($$source: Partial<TagOverviewItem> = {}) {
+        if (!("tag" in $$source)) {
+            this["tag"] = "";
+        }
+        if (!("task_count" in $$source)) {
+            this["task_count"] = 0;
+        }
+        if (!("note_count" in $$source)) {
+            this["note_count"] = 0;
+        }
+        if (!("memo_count" in $$source)) {
+            this["memo_count"] = 0;
+        }
+        if (!("total" in $$source)) {
+            this["total"] = 0;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new TagOverviewItem instance from a string or object.
+     */
+    static createFrom($$source: any = {}): TagOverviewItem {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new TagOverviewItem($$parsedSource as Partial<TagOverviewItem>);
+    }
+}
 
 /**
  * Task represents a task item.

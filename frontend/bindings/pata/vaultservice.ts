@@ -89,6 +89,15 @@ export function GetNote(id: string): $CancellablePromise<markdown$0.Note | null>
 }
 
 /**
+ * GetTagOverview returns aggregated counts of all unique tags across tasks, notes, and memos.
+ */
+export function GetTagOverview(): $CancellablePromise<markdown$0.TagOverviewItem[]> {
+    return $Call.ByID(3863596086).then(($result: any) => {
+        return $$createType11($result);
+    });
+}
+
+/**
  * GetTask returns a task by its ID.
  */
 export function GetTask(id: string): $CancellablePromise<markdown$0.Task | null> {
@@ -102,7 +111,17 @@ export function GetTask(id: string): $CancellablePromise<markdown$0.Task | null>
  */
 export function GetVaultStatus(): $CancellablePromise<$models.VaultStatus> {
     return $Call.ByID(540011935).then(($result: any) => {
-        return $$createType10($result);
+        return $$createType12($result);
+    });
+}
+
+/**
+ * ListByTag returns all entities matching the specified tag.
+ * For Memos, tag matching checks memo.Tags ∪ parentTask.Tags.
+ */
+export function ListByTag(tag: string): $CancellablePromise<markdown$0.EntityRef[]> {
+    return $Call.ByID(1184398980, tag).then(($result: any) => {
+        return $$createType14($result);
     });
 }
 
@@ -111,7 +130,7 @@ export function GetVaultStatus(): $CancellablePromise<$models.VaultStatus> {
  */
 export function ListMemosByTask(taskID: string): $CancellablePromise<(markdown$0.Memo | null)[]> {
     return $Call.ByID(2666858332, taskID).then(($result: any) => {
-        return $$createType11($result);
+        return $$createType15($result);
     });
 }
 
@@ -120,7 +139,7 @@ export function ListMemosByTask(taskID: string): $CancellablePromise<(markdown$0
  */
 export function ListNotes(): $CancellablePromise<(markdown$0.Note | null)[]> {
     return $Call.ByID(957394914).then(($result: any) => {
-        return $$createType12($result);
+        return $$createType16($result);
     });
 }
 
@@ -129,7 +148,7 @@ export function ListNotes(): $CancellablePromise<(markdown$0.Note | null)[]> {
  */
 export function ListTasks(): $CancellablePromise<(markdown$0.Task | null)[]> {
     return $Call.ByID(1611157941).then(($result: any) => {
-        return $$createType13($result);
+        return $$createType17($result);
     });
 }
 
@@ -150,12 +169,22 @@ export function SaveDayPlan(date: string, taskIDs: string[]): $CancellablePromis
 }
 
 /**
+ * SearchAll performs case-insensitive substring search across tasks, notes, and memos.
+ * Empty or whitespace-only queries return an empty list without error.
+ */
+export function SearchAll(query: string): $CancellablePromise<markdown$0.SearchResultItem[]> {
+    return $Call.ByID(2447503468, query).then(($result: any) => {
+        return $$createType19($result);
+    });
+}
+
+/**
  * SelectVaultDirectory shows a native directory picker, persists the choice (single vault)
  * and opens it. Cancel returns the unchanged status.
  */
 export function SelectVaultDirectory(): $CancellablePromise<$models.VaultStatus> {
     return $Call.ByID(2534227418).then(($result: any) => {
-        return $$createType10($result);
+        return $$createType12($result);
     });
 }
 
@@ -206,7 +235,13 @@ const $$createType6 = markdown$0.DayPlan.createFrom;
 const $$createType7 = $Create.Nullable($$createType6);
 const $$createType8 = $models.TimelineItem.createFrom;
 const $$createType9 = $Create.Array($$createType8);
-const $$createType10 = $models.VaultStatus.createFrom;
-const $$createType11 = $Create.Array($$createType1);
-const $$createType12 = $Create.Array($$createType3);
-const $$createType13 = $Create.Array($$createType5);
+const $$createType10 = markdown$0.TagOverviewItem.createFrom;
+const $$createType11 = $Create.Array($$createType10);
+const $$createType12 = $models.VaultStatus.createFrom;
+const $$createType13 = markdown$0.EntityRef.createFrom;
+const $$createType14 = $Create.Array($$createType13);
+const $$createType15 = $Create.Array($$createType1);
+const $$createType16 = $Create.Array($$createType3);
+const $$createType17 = $Create.Array($$createType5);
+const $$createType18 = markdown$0.SearchResultItem.createFrom;
+const $$createType19 = $Create.Array($$createType18);

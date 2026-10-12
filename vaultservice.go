@@ -917,6 +917,72 @@ func (s *VaultService) getAllMemos(v *markdown.Vault) []*markdown.Memo {
 	return allMemos
 }
 
+// GetTagOverview returns aggregated counts of all unique tags across tasks, notes, and memos.
+func (s *VaultService) GetTagOverview() ([]markdown.TagOverviewItem, error) {
+	s.mu.Lock()
+	v := s.vault
+	s.mu.Unlock()
+	if v == nil {
+		return nil, fmt.Errorf("尚未打开 Vault")
+	}
+
+	return v.Index.TagOverview(), nil
+}
+
+// ListByTag returns all entities matching the specified tag.
+// For Memos, tag matching checks memo.Tags ∪ parentTask.Tags.
+func (s *VaultService) ListByTag(tag string) ([]markdown.EntityRef, error) {
+	s.mu.Lock()
+	v := s.vault
+	s.mu.Unlock()
+	if v == nil {
+		return nil, fmt.Errorf("尚未打开 Vault")
+	}
+
+	trimmed := strings.TrimSpace(tag)
+	if trimmed == "" {
+		return []markdown.EntityRef{}, nil
+	}
+
+	refs := v.Index.FindByTag(trimmed)
+	result := make([]markdown.EntityRef, len(refs))
+	copy(result, refs)
+
+	sort.SliceStable(result, func(i, j int) bool {
+		if result[i].Type != result[j].Type {
+			typeRank := func(t markdown.EntityType) int {
+				switch t {
+				case markdown.EntityTypeTask:
+					return 1
+				case markdown.EntityTypeNote:
+					return 2
+				case markdown.EntityTypeMemo:
+					return 3
+				default:
+					return 4
+				}
+			}
+			return typeRank(result[i].Type) < typeRank(result[j].Type)
+		}
+		return result[i].ID < result[j].ID
+	})
+
+	return result, nil
+}
+
+// SearchAll performs case-insensitive substring search across tasks, notes, and memos.
+// Empty or whitespace-only queries return an empty list without error.
+func (s *VaultService) SearchAll(query string) ([]markdown.SearchResultItem, error) {
+	s.mu.Lock()
+	v := s.vault
+	s.mu.Unlock()
+	if v == nil {
+		return nil, fmt.Errorf("尚未打开 Vault")
+	}
+
+	return v.Index.SearchAll(query), nil
+}
+
 func (s *VaultService) dispatchEvent(name string, data any) {
 	s.mu.Lock()
 	emit := s.emitEvent

@@ -3,11 +3,14 @@
 
 export {
     DayPlan,
+    EntityRef,
     EntityType,
     Memo,
     Note,
+    SearchResultItem,
     StatusEvent,
     StatusEventAction,
+    TagOverviewItem,
     Task,
     TaskPriority,
     TaskStatus

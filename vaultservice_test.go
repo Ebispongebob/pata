@@ -1955,3 +1955,209 @@ func TestVaultService_TaskNoteLinking_SameTagsDoNotLink(t *testing.T) {
 		t.Fatalf("note tags corrupted: %+v", gotNote.Tags)
 	}
 }
+
+func TestVaultService_TagOverviewAndSearch(t *testing.T) {
+	// 1. Unopened vault returns error
+	closedService := &VaultService{}
+	if _, err := closedService.GetTagOverview(); err == nil {
+		t.Fatalf("expected error on GetTagOverview when vault is closed")
+	}
+	if _, err := closedService.ListByTag("tag"); err == nil {
+		t.Fatalf("expected error on ListByTag when vault is closed")
+	}
+	if _, err := closedService.SearchAll("query"); err == nil {
+		t.Fatalf("expected error on SearchAll when vault is closed")
+	}
+
+	// 2. Open temporary vault
+	vaultDir := t.TempDir()
+	s := &VaultService{}
+	if _, err := s.openVault(vaultDir); err != nil {
+		t.Fatalf("openVault failed: %v", err)
+	}
+	defer func() {
+		if s.stopWatcher != nil {
+			s.stopWatcher()
+		}
+	}()
+
+	// 3. Create test entities
+	task1, err := s.CreateTask(CreateTaskInput{
+		Title: "统一资源接入方案",
+		Tags:  []string{"架构设计", "接入"},
+		Body:  "接入边界和操作协议",
+	})
+	if err != nil {
+		t.Fatalf("CreateTask 1 failed: %v", err)
+	}
+
+	task2, err := s.CreateTask(CreateTaskInput{
+		Title: "Flink SQL POC",
+		Tags:  []string{"Flink"},
+		Body:  "压测吞吐量",
+	})
+	if err != nil {
+		t.Fatalf("CreateTask 2 failed: %v", err)
+	}
+
+	note1, err := s.CreateNote(CreateNoteInput{
+		Title: "架构设计说明书",
+		Tags:  []string{"架构设计"},
+		Body:  "详细规范细节文档",
+	})
+	if err != nil {
+		t.Fatalf("CreateNote failed: %v", err)
+	}
+
+	// Memo 1 is associated with Task 1; has NO own tags
+	memo1, err := s.CreateMemo(CreateMemoInput{
+		TaskID: task1.ID,
+		Tags:   []string{},
+		Body:   "针对统一资源接入的跟进进展",
+	})
+	if err != nil {
+		t.Fatalf("CreateMemo 1 failed: %v", err)
+	}
+
+	// Memo 2 is associated with Task 2; has own tags ["Flink", "调优"]
+	memo2, err := s.CreateMemo(CreateMemoInput{
+		TaskID: task2.ID,
+		Tags:   []string{"Flink", "调优"},
+		Body:   "Flink 并行度调优记录",
+	})
+	if err != nil {
+		t.Fatalf("CreateMemo 2 failed: %v", err)
+	}
+
+	// Memo 3 is an independent memo with tag ["随笔"]
+	_, err = s.CreateMemo(CreateMemoInput{
+		Tags: []string{"随笔"},
+		Body: "独立随想记录",
+	})
+	if err != nil {
+		t.Fatalf("CreateMemo 3 failed: %v", err)
+	}
+
+	// 4. Test GetTagOverview
+	overview, err := s.GetTagOverview()
+	if err != nil {
+		t.Fatalf("GetTagOverview failed: %v", err)
+	}
+
+	overviewMap := make(map[string]markdown.TagOverviewItem)
+	for _, it := range overview {
+		overviewMap[it.Tag] = it
+	}
+
+	// Verify "架构设计": TaskCount=1, NoteCount=1, MemoCount=0 (memo1 has no own tags!), Total=2
+	arch, ok := overviewMap["架构设计"]
+	if !ok || arch.TaskCount != 1 || arch.NoteCount != 1 || arch.MemoCount != 0 || arch.Total != 2 {
+		t.Fatalf("unexpected stats for '架构设计': %+v", arch)
+	}
+
+	// Verify "Flink": TaskCount=1, NoteCount=0, MemoCount=1 (memo2 own tag), Total=2
+	flink, ok := overviewMap["Flink"]
+	if !ok || flink.TaskCount != 1 || flink.NoteCount != 0 || flink.MemoCount != 1 || flink.Total != 2 {
+		t.Fatalf("unexpected stats for 'Flink': %+v", flink)
+	}
+
+	// Verify "调优": TaskCount=0, NoteCount=0, MemoCount=1, Total=1
+	tune, ok := overviewMap["调优"]
+	if !ok || tune.TaskCount != 0 || tune.NoteCount != 0 || tune.MemoCount != 1 || tune.Total != 1 {
+		t.Fatalf("unexpected stats for '调优': %+v", tune)
+	}
+
+	// 5. Test ListByTag
+	// Empty tag returns empty slice
+	emptyRefs, err := s.ListByTag("")
+	if err != nil || len(emptyRefs) != 0 {
+		t.Fatalf("expected empty refs for empty tag, got %v, err: %v", emptyRefs, err)
+	}
+	wsRefs, err := s.ListByTag("   ")
+	if err != nil || len(wsRefs) != 0 {
+		t.Fatalf("expected empty refs for whitespace tag, got %v, err: %v", wsRefs, err)
+	}
+
+	// ListByTag("架构设计"): should match Task 1, Note 1, and Memo 1 (INHERITED from task 1!)
+	archRefs, err := s.ListByTag("架构设计")
+	if err != nil {
+		t.Fatalf("ListByTag('架构设计') failed: %v", err)
+	}
+	if len(archRefs) != 3 {
+		t.Fatalf("expected 3 refs for tag '架构设计', got %d: %+v", len(archRefs), archRefs)
+	}
+
+	var foundTask1, foundNote1, foundMemo1Inherited bool
+	for _, r := range archRefs {
+		if r.Type == markdown.EntityTypeTask && r.ID == task1.ID && !r.Inherited {
+			foundTask1 = true
+		}
+		if r.Type == markdown.EntityTypeNote && r.ID == note1.ID && !r.Inherited {
+			foundNote1 = true
+		}
+		if r.Type == markdown.EntityTypeMemo && r.ID == memo1.ID && r.Inherited {
+			foundMemo1Inherited = true
+		}
+	}
+	if !foundTask1 || !foundNote1 || !foundMemo1Inherited {
+		t.Fatalf("expected Task 1, Note 1, and Inherited Memo 1 for '架构设计': foundTask=%v, foundNote=%v, foundMemoInherited=%v; refs: %+v",
+			foundTask1, foundNote1, foundMemo1Inherited, archRefs)
+	}
+
+	// ListByTag("调优"): matches Memo 2 without inheritance
+	tuneRefs, err := s.ListByTag("调优")
+	if err != nil {
+		t.Fatalf("ListByTag('调优') failed: %v", err)
+	}
+	if len(tuneRefs) != 1 || tuneRefs[0].ID != memo2.ID || tuneRefs[0].Inherited {
+		t.Fatalf("expected non-inherited memo2 for '调优', got %+v", tuneRefs)
+	}
+
+	// 6. Test SearchAll
+	// Empty/whitespace queries return empty slice
+	if res, err := s.SearchAll(""); err != nil || len(res) != 0 {
+		t.Fatalf("expected empty search results for empty query, got %+v, err: %v", res, err)
+	}
+	if res, err := s.SearchAll("   "); err != nil || len(res) != 0 {
+		t.Fatalf("expected empty search results for whitespace query, got %+v, err: %v", res, err)
+	}
+
+	// Search "统一资源接入": matches Task 1 (Title) and Memo 1 (Body)
+	search1, err := s.SearchAll("统一资源接入")
+	if err != nil {
+		t.Fatalf("SearchAll failed: %v", err)
+	}
+	if len(search1) != 2 {
+		t.Fatalf("expected 2 matches for '统一资源接入', got %d: %+v", len(search1), search1)
+	}
+	if search1[0].Type != markdown.EntityTypeTask || search1[0].ID != task1.ID {
+		t.Fatalf("expected first match to be Task 1, got %+v", search1[0])
+	}
+	if search1[1].Type != markdown.EntityTypeMemo || search1[1].ID != memo1.ID {
+		t.Fatalf("expected second match to be Memo 1, got %+v", search1[1])
+	}
+
+	// Search "架构设计": matches Task 1 (Tag) and Note 1 (Title & Tag).
+	// Crucial rule: Memo 1 does NOT inherit parent task tags in SearchAll!
+	searchArch, err := s.SearchAll("架构设计")
+	if err != nil {
+		t.Fatalf("SearchAll failed: %v", err)
+	}
+	if len(searchArch) != 2 {
+		t.Fatalf("expected 2 matches for '架构设计' (Task 1 & Note 1; Memo 1 must NOT match), got %d: %+v", len(searchArch), searchArch)
+	}
+	for _, r := range searchArch {
+		if r.Type == markdown.EntityTypeMemo {
+			t.Fatalf("Memo must NOT inherit parent task tags in SearchAll! Found memo: %+v", r)
+		}
+	}
+
+	// Search case-insensitivity: "flink" matches Task 2 and Memo 2
+	searchFlink, err := s.SearchAll("flink")
+	if err != nil {
+		t.Fatalf("SearchAll failed: %v", err)
+	}
+	if len(searchFlink) != 2 {
+		t.Fatalf("expected 2 matches for 'flink', got %d: %+v", len(searchFlink), searchFlink)
+	}
+}

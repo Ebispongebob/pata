@@ -278,6 +278,265 @@ func hasTag(tags []string, target string) bool {
 	return false
 }
 
+// TagOverviewItem represents a tag aggregated across tasks, notes, and memos.
+type TagOverviewItem struct {
+	Tag       string `json:"tag"`
+	TaskCount int    `json:"task_count"`
+	NoteCount int    `json:"note_count"`
+	MemoCount int    `json:"memo_count"`
+	Total     int    `json:"total"`
+}
+
+// SearchResultItem represents a matched entity in cross-type search.
+type SearchResultItem struct {
+	Type    EntityType `json:"type"`
+	ID      string     `json:"id"`
+	Title   string     `json:"title,omitempty"`
+	Snippet string     `json:"snippet,omitempty"`
+	Path    string     `json:"path"`
+}
+
+// TagOverview aggregates own tags across tasks, notes, and memos without hierarchy.
+// Tag grouping is case-insensitive (aligned with FindByTag EqualFold semantics) using
+// strings.ToLower(TrimSpace(tag)) as the grouping key, while preserving the raw trimmed
+// string of its first appearance as the display Tag.
+func (idx *MemoryIndex) TagOverview() []TagOverviewItem {
+	idx.mu.RLock()
+	defer idx.mu.RUnlock()
+
+	type stats struct {
+		displayTag string
+		taskCount  int
+		noteCount  int
+		memoCount  int
+	}
+
+	tagMap := make(map[string]*stats)
+	getStats := func(tag string) *stats {
+		lowerKey := strings.ToLower(tag)
+		s, exists := tagMap[lowerKey]
+		if !exists {
+			s = &stats{
+				displayTag: tag,
+			}
+			tagMap[lowerKey] = s
+		}
+		return s
+	}
+
+	// Process entities in deterministic order (sorted IDs) to keep first appearance stable across runs
+	taskIDs := make([]string, 0, len(idx.tasks))
+	for id := range idx.tasks {
+		taskIDs = append(taskIDs, id)
+	}
+	sort.Strings(taskIDs)
+	for _, id := range taskIDs {
+		t := idx.tasks[id]
+		seen := make(map[string]bool)
+		for _, raw := range t.Tags {
+			tag := strings.TrimSpace(raw)
+			if tag == "" {
+				continue
+			}
+			lowerKey := strings.ToLower(tag)
+			if seen[lowerKey] {
+				continue
+			}
+			seen[lowerKey] = true
+			getStats(tag).taskCount++
+		}
+	}
+
+	noteIDs := make([]string, 0, len(idx.notes))
+	for id := range idx.notes {
+		noteIDs = append(noteIDs, id)
+	}
+	sort.Strings(noteIDs)
+	for _, id := range noteIDs {
+		n := idx.notes[id]
+		seen := make(map[string]bool)
+		for _, raw := range n.Tags {
+			tag := strings.TrimSpace(raw)
+			if tag == "" {
+				continue
+			}
+			lowerKey := strings.ToLower(tag)
+			if seen[lowerKey] {
+				continue
+			}
+			seen[lowerKey] = true
+			getStats(tag).noteCount++
+		}
+	}
+
+	memoIDs := make([]string, 0, len(idx.memos))
+	for id := range idx.memos {
+		memoIDs = append(memoIDs, id)
+	}
+	sort.Strings(memoIDs)
+	for _, id := range memoIDs {
+		m := idx.memos[id]
+		seen := make(map[string]bool)
+		for _, raw := range m.Tags {
+			tag := strings.TrimSpace(raw)
+			if tag == "" {
+				continue
+			}
+			lowerKey := strings.ToLower(tag)
+			if seen[lowerKey] {
+				continue
+			}
+			seen[lowerKey] = true
+			getStats(tag).memoCount++
+		}
+	}
+
+	results := make([]TagOverviewItem, 0, len(tagMap))
+	for _, s := range tagMap {
+		results = append(results, TagOverviewItem{
+			Tag:       s.displayTag,
+			TaskCount: s.taskCount,
+			NoteCount: s.noteCount,
+			MemoCount: s.memoCount,
+			Total:     s.taskCount + s.noteCount + s.memoCount,
+		})
+	}
+
+	sort.Slice(results, func(i, j int) bool {
+		return strings.ToLower(results[i].Tag) < strings.ToLower(results[j].Tag)
+	})
+
+	return results
+}
+
+// SearchAll performs case-insensitive substring search across tasks, notes, and memos.
+// Empty or whitespace-only queries return an empty slice.
+// Does not inherit parent task tags for memos. Results have stable ordering grouped by type.
+func (idx *MemoryIndex) SearchAll(query string) []SearchResultItem {
+	trimmed := strings.TrimSpace(query)
+	if trimmed == "" {
+		return []SearchResultItem{}
+	}
+
+	idx.mu.RLock()
+	defer idx.mu.RUnlock()
+
+	lowerQ := strings.ToLower(trimmed)
+
+	var taskResults []SearchResultItem
+	var noteResults []SearchResultItem
+	var memoResults []SearchResultItem
+
+	// 1. Tasks: match title, body, or tags
+	for id, t := range idx.tasks {
+		if matchCaseInsensitive(t.Title, lowerQ) || matchCaseInsensitive(t.Body, lowerQ) || matchTagsCaseInsensitive(t.Tags, lowerQ) {
+			taskResults = append(taskResults, SearchResultItem{
+				Type:    EntityTypeTask,
+				ID:      id,
+				Title:   t.Title,
+				Snippet: extractSnippet(t.Body, lowerQ),
+				Path:    idx.idToFile[id],
+			})
+		}
+	}
+	sort.Slice(taskResults, func(i, j int) bool {
+		ti, tj := idx.tasks[taskResults[i].ID], idx.tasks[taskResults[j].ID]
+		if ti.UpdatedAt.Equal(tj.UpdatedAt) {
+			return taskResults[i].ID < taskResults[j].ID
+		}
+		return ti.UpdatedAt.After(tj.UpdatedAt)
+	})
+
+	// 2. Notes: match title, body, or tags
+	for id, n := range idx.notes {
+		if matchCaseInsensitive(n.Title, lowerQ) || matchCaseInsensitive(n.Body, lowerQ) || matchTagsCaseInsensitive(n.Tags, lowerQ) {
+			noteResults = append(noteResults, SearchResultItem{
+				Type:    EntityTypeNote,
+				ID:      id,
+				Title:   n.Title,
+				Snippet: extractSnippet(n.Body, lowerQ),
+				Path:    idx.idToFile[id],
+			})
+		}
+	}
+	sort.Slice(noteResults, func(i, j int) bool {
+		ni, nj := idx.notes[noteResults[i].ID], idx.notes[noteResults[j].ID]
+		if ni.UpdatedAt.Equal(nj.UpdatedAt) {
+			return noteResults[i].ID < noteResults[j].ID
+		}
+		return ni.UpdatedAt.After(nj.UpdatedAt)
+	})
+
+	// 3. Memos: match body or own tags only (no inheritance)
+	for id, m := range idx.memos {
+		if matchCaseInsensitive(m.Body, lowerQ) || matchTagsCaseInsensitive(m.Tags, lowerQ) {
+			memoResults = append(memoResults, SearchResultItem{
+				Type:    EntityTypeMemo,
+				ID:      id,
+				Snippet: extractSnippet(m.Body, lowerQ),
+				Path:    idx.idToFile[id],
+			})
+		}
+	}
+	sort.Slice(memoResults, func(i, j int) bool {
+		mi, mj := idx.memos[memoResults[i].ID], idx.memos[memoResults[j].ID]
+		if mi.CreatedAt.Equal(mj.CreatedAt) {
+			return memoResults[i].ID < memoResults[j].ID
+		}
+		return mi.CreatedAt.After(mj.CreatedAt)
+	})
+
+	total := len(taskResults) + len(noteResults) + len(memoResults)
+	results := make([]SearchResultItem, 0, total)
+	results = append(results, taskResults...)
+	results = append(results, noteResults...)
+	results = append(results, memoResults...)
+
+	return results
+}
+
+func matchCaseInsensitive(text, lowerQ string) bool {
+	return strings.Contains(strings.ToLower(text), lowerQ)
+}
+
+func matchTagsCaseInsensitive(tags []string, lowerQ string) bool {
+	for _, t := range tags {
+		if matchCaseInsensitive(t, lowerQ) {
+			return true
+		}
+	}
+	return false
+}
+
+func extractSnippet(body, lowerQ string) string {
+	if strings.TrimSpace(body) == "" {
+		return ""
+	}
+	normalized := strings.ReplaceAll(body, "\r\n", "\n")
+	lines := strings.Split(normalized, "\n")
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if trimmed != "" && strings.Contains(strings.ToLower(trimmed), lowerQ) {
+			return truncateSnippet(trimmed, 120)
+		}
+	}
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if trimmed != "" {
+			return truncateSnippet(trimmed, 120)
+		}
+	}
+	return ""
+}
+
+func truncateSnippet(s string, maxRunes int) string {
+	runes := []rune(s)
+	if len(runes) <= maxRunes {
+		return s
+	}
+	return string(runes[:maxRunes]) + "..."
+}
+
 // ClearPendingMove removes any pending move candidate for an entity ID.
 func (idx *MemoryIndex) ClearPendingMove(id string) {
 	idx.mu.Lock()
