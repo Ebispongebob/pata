@@ -237,20 +237,20 @@ export default function App() {
   const hasHealthIssues = parseErrorCount > 0 || danglingRefCount > 0;
 
   return (
-    <div className="flex flex-col h-screen w-screen overflow-hidden bg-stone-100/60 dark:bg-transparent text-stone-900 dark:text-stone-100 font-sans">
-      {/* Titlebar strip: traffic lights zone + window drag; app logo sits right of lights */}
-      <div className="h-9 shrink-0 drag-region flex items-center pl-[84px] gap-1.5 select-none">
-        <PawPrint className="w-4 h-4 text-emerald-700 dark:text-emerald-400" />
-        <span className="font-semibold text-sm tracking-tight text-emerald-800 dark:text-emerald-400">Pata 啪嗒</span>
-      </div>
+    <div className="flex h-screen w-screen overflow-hidden bg-stone-100/60 dark:bg-transparent text-stone-900 dark:text-stone-100 font-sans">
+      {/* Left column: lights+logo strip above sidebar, unified background */}
+      <div
+        style={{ width: `${sidebarWidth}px` }}
+        className="relative shrink-0 flex flex-col bg-stone-100/80 dark:bg-stone-950/80 backdrop-blur select-none"
+      >
+        <div className="h-9 shrink-0 drag-region flex items-center pl-[84px] gap-1.5 select-none">
+          <PawPrint className="w-4 h-4 text-stone-500 dark:text-stone-400" />
+          <span className="text-sm text-stone-600 dark:text-stone-300">Pata 啪嗒</span>
+        </div>
 
-      <div className="flex flex-1 min-h-0 p-2 pl-0">
       {/* Sidebar */}
       <aside
-        style={sidebarCollapsed ? undefined : { width: `${sidebarWidth}px` }}
-        className={`relative shrink-0 flex flex-col bg-stone-100/80 dark:bg-stone-950/80 backdrop-blur select-none ${
-          isResizing ? '' : 'transition-all duration-200'
-        } ${sidebarCollapsed ? 'w-20' : ''}`}
+        className="relative flex flex-col flex-1 min-h-0"
       >
         {/* Resize Handle (expanded only) */}
         {!sidebarCollapsed && (
@@ -380,9 +380,10 @@ export default function App() {
           </div>
         )}
       </aside>
+      </div>
 
       {/* Main Content Area */}
-      <main className="flex-1 flex flex-col min-w-0 overflow-hidden rounded-2xl border border-stone-200/70 dark:border-stone-800/70 shadow-xs bg-stone-50 dark:bg-stone-900">
+      <main className="flex-1 flex flex-col min-w-0 overflow-hidden rounded-2xl border border-stone-200/70 dark:border-stone-800/70 shadow-xs bg-stone-50 dark:bg-stone-900 mr-2 mb-2">
         {/* Top Header / Draggable Toolbar */}
         <header className="h-12 border-b border-stone-200 dark:border-stone-800 flex items-center justify-between px-4 drag-region select-none shrink-0">
           <div className="flex items-center space-x-3">
@@ -471,7 +472,6 @@ export default function App() {
           )}
         </div>
       </main>
-      </div>
 
       {/* Global Quick Search Overlay */}
       <SearchOverlay
