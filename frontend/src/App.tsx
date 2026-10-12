@@ -244,7 +244,7 @@ export default function App() {
         <span className="font-semibold text-sm tracking-tight text-emerald-800 dark:text-emerald-400">Pata 啪嗒</span>
       </div>
 
-      <div className="flex flex-1 min-h-0 gap-2 p-2 pl-0">
+      <div className="flex flex-1 min-h-0 p-2 pl-0">
       {/* Sidebar */}
       <aside
         style={sidebarCollapsed ? undefined : { width: `${sidebarWidth}px` }}
