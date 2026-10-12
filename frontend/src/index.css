@@ -26,3 +26,17 @@ button, input, textarea, select, a, [role="button"], .vditor {
   user-select: text;
   -webkit-user-select: text;
 }
+
+/* Accessibility: standard visible focus ring for keyboard navigation */
+:focus-visible {
+  outline: 2px solid #059669;
+  outline-color: AccentColor;
+  outline-offset: 2px;
+}
+
+@supports not (outline-color: AccentColor) {
+  :focus-visible {
+    outline-color: #059669;
+  }
+}
+

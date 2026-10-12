@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Events } from '@wailsio/runtime';
 import {
   Calendar,
@@ -11,9 +11,11 @@ import {
   Moon,
   Monitor,
   Search,
+  AlertTriangle,
+  X,
 } from 'lucide-react';
 import * as VaultService from '../bindings/pata/vaultservice';
-import { VaultStatus } from '../bindings/pata/models';
+import { VaultStatus, VaultHealth } from '../bindings/pata/models';
 import { TagOverviewItem } from '../bindings/pata/internal/storage/markdown/models';
 import { TasksView } from './TasksView';
 import { TodayView } from './TodayView';
@@ -36,6 +38,28 @@ export default function App() {
   // Global tags state
   const [tags, setTags] = useState<TagOverviewItem[]>([]);
   const [tagsLoading, setTagsLoading] = useState(false);
+
+  // Vault health state
+  const [health, setHealth] = useState<VaultHealth | null>(null);
+  const [showHealthModal, setShowHealthModal] = useState(false);
+  const healthTriggerRef = useRef<HTMLElement | null>(null);
+  const healthModalRef = useRef<HTMLDivElement>(null);
+
+  // Manage focus movement and restoration for health modal
+  useEffect(() => {
+    if (showHealthModal) {
+      healthTriggerRef.current = document.activeElement as HTMLElement | null;
+      const timer = setTimeout(() => {
+        healthModalRef.current?.focus();
+      }, 50);
+      return () => clearTimeout(timer);
+    } else {
+      if (healthTriggerRef.current && typeof healthTriggerRef.current.focus === 'function') {
+        healthTriggerRef.current.focus();
+        healthTriggerRef.current = null;
+      }
+    }
+  }, [showHealthModal]);
 
   // Global search overlay state
   const [isSearchOpen, setIsSearchOpen] = useState(false);
@@ -73,8 +97,16 @@ export default function App() {
       setVaultStatus(st);
       if (st && st.open) {
         await loadTags();
+        try {
+          const h = await VaultService.GetVaultHealth();
+          setHealth(h);
+        } catch (err) {
+          console.error('Failed to get vault health:', err);
+          setHealth(null);
+        }
       } else {
         setTags([]);
+        setHealth(null);
       }
     } catch (err) {
       console.error('Failed to refresh vault status:', err);
@@ -157,6 +189,10 @@ export default function App() {
       }
     }
   }, [themeMode]);
+
+  const parseErrorCount = health?.parse_errors?.length ?? 0;
+  const danglingRefCount = health?.dangling_refs?.length ?? 0;
+  const hasHealthIssues = parseErrorCount > 0 || danglingRefCount > 0;
 
   return (
     <div className="flex h-screen w-screen overflow-hidden bg-stone-50 dark:bg-stone-900 text-stone-900 dark:text-stone-100 font-sans">
@@ -328,6 +364,24 @@ export default function App() {
           </div>
 
           <div className="flex items-center space-x-2 no-drag-region">
+            {hasHealthIssues && (
+              <button
+                onClick={() => {
+                  healthTriggerRef.current = document.activeElement as HTMLElement | null;
+                  setShowHealthModal(true);
+                }}
+                className="flex items-center space-x-1.5 px-2.5 py-1 rounded-md text-xs font-medium bg-amber-100 dark:bg-amber-950/70 text-amber-900 dark:text-amber-200 border border-amber-300 dark:border-amber-800/80 hover:bg-amber-200/80 dark:hover:bg-amber-900/60 transition cursor-pointer"
+                title="Vault 健康异常提示"
+              >
+                <AlertTriangle className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 shrink-0" />
+                <span>
+                  {parseErrorCount > 0 && `${parseErrorCount} 个文件未识别`}
+                  {parseErrorCount > 0 && danglingRefCount > 0 && ' · '}
+                  {danglingRefCount > 0 && `${danglingRefCount} 个引用悬空`}
+                </span>
+              </button>
+            )}
+
             <button
               onClick={() => setIsSearchOpen(true)}
               className="flex items-center space-x-1.5 px-2.5 py-1 rounded-md text-xs text-stone-500 dark:text-stone-400 hover:text-stone-900 dark:hover:text-stone-100 hover:bg-stone-200/60 dark:hover:bg-stone-800/60 border border-stone-200 dark:border-stone-800 transition cursor-pointer"
@@ -398,6 +452,140 @@ export default function App() {
         onOpenNote={handleOpenNote}
         vaultOpen={vaultStatus?.open}
       />
+
+      {/* Vault Health Detail Modal */}
+      {showHealthModal && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Vault 健康与降级状态"
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-stone-900/40 dark:bg-black/60 backdrop-blur-xs select-none"
+          onClick={() => setShowHealthModal(false)}
+          onKeyDown={(e) => {
+            if (e.key === 'Escape') setShowHealthModal(false);
+          }}
+        >
+          <div
+            ref={healthModalRef}
+            tabIndex={-1}
+            className="w-full max-w-lg bg-stone-50 dark:bg-stone-900 border border-stone-200 dark:border-stone-800 rounded-xl shadow-2xl overflow-hidden flex flex-col max-h-[80vh] text-stone-900 dark:text-stone-100 outline-none"
+            onClick={(e) => e.stopPropagation()}
+            onKeyDown={(e) => {
+              if (e.key === 'Escape') {
+                e.stopPropagation();
+                setShowHealthModal(false);
+              } else if (e.key === 'Tab') {
+                const focusable = healthModalRef.current?.querySelectorAll<HTMLElement>(
+                  'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+                );
+                if (focusable && focusable.length > 0) {
+                  const first = focusable[0];
+                  const last = focusable[focusable.length - 1];
+                  if (e.shiftKey) {
+                    if (document.activeElement === first || document.activeElement === healthModalRef.current) {
+                      e.preventDefault();
+                      last.focus();
+                    }
+                  } else {
+                    if (document.activeElement === last) {
+                      e.preventDefault();
+                      first.focus();
+                    }
+                  }
+                }
+              }
+            }}
+          >
+            <div className="flex items-center justify-between px-4 py-3 border-b border-stone-200 dark:border-stone-800">
+              <div className="flex items-center space-x-2">
+                <AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-400" />
+                <h2 className="text-sm font-semibold text-stone-900 dark:text-stone-100">
+                  Vault 降级状态与异常诊断
+                </h2>
+              </div>
+              <button
+                onClick={() => setShowHealthModal(false)}
+                className="p-1 rounded text-stone-400 hover:text-stone-600 dark:hover:text-stone-300"
+                title="关闭"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-4 space-y-4 text-xs">
+              {parseErrorCount > 0 && (
+                <div className="space-y-2">
+                  <div className="font-semibold text-amber-800 dark:text-amber-300 flex items-center justify-between">
+                    <span>文件未识别 (解析失败，已隔离保护)</span>
+                    <span className="font-mono text-[11px] bg-amber-100 dark:bg-amber-950 px-1.5 py-0.5 rounded">
+                      {parseErrorCount}
+                    </span>
+                  </div>
+                  <div className="space-y-1.5">
+                    {health?.parse_errors?.map((pe, idx) => (
+                      <div
+                        key={idx}
+                        className="p-2.5 rounded-lg border border-amber-200/80 dark:border-amber-900/50 bg-amber-50/60 dark:bg-amber-950/30"
+                      >
+                        <div className="font-mono text-[11px] text-stone-800 dark:text-stone-200 break-all">
+                          {pe.path}
+                        </div>
+                        <div className="text-stone-600 dark:text-stone-400 mt-1">
+                          {pe.reason}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {danglingRefCount > 0 && (
+                <div className="space-y-2">
+                  <div className="font-semibold text-amber-800 dark:text-amber-300 flex items-center justify-between">
+                    <span>引用悬空 (关联目标缺失，动态降级)</span>
+                    <span className="font-mono text-[11px] bg-amber-100 dark:bg-amber-950 px-1.5 py-0.5 rounded">
+                      {danglingRefCount}
+                    </span>
+                  </div>
+                  <div className="space-y-1.5">
+                    {health?.dangling_refs?.map((dr, idx) => (
+                      <div
+                        key={idx}
+                        className="p-2.5 rounded-lg border border-stone-200 dark:border-stone-800 bg-stone-100/50 dark:bg-stone-800/40"
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="font-medium text-stone-800 dark:text-stone-200">
+                            [{dr.source_type}:{dr.source_id}] 关联缺失的 {dr.target_type} ({dr.target_id})
+                          </span>
+                        </div>
+                        <div className="font-mono text-[10px] text-stone-400 mt-0.5 break-all">
+                          来源文件: {dr.source_path}
+                        </div>
+                        <div className="text-stone-600 dark:text-stone-400 mt-1">
+                          {dr.reason}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <div className="p-2.5 rounded-lg bg-stone-100 dark:bg-stone-800/60 text-stone-500 dark:text-stone-400 text-[11px] leading-relaxed">
+                ℹ️ 依据 Pata Local First 规范，异常或未识别文件会被独立隔离保护，不会被程序静默覆盖或删除。在外部编辑器纠正 Frontmatter 或恢复关联后，系统将自动自愈并恢复索引。
+              </div>
+            </div>
+
+            <div className="px-4 py-2.5 border-t border-stone-200 dark:border-stone-800 flex justify-end bg-stone-100/60 dark:bg-stone-950/60">
+              <button
+                onClick={() => setShowHealthModal(false)}
+                className="px-3 py-1.5 rounded-md bg-stone-200 dark:bg-stone-800 hover:bg-stone-300 dark:hover:bg-stone-700 text-stone-800 dark:text-stone-200 text-xs font-medium transition cursor-pointer"
+              >
+                关闭
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

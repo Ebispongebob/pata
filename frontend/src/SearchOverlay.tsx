@@ -36,16 +36,23 @@ export function SearchOverlay({
   const seqRef = useRef(0);
   const inputRef = useRef<HTMLInputElement>(null);
   const itemRefs = useRef<(HTMLDivElement | null)[]>([]);
+  const previousActiveElementRef = useRef<HTMLElement | null>(null);
 
   // Reset or focus when overlay opens / closes
   useEffect(() => {
     if (isOpen) {
+      previousActiveElementRef.current = document.activeElement as HTMLElement | null;
       const timer = setTimeout(() => {
         inputRef.current?.focus();
         inputRef.current?.select();
       }, 50);
       return () => clearTimeout(timer);
     } else {
+      // Restore focus to triggering element
+      if (previousActiveElementRef.current && typeof previousActiveElementRef.current.focus === 'function') {
+        previousActiveElementRef.current.focus();
+        previousActiveElementRef.current = null;
+      }
       // Discard any in-flight requests and reset state
       ++seqRef.current;
       setQuery('');
@@ -172,11 +179,17 @@ export function SearchOverlay({
     [memoTaskMap, onOpenTask, onOpenNote, onClose]
   );
 
-  // Keyboard navigation
+  // Keyboard navigation & a11y focus trap
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Escape') {
       e.preventDefault();
       onClose();
+      return;
+    }
+
+    if (e.key === 'Tab') {
+      e.preventDefault();
+      inputRef.current?.focus();
       return;
     }
 
@@ -204,6 +217,9 @@ export function SearchOverlay({
       onClick={onClose}
     >
       <div
+        role="dialog"
+        aria-modal="true"
+        aria-label="全局快速搜索"
         className="w-full max-w-xl bg-stone-50 dark:bg-stone-900 border border-stone-200 dark:border-stone-800 rounded-xl shadow-2xl overflow-hidden flex flex-col max-h-[72vh] text-stone-900 dark:text-stone-100"
         onClick={(e) => e.stopPropagation()}
         onKeyDown={handleKeyDown}
@@ -214,6 +230,10 @@ export function SearchOverlay({
           <input
             ref={inputRef}
             type="text"
+            role="combobox"
+            aria-expanded={displayedItems.length > 0}
+            aria-autocomplete="list"
+            aria-controls="search-results-list"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="搜索任务、笔记、记录 (⌘K / ⌘P)..."
@@ -260,7 +280,7 @@ export function SearchOverlay({
               <p className="text-xs">未找到与 “{query.trim()}” 相关的结果</p>
             </div>
           ) : (
-            <div className="divide-y divide-stone-100 dark:divide-stone-800/60">
+            <div id="search-results-list" role="listbox" aria-label="搜索结果" className="divide-y divide-stone-100 dark:divide-stone-800/60">
               {/* 1. Tasks Section */}
               {displayedTasks.length > 0 && (
                 <div>
@@ -280,6 +300,9 @@ export function SearchOverlay({
                       return (
                         <div
                           key={`task-${task.id}`}
+                          role="option"
+                          aria-selected={isSelected}
+                          tabIndex={-1}
                           ref={(el) => {
                             itemRefs.current[globalIndex] = el;
                           }}
@@ -333,6 +356,9 @@ export function SearchOverlay({
                       return (
                         <div
                           key={`note-${note.id}`}
+                          role="option"
+                          aria-selected={isSelected}
+                          tabIndex={-1}
                           ref={(el) => {
                             itemRefs.current[globalIndex] = el;
                           }}
@@ -389,6 +415,9 @@ export function SearchOverlay({
                       return (
                         <div
                           key={`memo-${memo.id}`}
+                          role="option"
+                          aria-selected={isSelected}
+                          tabIndex={-1}
                           ref={(el) => {
                             itemRefs.current[globalIndex] = el;
                           }}
