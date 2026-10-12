@@ -27,6 +27,8 @@ export default function App() {
   const [activeNav, setActiveNav] = useState<'today' | 'tasks' | 'notes' | 'tag'>('tasks');
   const [selectedTag, setSelectedTag] = useState<string | null>(null);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [sidebarWidth, setSidebarWidth] = useState(240);
+  const [isResizing, setIsResizing] = useState(false);
   const [themeMode, setThemeMode] = useState<'system' | 'light' | 'dark'>('system');
 
   // Vault state (single vault, D18)
@@ -181,14 +183,55 @@ export default function App() {
     } else if (themeMode === 'light') {
       root.classList.remove('dark');
     } else {
-      // system
-      if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
-        root.classList.add('dark');
-      } else {
-        root.classList.remove('dark');
-      }
+      // system: dynamically listen to system dark mode preference
+      const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+      const applySystemTheme = () => {
+        if (mediaQuery.matches) {
+          root.classList.add('dark');
+        } else {
+          root.classList.remove('dark');
+        }
+      };
+      applySystemTheme();
+      mediaQuery.addEventListener('change', applySystemTheme);
+      return () => {
+        mediaQuery.removeEventListener('change', applySystemTheme);
+      };
     }
   }, [themeMode]);
+
+  const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.currentTarget.setPointerCapture(e.pointerId);
+    setIsResizing(true);
+    document.body.style.userSelect = 'none';
+    document.body.style.cursor = 'col-resize';
+  };
+
+  const handlePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!e.currentTarget.hasPointerCapture(e.pointerId)) return;
+    const newWidth = Math.min(Math.max(e.clientX, 200), 360);
+    setSidebarWidth(newWidth);
+  };
+
+  const handlePointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+      try {
+        e.currentTarget.releasePointerCapture(e.pointerId);
+      } catch {
+        // ignore if already released by browser
+      }
+    }
+    setIsResizing(false);
+    document.body.style.userSelect = '';
+    document.body.style.cursor = '';
+  };
+
+  const handleLostPointerCapture = () => {
+    setIsResizing(false);
+    document.body.style.userSelect = '';
+    document.body.style.cursor = '';
+  };
 
   const parseErrorCount = health?.parse_errors?.length ?? 0;
   const danglingRefCount = health?.dangling_refs?.length ?? 0;
@@ -198,20 +241,32 @@ export default function App() {
     <div className="flex h-screen w-screen overflow-hidden bg-stone-50 dark:bg-stone-900 text-stone-900 dark:text-stone-100 font-sans">
       {/* Sidebar */}
       <aside
-        className={`flex flex-col border-r border-stone-200 dark:border-stone-800 bg-stone-100/80 dark:bg-stone-950/80 backdrop-blur transition-all duration-200 select-none ${
-          sidebarCollapsed ? 'w-16' : 'w-60'
-        }`}
+        style={sidebarCollapsed ? undefined : { width: `${sidebarWidth}px` }}
+        className={`relative shrink-0 flex flex-col border-r border-stone-200 dark:border-stone-800 bg-stone-100/80 dark:bg-stone-950/80 backdrop-blur select-none ${
+          isResizing ? '' : 'transition-all duration-200'
+        } ${sidebarCollapsed ? 'w-16' : ''}`}
       >
+        {/* Resize Handle (expanded only) */}
+        {!sidebarCollapsed && (
+          <div
+            onPointerDown={handlePointerDown}
+            onPointerMove={handlePointerMove}
+            onPointerUp={handlePointerUp}
+            onPointerCancel={handlePointerUp}
+            onLostPointerCapture={handleLostPointerCapture}
+            className={`absolute top-0 right-0 w-1 h-full cursor-col-resize no-drag-region hover:bg-emerald-500/40 transition-colors z-20 touch-none ${
+              isResizing ? 'bg-emerald-500/50' : ''
+            }`}
+            title="拖拽调整侧边栏宽度"
+          />
+        )}
+
         {/* Sidebar Header with traffic light offset */}
         <div className="h-12 flex items-center px-4 drag-region border-b border-stone-200/50 dark:border-stone-800/50">
-          {!sidebarCollapsed ? (
-            <div className="flex items-center space-x-2 pl-14">
+          {!sidebarCollapsed && (
+            <div className="flex items-center space-x-2 pl-20">
               <span className="font-semibold text-sm tracking-tight text-emerald-800 dark:text-emerald-400">Pata 啪嗒</span>
               <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-stone-200/70 dark:bg-stone-800 text-stone-600 dark:text-stone-400">v0.1</span>
-            </div>
-          ) : (
-            <div className="w-full flex justify-center pl-8">
-              <span className="w-2 h-2 rounded-full bg-emerald-600"></span>
             </div>
           )}
         </div>
