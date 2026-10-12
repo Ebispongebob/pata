@@ -27,7 +27,7 @@ export default function App() {
   const [selectedTag, setSelectedTag] = useState<string | null>(null);
   const [sidebarCollapsed] = useState(false); // 侧栏恒展开，收起功能按走查反馈移除
   const [sidebarWidth, setSidebarWidth] = useState(240);
-  const [isResizing, setIsResizing] = useState(false);
+  const [, setIsResizing] = useState(false); // 手柄无高亮，仅保留状态位供拖拽逻辑判断扩展
   const [themeMode, setThemeMode] = useState<'system' | 'light' | 'dark'>('system');
 
   // Vault state (single vault, D18)
@@ -260,9 +260,7 @@ export default function App() {
             onPointerUp={handlePointerUp}
             onPointerCancel={handlePointerUp}
             onLostPointerCapture={handleLostPointerCapture}
-            className={`absolute top-0 right-0 w-1 h-full cursor-col-resize no-drag-region hover:bg-stone-400/60 dark:hover:bg-stone-500/60 transition-colors z-20 touch-none ${
-              isResizing ? 'bg-stone-400/50 dark:bg-stone-500/50' : ''
-            }`}
+            className="absolute top-0 right-0 w-1 h-full cursor-col-resize no-drag-region z-20 touch-none"
             title="拖拽调整侧边栏宽度"
           />
         )}
