@@ -20,6 +20,8 @@
 
 **完整阶段清单：[docs/README.md](docs/README.md)**
 
+> 开发注意：`frontend/bindings/` 由 wails3 CLI 生成，须用与 `go.mod` 一致的 **v3.0.0-beta.28**（`wails3 generate bindings -clean=true -ts -i`），其他版本会触发全量风格迁移。
+
 ## 体验 UI 原型
 
 直接用浏览器打开 [`docs/01-validate/prototype/index.html`](docs/01-validate/prototype/index.html)，无需安装依赖或构建；刷新即恢复演示数据。

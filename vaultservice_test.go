@@ -2161,3 +2161,220 @@ func TestVaultService_TagOverviewAndSearch(t *testing.T) {
 		t.Fatalf("expected 2 matches for 'flink', got %d: %+v", len(searchFlink), searchFlink)
 	}
 }
+
+func TestVaultService_RescanVault_UnopenedError(t *testing.T) {
+	s := &VaultService{}
+	if err := s.RescanVault(); err == nil || !strings.Contains(err.Error(), "尚未打开 Vault") {
+		t.Fatalf("expected '尚未打开 Vault' error, got %v", err)
+	}
+}
+
+func TestVaultService_GetVaultHealth_UnopenedAndClean(t *testing.T) {
+	s := &VaultService{}
+	health, err := s.GetVaultHealth()
+	if err == nil || !strings.Contains(err.Error(), "尚未打开 Vault") {
+		t.Fatalf("expected unopened vault error, got health=%+v, err=%v", health, err)
+	}
+
+	vaultDir := t.TempDir()
+	if _, err := s.openVault(vaultDir); err != nil {
+		t.Fatalf("openVault failed: %v", err)
+	}
+	defer func() {
+		if s.stopWatcher != nil {
+			s.stopWatcher()
+		}
+	}()
+
+	health, err = s.GetVaultHealth()
+	if err != nil {
+		t.Fatalf("GetVaultHealth on clean vault failed: %v", err)
+	}
+	if health == nil {
+		t.Fatalf("expected non-nil health on clean vault")
+	}
+	if len(health.ParseErrors) != 0 {
+		t.Fatalf("expected 0 parse errors on clean vault, got %d: %+v", len(health.ParseErrors), health.ParseErrors)
+	}
+	if len(health.DanglingRefs) != 0 {
+		t.Fatalf("expected 0 dangling refs on clean vault, got %d: %+v", len(health.DanglingRefs), health.DanglingRefs)
+	}
+}
+
+func TestVaultService_GetVaultHealth_ParseErrorAndDanglingRef_Lifecycle(t *testing.T) {
+	vaultDir := t.TempDir()
+	s := &VaultService{}
+	if _, err := s.openVault(vaultDir); err != nil {
+		t.Fatalf("openVault failed: %v", err)
+	}
+	defer func() {
+		if s.stopWatcher != nil {
+			s.stopWatcher()
+		}
+	}()
+
+	// 1. Introduce corrupted markdown file with invalid frontmatter YAML
+	tasksDir := filepath.Join(vaultDir, "tasks")
+	if err := os.MkdirAll(tasksDir, 0755); err != nil {
+		t.Fatalf("MkdirAll failed: %v", err)
+	}
+	badFile := filepath.Join(tasksDir, "corrupted_task.md")
+	badContent := `---
+type: task
+title: [unclosed yaml sequence
+---
+Body text
+`
+	if err := os.WriteFile(badFile, []byte(badContent), 0644); err != nil {
+		t.Fatalf("WriteFile failed: %v", err)
+	}
+
+	// Rescan via service
+	if err := s.RescanVault(); err != nil {
+		t.Fatalf("RescanVault failed: %v", err)
+	}
+
+	health, err := s.GetVaultHealth()
+	if err != nil {
+		t.Fatalf("GetVaultHealth failed: %v", err)
+	}
+	if len(health.ParseErrors) != 1 {
+		t.Fatalf("expected 1 parse error, got %d: %+v", len(health.ParseErrors), health.ParseErrors)
+	}
+	if !strings.Contains(health.ParseErrors[0].Path, "corrupted_task.md") {
+		t.Fatalf("expected parse error path to contain corrupted_task.md, got %s", health.ParseErrors[0].Path)
+	}
+	if health.ParseErrors[0].Reason == "" {
+		t.Fatalf("expected non-empty reason for parse error")
+	}
+
+	// 2. Introduce dangling reference: memo pointing to non-existent task
+	memosDir := filepath.Join(vaultDir, "memos")
+	if err := os.MkdirAll(memosDir, 0755); err != nil {
+		t.Fatalf("MkdirAll failed: %v", err)
+	}
+	danglingMemoFile := filepath.Join(memosDir, "2026-10-12.md")
+	danglingMemoContent := `---
+type: memo
+id: m-dangling-1
+task_id: t-nonexistent-999
+created_at: 2026-10-12T10:00:00+08:00
+---
+
+关联缺失任务的记录
+`
+	if err := os.WriteFile(danglingMemoFile, []byte(danglingMemoContent), 0644); err != nil {
+		t.Fatalf("WriteFile failed: %v", err)
+	}
+
+	if err := s.RescanVault(); err != nil {
+		t.Fatalf("RescanVault failed: %v", err)
+	}
+
+	health, err = s.GetVaultHealth()
+	if err != nil {
+		t.Fatalf("GetVaultHealth failed: %v", err)
+	}
+	if len(health.DanglingRefs) != 1 {
+		t.Fatalf("expected 1 dangling ref, got %d: %+v", len(health.DanglingRefs), health.DanglingRefs)
+	}
+	if health.DanglingRefs[0].TargetID != "t-nonexistent-999" {
+		t.Fatalf("expected dangling target ID t-nonexistent-999, got %s", health.DanglingRefs[0].TargetID)
+	}
+	if health.DanglingRefs[0].Reason == "" {
+		t.Fatalf("expected non-empty reason for dangling ref")
+	}
+
+	// 3. Fix the corrupted file and verify recovery
+	fixedContent := `---
+type: task
+id: t-fixed-1
+title: 修复后的任务
+status: todo
+priority: p2
+created_at: 2026-10-12T10:00:00+08:00
+updated_at: 2026-10-12T10:00:00+08:00
+---
+Fixed body
+`
+	if err := os.WriteFile(badFile, []byte(fixedContent), 0644); err != nil {
+		t.Fatalf("WriteFile failed: %v", err)
+	}
+
+	if err := s.RescanVault(); err != nil {
+		t.Fatalf("RescanVault failed: %v", err)
+	}
+
+	health, err = s.GetVaultHealth()
+	if err != nil {
+		t.Fatalf("GetVaultHealth failed: %v", err)
+	}
+	if len(health.ParseErrors) != 0 {
+		t.Fatalf("expected 0 parse errors after fix, got %d: %+v", len(health.ParseErrors), health.ParseErrors)
+	}
+}
+
+func TestVaultService_UpdateTask_BaselineConflictAndRescanResolution(t *testing.T) {
+	vaultDir := t.TempDir()
+	s := &VaultService{}
+	if _, err := s.openVault(vaultDir); err != nil {
+		t.Fatalf("openVault failed: %v", err)
+	}
+	defer func() {
+		if s.stopWatcher != nil {
+			s.stopWatcher()
+		}
+	}()
+
+	task, err := s.CreateTask(CreateTaskInput{
+		Title: "冲突测试任务",
+		Body:  "初始描述",
+	})
+	if err != nil {
+		t.Fatalf("CreateTask failed: %v", err)
+	}
+
+	taskFile := s.vault.ResolveEntityPath(task)
+	data, err := os.ReadFile(taskFile)
+	if err != nil {
+		t.Fatalf("ReadFile failed: %v", err)
+	}
+
+	// Simulate external editor modifying the file on disk behind vault's back
+	tampered := strings.Replace(string(data), "初始描述", "外部编辑器修改后的描述", 1)
+	if err := os.WriteFile(taskFile, []byte(tampered), 0644); err != nil {
+		t.Fatalf("WriteFile failed: %v", err)
+	}
+
+	// Attempt UpdateTask without rescan -> baseline conflict must be rejected
+	_, err = s.UpdateTask(UpdateTaskInput{
+		ID:       task.ID,
+		Title:    "服务层尝试覆盖",
+		Status:   task.Status,
+		Priority: task.Priority,
+		Body:     "服务层新描述",
+	})
+	if err == nil || !strings.Contains(err.Error(), "conflict") {
+		t.Fatalf("expected conflict error on external task edit, got: %v", err)
+	}
+
+	// RescanVault refreshes baseline
+	if err := s.RescanVault(); err != nil {
+		t.Fatalf("RescanVault failed: %v", err)
+	}
+
+	// Subsequent UpdateTask should now succeed
+	updated, err := s.UpdateTask(UpdateTaskInput{
+		ID:       task.ID,
+		Title:    "解决冲突后的正常更新",
+		Status:   task.Status,
+		Priority: task.Priority,
+		Body:     "解决冲突后的正常描述",
+	})
+	if err != nil {
+		t.Fatalf("UpdateTask after rescan failed: %v", err)
+	}
+	if updated.Title != "解决冲突后的正常更新" {
+		t.Fatalf("unexpected title: %s", updated.Title)
+	}
+}

@@ -8,7 +8,7 @@
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import { Call as $Call, CancellablePromise as $CancellablePromise, Create as $Create } from "@wailsio/runtime";
+import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wailsio/runtime";
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
@@ -22,27 +22,21 @@ import * as $models from "./models.js";
  * CreateMemo creates a new Memo, writes it safely as Markdown, and updates the index.
  */
 export function CreateMemo(input: $models.CreateMemoInput): $CancellablePromise<markdown$0.Memo | null> {
-    return $Call.ByID(1514226879, input).then(($result: any) => {
-        return $$createType1($result);
-    });
+    return $Call.ByID(1514226879, input);
 }
 
 /**
  * CreateNote creates a new Note, writes it safely as Markdown, and updates the index.
  */
 export function CreateNote(input: $models.CreateNoteInput): $CancellablePromise<markdown$0.Note | null> {
-    return $Call.ByID(2924369193, input).then(($result: any) => {
-        return $$createType3($result);
-    });
+    return $Call.ByID(2924369193, input);
 }
 
 /**
  * CreateTask creates a new Task, writes it safely as Markdown, and updates the index.
  */
 export function CreateTask(input: $models.CreateTaskInput): $CancellablePromise<markdown$0.Task | null> {
-    return $Call.ByID(3901450400, input).then(($result: any) => {
-        return $$createType5($result);
-    });
+    return $Call.ByID(3901450400, input);
 }
 
 /**
@@ -56,100 +50,85 @@ export function DeleteTask(id: string): $CancellablePromise<void> {
  * GetDayPlan returns the DayPlan for a date. If no plan exists, an empty DayPlan is returned without error.
  */
 export function GetDayPlan(date: string): $CancellablePromise<markdown$0.DayPlan | null> {
-    return $Call.ByID(2499050296, date).then(($result: any) => {
-        return $$createType7($result);
-    });
+    return $Call.ByID(2499050296, date);
 }
 
 /**
  * GetDayTimeline returns daily timeline items (memos and task completion events) for a given date YYYY-MM-DD in local timezone.
  */
-export function GetDayTimeline(date: string): $CancellablePromise<$models.TimelineItem[]> {
-    return $Call.ByID(2161441604, date).then(($result: any) => {
-        return $$createType9($result);
-    });
+export function GetDayTimeline(date: string): $CancellablePromise<$models.TimelineItem[] | null> {
+    return $Call.ByID(2161441604, date);
 }
 
 /**
  * GetMemo returns a memo by its ID.
  */
 export function GetMemo(id: string): $CancellablePromise<markdown$0.Memo | null> {
-    return $Call.ByID(780043581, id).then(($result: any) => {
-        return $$createType1($result);
-    });
+    return $Call.ByID(780043581, id);
 }
 
 /**
  * GetNote returns a note by its ID.
  */
 export function GetNote(id: string): $CancellablePromise<markdown$0.Note | null> {
-    return $Call.ByID(3086395091, id).then(($result: any) => {
-        return $$createType3($result);
-    });
+    return $Call.ByID(3086395091, id);
 }
 
 /**
  * GetTagOverview returns aggregated counts of all unique tags across tasks, notes, and memos.
  */
-export function GetTagOverview(): $CancellablePromise<markdown$0.TagOverviewItem[]> {
-    return $Call.ByID(3863596086).then(($result: any) => {
-        return $$createType11($result);
-    });
+export function GetTagOverview(): $CancellablePromise<markdown$0.TagOverviewItem[] | null> {
+    return $Call.ByID(3863596086);
 }
 
 /**
  * GetTask returns a task by its ID.
  */
 export function GetTask(id: string): $CancellablePromise<markdown$0.Task | null> {
-    return $Call.ByID(1057197746, id).then(($result: any) => {
-        return $$createType5($result);
-    });
+    return $Call.ByID(1057197746, id);
+}
+
+/**
+ * GetVaultHealth returns the current health status of the vault, including parse errors and dangling references.
+ */
+export function GetVaultHealth(): $CancellablePromise<$models.VaultHealth | null> {
+    return $Call.ByID(1563926335);
 }
 
 /**
  * GetVaultStatus is cheap and callable before any vault is opened.
  */
 export function GetVaultStatus(): $CancellablePromise<$models.VaultStatus> {
-    return $Call.ByID(540011935).then(($result: any) => {
-        return $$createType12($result);
-    });
+    return $Call.ByID(540011935);
 }
 
 /**
  * ListByTag returns all entities matching the specified tag.
  * For Memos, tag matching checks memo.Tags ∪ parentTask.Tags.
  */
-export function ListByTag(tag: string): $CancellablePromise<markdown$0.EntityRef[]> {
-    return $Call.ByID(1184398980, tag).then(($result: any) => {
-        return $$createType14($result);
-    });
+export function ListByTag(tag: string): $CancellablePromise<markdown$0.EntityRef[] | null> {
+    return $Call.ByID(1184398980, tag);
 }
 
 /**
  * ListMemosByTask returns all memos associated with taskID from the vault index, oldest first.
  */
-export function ListMemosByTask(taskID: string): $CancellablePromise<(markdown$0.Memo | null)[]> {
-    return $Call.ByID(2666858332, taskID).then(($result: any) => {
-        return $$createType15($result);
-    });
+export function ListMemosByTask(taskID: string): $CancellablePromise<(markdown$0.Memo | null)[] | null> {
+    return $Call.ByID(2666858332, taskID);
 }
 
 /**
  * ListNotes returns all notes from the vault index, newest updated first.
  */
-export function ListNotes(): $CancellablePromise<(markdown$0.Note | null)[]> {
-    return $Call.ByID(957394914).then(($result: any) => {
-        return $$createType16($result);
-    });
+export function ListNotes(): $CancellablePromise<(markdown$0.Note | null)[] | null> {
+    return $Call.ByID(957394914);
 }
 
 /**
  * ListTasks returns all tasks from the vault index, newest first.
  */
-export function ListTasks(): $CancellablePromise<(markdown$0.Task | null)[]> {
-    return $Call.ByID(1611157941).then(($result: any) => {
-        return $$createType17($result);
-    });
+export function ListTasks(): $CancellablePromise<(markdown$0.Task | null)[] | null> {
+    return $Call.ByID(1611157941);
 }
 
 /**
@@ -162,20 +141,16 @@ export function RescanVault(): $CancellablePromise<void> {
 /**
  * SaveDayPlan creates or updates a DayPlan for a date with an ordered list of task IDs.
  */
-export function SaveDayPlan(date: string, taskIDs: string[]): $CancellablePromise<markdown$0.DayPlan | null> {
-    return $Call.ByID(1580712949, date, taskIDs).then(($result: any) => {
-        return $$createType7($result);
-    });
+export function SaveDayPlan(date: string, taskIDs: string[] | null): $CancellablePromise<markdown$0.DayPlan | null> {
+    return $Call.ByID(1580712949, date, taskIDs);
 }
 
 /**
  * SearchAll performs case-insensitive substring search across tasks, notes, and memos.
  * Empty or whitespace-only queries return an empty list without error.
  */
-export function SearchAll(query: string): $CancellablePromise<markdown$0.SearchResultItem[]> {
-    return $Call.ByID(2447503468, query).then(($result: any) => {
-        return $$createType19($result);
-    });
+export function SearchAll(query: string): $CancellablePromise<markdown$0.SearchResultItem[] | null> {
+    return $Call.ByID(2447503468, query);
 }
 
 /**
@@ -183,65 +158,33 @@ export function SearchAll(query: string): $CancellablePromise<markdown$0.SearchR
  * and opens it. Cancel returns the unchanged status.
  */
 export function SelectVaultDirectory(): $CancellablePromise<$models.VaultStatus> {
-    return $Call.ByID(2534227418).then(($result: any) => {
-        return $$createType12($result);
-    });
+    return $Call.ByID(2534227418);
 }
 
 /**
  * SetTaskStatus toggles or updates the status of a Task with completion/reopen event semantics.
  */
 export function SetTaskStatus(id: string, status: markdown$0.TaskStatus): $CancellablePromise<markdown$0.Task | null> {
-    return $Call.ByID(1569318832, id, status).then(($result: any) => {
-        return $$createType5($result);
-    });
+    return $Call.ByID(1569318832, id, status);
 }
 
 /**
  * UpdateMemo updates an existing Memo's body and tags while preserving its creation timestamp.
  */
 export function UpdateMemo(input: $models.UpdateMemoInput): $CancellablePromise<markdown$0.Memo | null> {
-    return $Call.ByID(971500362, input).then(($result: any) => {
-        return $$createType1($result);
-    });
+    return $Call.ByID(971500362, input);
 }
 
 /**
  * UpdateNote updates an existing Note, safely writes changes to Markdown, and preserves unknown frontmatter.
  */
 export function UpdateNote(input: $models.UpdateNoteInput): $CancellablePromise<markdown$0.Note | null> {
-    return $Call.ByID(3482000924, input).then(($result: any) => {
-        return $$createType3($result);
-    });
+    return $Call.ByID(3482000924, input);
 }
 
 /**
  * UpdateTask updates an existing Task, safely writes changes to Markdown, and preserves unknown frontmatter.
  */
 export function UpdateTask(input: $models.UpdateTaskInput): $CancellablePromise<markdown$0.Task | null> {
-    return $Call.ByID(12384053, input).then(($result: any) => {
-        return $$createType5($result);
-    });
+    return $Call.ByID(12384053, input);
 }
-
-// Private type creation functions
-const $$createType0 = markdown$0.Memo.createFrom;
-const $$createType1 = $Create.Nullable($$createType0);
-const $$createType2 = markdown$0.Note.createFrom;
-const $$createType3 = $Create.Nullable($$createType2);
-const $$createType4 = markdown$0.Task.createFrom;
-const $$createType5 = $Create.Nullable($$createType4);
-const $$createType6 = markdown$0.DayPlan.createFrom;
-const $$createType7 = $Create.Nullable($$createType6);
-const $$createType8 = $models.TimelineItem.createFrom;
-const $$createType9 = $Create.Array($$createType8);
-const $$createType10 = markdown$0.TagOverviewItem.createFrom;
-const $$createType11 = $Create.Array($$createType10);
-const $$createType12 = $models.VaultStatus.createFrom;
-const $$createType13 = markdown$0.EntityRef.createFrom;
-const $$createType14 = $Create.Array($$createType13);
-const $$createType15 = $Create.Array($$createType1);
-const $$createType16 = $Create.Array($$createType3);
-const $$createType17 = $Create.Array($$createType5);
-const $$createType18 = markdown$0.SearchResultItem.createFrom;
-const $$createType19 = $Create.Array($$createType18);

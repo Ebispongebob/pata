@@ -31,6 +31,12 @@ type VaultStatus struct {
 	Error      string `json:"error,omitempty"`
 }
 
+// VaultHealth reports vault health status, including parse errors and dangling references.
+type VaultHealth struct {
+	ParseErrors  []markdown.ParseError  `json:"parse_errors"`
+	DanglingRefs []markdown.DanglingRef `json:"dangling_refs"`
+}
+
 // CreateTaskInput defines parameters for creating a new Task.
 type CreateTaskInput struct {
 	Title    string                `json:"title"`
@@ -981,6 +987,30 @@ func (s *VaultService) SearchAll(query string) ([]markdown.SearchResultItem, err
 	}
 
 	return v.Index.SearchAll(query), nil
+}
+
+// GetVaultHealth returns the current health status of the vault, including parse errors and dangling references.
+func (s *VaultService) GetVaultHealth() (*VaultHealth, error) {
+	s.mu.Lock()
+	v := s.vault
+	s.mu.Unlock()
+	if v == nil {
+		return nil, fmt.Errorf("尚未打开 Vault")
+	}
+
+	parseErrs := v.Index.ListParseErrors()
+	if parseErrs == nil {
+		parseErrs = []markdown.ParseError{}
+	}
+	dangling := v.Index.ListDanglingReferences()
+	if dangling == nil {
+		dangling = []markdown.DanglingRef{}
+	}
+
+	return &VaultHealth{
+		ParseErrors:  parseErrs,
+		DanglingRefs: dangling,
+	}, nil
 }
 
 func (s *VaultService) dispatchEvent(name string, data any) {

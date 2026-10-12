@@ -6,7 +6,7 @@ export {
     VaultService
 };
 
-export {
+export type {
     CreateMemoInput,
     CreateNoteInput,
     CreateTaskInput,
@@ -14,5 +14,6 @@ export {
     UpdateMemoInput,
     UpdateNoteInput,
     UpdateTaskInput,
+    VaultHealth,
     VaultStatus
 } from "./models.js";
