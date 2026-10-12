@@ -8,8 +8,8 @@
 |---|---|---|---|
 | P5-001 | 后端:全局标签聚合 + 跨类型搜索 + VaultService 绑定(GetTagOverview/ListByTag/SearchAll) + bindings 重生成 | 无 | ✅ 完成(尝试 2,含 P5-R1 返工) |
 | P5-002 | 前端:侧边栏真实标签列表 + 标签视图(任务/笔记/记录 分组,无第四导航) | P5-001 bindings | ✅ 完成(尝试 2,含 P5-R2 返工) |
-| P5-003 | 前端:⌘K 全局搜索浮层 | P5-001 bindings;与 P5-002 同改 App.tsx → 串行 | 🔄 待委派 |
-| P5-R1.. | 每批实现后 pi 独立审查 | 各批实现完成 | R1✅ R2✅ |
+| P5-003 | 前端:⌘K 全局搜索浮层 | P5-001 bindings;与 P5-002 同改 App.tsx → 串行 | ✅ 完成(尝试 2,含 P5-R3 返工) |
+| P5-R1.. | 每批实现后 pi 独立审查 | 各批实现完成 | R1✅ R2✅ R3✅ |
 
 后续批次(proposal 步骤 3-5:可靠性回归/打磨打包/真实资料走查)另行委派。
 
@@ -32,6 +32,13 @@
 - 复用 p5-backend 会话;App.tsx 侧边栏真实 GetTagOverview + vault:changed 刷新;activeNav 扩展 'tag' 变体(无第四导航);新 TagView.tsx(284 行):ListByTag 单列 Task→Note→Memo 分组、Memo GetMemo 扇出取正文、inherited「经父任务」徽标+前往任务。
 - P5-R2: 1 must(TagView.loadTagData 竞态)/0 should/4 nice(GetMemo 失败与空正文不可区分、inherited 取失败丢前往任务、formatMemoTime 第 6 份拷贝、错误态无重试——均保留)。尝试 2 加 useRef 序列令牌(ListByTag 后/Promise.all 后/catch/finally-loading 五处)验收通过。
 - Lead 终验: npm build 过、go test 全绿
+
+## P5-003 委派快照(尝试 1 完成→R3 返工→尝试 2 验收)
+
+- 复用 p5-backend;新 SearchOverlay.tsx(顶部居中弹层、250ms 防抖+序列令牌全覆盖合 SearchAll 返回/GetMemo 扇出/catch/finally/清空/关闭)、Task→Note→Memo 分组每类前 5 条+总数、Memo 预取 task_id 跳父任务、↑↓/Enter/Esc 键盘导航+scrollIntoView;App.tsx 集成 ⌘K/⌘P(ctrlKey/大小写兼容)与工具栏入口。
+- P5-R3: 0 must/2 should/5 nice。should-1: ⌘K 与 Vditor 链接热键双触发(审查用 vditor dist+NotesView:332 实证)→尝试 2 加 contenteditable/.vditor 守卫;should-2: Lead 自己的 .gitignore 追加未换行拼入 build/android/gen/ 行,Lead 自修。nice 保留: 错误态与无结果混同、独立记录标签覆盖预取失败、a11y(role/aria/焦点还原——阶段 5 第 4 步排期)、select-none 不可复制、section 块重复。
+- 教训: Lead `git add -A` 会收进根目录 go build 二进制(f33420f 误提交 24MB,已 git rm --cached+.gitignore /pata);后续提交前查 git status。
+- Lead 终验: npm build 过;提交 4f14924
 - 边界:只改 internal/storage/markdown/、vaultservice.go(+test)、frontend/bindings/
 
 ## Lead 上下文
