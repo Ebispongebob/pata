@@ -11,14 +11,16 @@
 | P5-003 | 前端:⌘K 全局搜索浮层 | P5-001 bindings;与 P5-002 同改 App.tsx → 串行 | ✅ 完成(尝试 2,含 P5-R3 返工) |
 | P5-R1.. | 每批实现后 pi 独立审查 | 各批实现完成 | R1✅ R2✅ R3✅ |
 
-后续批次(proposal 步骤 3-5:可靠性回归/打磨打包/真实资料走查)另行委派。
+| P5-004 | 后端:GetVaultHealth 错误报告暴露 + 服务层回归审计补缺 | P5-001 | ✅ 完成(R4 一次通过) |
+| P5-005 | 前端:健康UI/基础无障碍/快捷键与首启审计/macOS 打包验证 | P5-004 | ✅ 完成(尝试 2,含 P5-R5 返工) |
+| 剩余 | proposal 步骤 5:真实资料走查 + 实机 macOS 回归 + MVP 验收清单 | 需用户实机 | ⏸ 留用户 |
 
 ## Worker 运行映射
 
 | Worker | Tab/Pane | 组合 | 实际模型(证据) | 状态 |
 |---|---|---|---|---|
-| p5-backend | w17:tF / w17:pF | agy | Gemini 3.8 Flash · high(终端页脚) | ✅ P5-001/002 完成(各含 1 次返工),待 P5-003 复用 |
-| p5-reviewer | w17:tG / w17:pG | pi + zoesoft/glm-5.3 | glm-5.3(状态栏 2%/1M) | ✅ P5-R1 完成(0 must/2 should/4 nice),待复用 |
+| p5-backend | w17:tF / w17:pF | agy | Gemini 3.8 Flash · high(终端页脚) | ✅ P5-001~005 全部完成(004 一次过,余各含 1 次返工),待关闭 |
+| p5-reviewer | w17:tG / w17:pG | pi + zoesoft/glm-5.3 | glm-5.3(状态栏) | ✅ P5-R1~R5 全部完成(0 must 累计 1;R4 一次通过),待关闭 |
 
 ## P5-001 委派快照
 
@@ -39,6 +41,22 @@
 - P5-R3: 0 must/2 should/5 nice。should-1: ⌘K 与 Vditor 链接热键双触发(审查用 vditor dist+NotesView:332 实证)→尝试 2 加 contenteditable/.vditor 守卫;should-2: Lead 自己的 .gitignore 追加未换行拼入 build/android/gen/ 行,Lead 自修。nice 保留: 错误态与无结果混同、独立记录标签覆盖预取失败、a11y(role/aria/焦点还原——阶段 5 第 4 步排期)、select-none 不可复制、section 块重复。
 - 教训: Lead `git add -A` 会收进根目录 go build 二进制(f33420f 误提交 24MB,已 git rm --cached+.gitignore /pata);后续提交前查 git status。
 - Lead 终验: npm build 过;提交 4f14924
+
+## P5-004 委派快照(R4 一次通过)
+
+- VaultService.GetVaultHealth() 直返 markdown.ParseError/DanglingRef(零手抄零转换,R1 惯例);服务层回归审计: 变更监听无缺口(EventForwarding 实测背书)、补 UpdateTask baseline 冲突闭环、RescanVault/GetVaultHealth 未打开防护、ParseError/DanglingRef 生命周期; bindings 重生成(beta.28 CLI,全量风格迁移属工具链对齐,R4 核实兼容)。
+- R4: 0 must/0 should/4 nice(bindings CLI 版本已固化到 README;nil 归一化死代码;两次 RLock 非原子;ParseError.Err IPC 无用)。提交 63867d3。
+
+## P5-005 委派快照(尝试 1 完成→R5 返工→尝试 2 验收)
+
+- 健康徽标+诊断弹窗(顶栏,parse_errors/dangling_refs 计数,vault:changed 实时刷新,干净不渲染);SearchOverlay a11y(dialog/combobox/listbox/aria-selected/焦点圈闭/还原);全局 :focus-visible 环;快捷键清单(⌘K/⌘P、⌘S×2、⌘↵×2、Esc/↑↓/Enter)无冲突;首启引导三视图本就一致未改;打包: bin/pata.app(18MB,codesign 严验通过)/bin/pata.dmg(8.5MB)。
+- R5: 0 must/2 should(健康弹窗无焦点管理→Esc 打开时无效;焦点环硬编码 #059669 违 ui.md 系统强调色)/4 nice。尝试 2 补 healthTriggerRef/healthModalRef 焦点移入+Esc+Tab 环流+还原、AccentColor+@supports 兜底。提交 8875108。
+- R5 提示: 打磨审计书面报告在 worker 会话滚动区,未入工作区;快捷键清单已抄入本台账。
+
+## 收官状态
+
+- 五批实现+五轮审查全部完成并提交(188fcd6/f33420f/4f14924/63867d3/8875108);两个 Worker 关闭。
+- 留用户: proposal 步骤 5(真实资料走查)、实机 macOS 回归(macos-native.md 清单)、MVP 验收清单(acceptance.md)勾选。
 - 边界:只改 internal/storage/markdown/、vaultservice.go(+test)、frontend/bindings/
 
 ## Lead 上下文
