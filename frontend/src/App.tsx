@@ -10,6 +10,7 @@ import {
   Sun,
   Moon,
   Monitor,
+  Search,
 } from 'lucide-react';
 import * as VaultService from '../bindings/pata/vaultservice';
 import { VaultStatus } from '../bindings/pata/models';
@@ -18,6 +19,7 @@ import { TasksView } from './TasksView';
 import { TodayView } from './TodayView';
 import { NotesView } from './NotesView';
 import { TagView } from './TagView';
+import { SearchOverlay } from './SearchOverlay';
 
 export default function App() {
   const [activeNav, setActiveNav] = useState<'today' | 'tasks' | 'notes' | 'tag'>('tasks');
@@ -34,6 +36,9 @@ export default function App() {
   // Global tags state
   const [tags, setTags] = useState<TagOverviewItem[]>([]);
   const [tagsLoading, setTagsLoading] = useState(false);
+
+  // Global search overlay state
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
 
   const handleOpenTask = (taskID: string) => {
     setActiveNav('tasks');
@@ -91,6 +96,26 @@ export default function App() {
       unsubscribe();
     };
   }, [refreshVault]);
+
+  // Global keyboard shortcut for search (⌘K / ⌘P)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (target?.isContentEditable || target?.closest?.('.vditor')) {
+        return;
+      }
+
+      if ((e.metaKey || e.ctrlKey) && (e.key === 'k' || e.key === 'p' || e.key === 'K' || e.key === 'P')) {
+        e.preventDefault();
+        setIsSearchOpen((prev) => !prev);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, []);
 
   const handleSelectVault = async () => {
     setVaultBusy(true);
@@ -303,6 +328,17 @@ export default function App() {
           </div>
 
           <div className="flex items-center space-x-2 no-drag-region">
+            <button
+              onClick={() => setIsSearchOpen(true)}
+              className="flex items-center space-x-1.5 px-2.5 py-1 rounded-md text-xs text-stone-500 dark:text-stone-400 hover:text-stone-900 dark:hover:text-stone-100 hover:bg-stone-200/60 dark:hover:bg-stone-800/60 border border-stone-200 dark:border-stone-800 transition cursor-pointer"
+              title="全局搜索 (⌘K / ⌘P)"
+            >
+              <Search className="w-3.5 h-3.5 opacity-70" />
+              <span>搜索</span>
+              <kbd className="text-[10px] font-mono opacity-60 bg-stone-200/60 dark:bg-stone-800 px-1 py-0.2 rounded">
+                ⌘K
+              </kbd>
+            </button>
             <div className="text-xs font-mono text-stone-400 dark:text-stone-500 bg-stone-100 dark:bg-stone-800/80 px-2 py-1 rounded border border-stone-200/60 dark:border-stone-700/60">
               macOS · Wails v3
             </div>
@@ -353,6 +389,15 @@ export default function App() {
           )}
         </div>
       </main>
+
+      {/* Global Quick Search Overlay */}
+      <SearchOverlay
+        isOpen={isSearchOpen}
+        onClose={() => setIsSearchOpen(false)}
+        onOpenTask={handleOpenTask}
+        onOpenNote={handleOpenNote}
+        vaultOpen={vaultStatus?.open}
+      />
     </div>
   );
 }
