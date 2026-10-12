@@ -244,7 +244,7 @@ export default function App() {
         style={sidebarCollapsed ? undefined : { width: `${sidebarWidth}px` }}
         className={`relative shrink-0 flex flex-col border-r border-stone-200 dark:border-stone-800 bg-stone-100/80 dark:bg-stone-950/80 backdrop-blur select-none ${
           isResizing ? '' : 'transition-all duration-200'
-        } ${sidebarCollapsed ? 'w-16' : ''}`}
+        } ${sidebarCollapsed ? 'w-20' : ''}`}
       >
         {/* Resize Handle (expanded only) */}
         {!sidebarCollapsed && (
@@ -266,7 +266,6 @@ export default function App() {
           {!sidebarCollapsed && (
             <div className="flex items-center space-x-2 pl-20">
               <span className="font-semibold text-sm tracking-tight text-emerald-800 dark:text-emerald-400">Pata 啪嗒</span>
-              <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-stone-200/70 dark:bg-stone-800 text-stone-600 dark:text-stone-400">v0.1</span>
             </div>
           )}
         </div>
@@ -402,14 +401,6 @@ export default function App() {
         {/* Top Header / Draggable Toolbar */}
         <header className="h-12 border-b border-stone-200 dark:border-stone-800 flex items-center justify-between px-4 drag-region select-none shrink-0">
           <div className="flex items-center space-x-3">
-            {sidebarCollapsed && (
-              <button
-                onClick={() => setSidebarCollapsed(false)}
-                className="p-1 rounded text-stone-500 hover:text-stone-900 dark:hover:text-stone-100 no-drag-region"
-              >
-                <ChevronRight className="w-4 h-4" />
-              </button>
-            )}
             <h1 className="text-sm font-semibold text-stone-800 dark:text-stone-200">
               {activeNav === 'today' && 'Today — 今日计划与记录'}
               {activeNav === 'tasks' && 'Tasks — 全量任务池'}
@@ -448,9 +439,6 @@ export default function App() {
                 ⌘K
               </kbd>
             </button>
-            <div className="text-xs font-mono text-stone-400 dark:text-stone-500 bg-stone-100 dark:bg-stone-800/80 px-2 py-1 rounded border border-stone-200/60 dark:border-stone-700/60">
-              macOS · Wails v3
-            </div>
           </div>
         </header>
 
