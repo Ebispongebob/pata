@@ -5,7 +5,6 @@ import {
   CheckSquare,
   FileText,
   Hash,
-  PanelLeft,
   Sun,
   Moon,
   Monitor,
@@ -25,7 +24,7 @@ import { SearchOverlay } from './SearchOverlay';
 export default function App() {
   const [activeNav, setActiveNav] = useState<'today' | 'tasks' | 'notes' | 'tag'>('tasks');
   const [selectedTag, setSelectedTag] = useState<string | null>(null);
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [sidebarCollapsed] = useState(false); // 收起开关已按走查反馈移除，保留状态位备后续恢复
   const [sidebarWidth, setSidebarWidth] = useState(240);
   const [isResizing, setIsResizing] = useState(false);
   const [themeMode, setThemeMode] = useState<'system' | 'light' | 'dark'>('system');
@@ -241,11 +240,11 @@ export default function App() {
       {/* Titlebar strip: traffic lights zone + window drag; islands sit below */}
       <div className="h-9 shrink-0 drag-region" aria-hidden="true" />
 
-      <div className="flex flex-1 min-h-0 gap-2 px-2 pb-2">
+      <div className="flex flex-1 min-h-0 gap-2 p-2 pl-0">
       {/* Sidebar */}
       <aside
         style={sidebarCollapsed ? undefined : { width: `${sidebarWidth}px` }}
-        className={`relative shrink-0 flex flex-col rounded-2xl border border-stone-200/70 dark:border-stone-800/70 shadow-xs overflow-hidden bg-stone-100/80 dark:bg-stone-950/80 backdrop-blur select-none ${
+        className={`relative shrink-0 flex flex-col border-r border-stone-200 dark:border-stone-800 bg-stone-100/80 dark:bg-stone-950/80 backdrop-blur select-none ${
           isResizing ? '' : 'transition-all duration-200'
         } ${sidebarCollapsed ? 'w-20' : ''}`}
       >
@@ -264,19 +263,10 @@ export default function App() {
           />
         )}
 
-        {/* Sidebar Header: traffic lights zone → sidebar toggle → logo */}
-        <div className="h-12 flex items-center gap-2 px-4 drag-region border-b border-stone-200/50 dark:border-stone-800/50">
+        {/* Sidebar Header */}
+        <div className="h-12 flex items-center px-4 drag-region border-b border-stone-200/50 dark:border-stone-800/50">
           {!sidebarCollapsed && (
-            <>
-              <button
-                onClick={() => setSidebarCollapsed(true)}
-                className="p-1.5 rounded text-stone-400 hover:text-stone-700 dark:hover:text-stone-200 hover:bg-stone-200/60 dark:hover:bg-stone-800/60 transition no-drag-region"
-                title="收起侧边栏"
-              >
-                <PanelLeft className="w-4 h-4" />
-              </button>
-              <span className="font-semibold text-sm tracking-tight text-emerald-800 dark:text-emerald-400">Pata 啪嗒</span>
-            </>
+            <span className="font-semibold text-sm tracking-tight text-emerald-800 dark:text-emerald-400">Pata 啪嗒</span>
           )}
         </div>
 
@@ -403,15 +393,6 @@ export default function App() {
         {/* Top Header / Draggable Toolbar */}
         <header className="h-12 border-b border-stone-200 dark:border-stone-800 flex items-center justify-between px-4 drag-region select-none shrink-0">
           <div className="flex items-center space-x-3">
-            {sidebarCollapsed && (
-              <button
-                onClick={() => setSidebarCollapsed(false)}
-                className="p-1.5 rounded text-stone-400 hover:text-stone-700 dark:hover:text-stone-200 hover:bg-stone-200/60 dark:hover:bg-stone-800/60 transition no-drag-region"
-                title="展开侧边栏"
-              >
-                <PanelLeft className="w-4 h-4" />
-              </button>
-            )}
             <h1 className="text-sm font-semibold text-stone-800 dark:text-stone-200">
               {activeNav === 'today' && 'Today — 今日计划与记录'}
               {activeNav === 'tasks' && 'Tasks — 全量任务池'}
