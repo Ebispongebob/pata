@@ -23,3 +23,10 @@
 - P6-002 仍 working（网络反复中断，agent 曾退出一次已重启@w17:tW/pW；正以本地脚本方式生成 HTML）
 - P6-002 completed：preview/index.html + logo-animation.css; Lead 结构抽查+目视走查通过（terminal-browser，已按用户要求停用）; P6-R2 审查通过无需返工; 已合并 main（643ea24），wt-002/分支/Tab tW,tY 清理
 - P6-003 已委派 @ minion-p6-003（agy，Tab w17:tZ/Pane w17:p0，主工作区，含 P6-R1 遗留 #E2DAF0 注释项）; 预估 40min
+
+## 阶段6收尾状态
+- P6-003 completed：CSS 移植/PataLogo 投影内嵌+forwardRef/logoAnimation 控制器/App 启动一次/两 Memo 成功触发; worker 自验 tsc+build+6断言过
+- P6-R3 审查：实质完成（图元一一对应✓ tsc✓ CSS单点导入✓ hooks✓ StrictMode 提出），但会话在最终 vite build 步骤网络卡死，正式报告未输出; 已按"证据已捕获"处理并关闭会话; Lead 复核确认其 StrictMode 疑问为真实 Low 缺陷 → 直改一行修复（register 重置 hasPlayedLaunch），tsc 复验过，已随 3b6f185 提交
+- main 提交链: bedaf16(P6-001) → 643ea24(P6-002 merge) → 3b6f185(P6-003)
+- P6-004 可行性预检（只读源码）: Wails v3.0.0-beta.28 SystemTray 支持 SetTemplateIcon/SetDarkModeIcon/OnClick/OnRightClick/Menu → 静态托盘+点击回调可行; 帧动画需逐帧 SetIcon 重设，平滑度未验证
+- 待用户: 菜单栏是否实施; 剩实机走查（标题栏图标/Dock/动画/减少动态）

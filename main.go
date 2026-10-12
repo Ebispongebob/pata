@@ -10,6 +10,9 @@ import (
 //go:embed all:frontend/dist
 var assets embed.FS
 
+//go:embed assets/branding/tray/tray.png
+var trayIcon []byte
+
 func main() {
 	vaultService := NewVaultService()
 
@@ -32,7 +35,7 @@ func main() {
 	app.Menu.SetApplicationMenu(appMenu)
 
 	// Create window with MacTitleBarHiddenInset according to macos-native spec
-	app.Window.NewWithOptions(application.WebviewWindowOptions{
+	mainWindow := app.Window.NewWithOptions(application.WebviewWindowOptions{
 		Title:     "Pata",
 		Width:     1120,
 		Height:    740,
@@ -44,6 +47,18 @@ func main() {
 		},
 		BackgroundColour: application.NewRGB(250, 250, 248),
 		URL:              "/",
+	})
+
+	// Configure static system tray
+	tray := app.SystemTray.New()
+	tray.SetTemplateIcon(trayIcon)
+	tray.SetTooltip("Pata")
+	tray.OnClick(func() {
+		if mainWindow.IsMinimised() {
+			mainWindow.UnMinimise()
+		}
+		mainWindow.Show()
+		mainWindow.Focus()
 	})
 
 	err := app.Run()

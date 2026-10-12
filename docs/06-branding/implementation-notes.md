@@ -147,3 +147,70 @@ go build -tags production -trimpath -buildvcs=false -o /dev/null .
 
 
 **Lead 直改（P6-R3 审查期间）**：registerTitlebarLogo 重置 hasPlayedLaunch——StrictMode 开发双挂载下 mount#2 可正常播放启动动画；生产单挂载行为不变。
+
+## P6-004: 静态菜单栏托盘与点击聚焦接入
+
+### 1. 用户决定与范围边界
+
+- **用户决定**：按阶段 6 可选增强第 4 步要求，实施「仅静态菜单栏托盘」，不做菜单栏点击帧动画。
+- **范围边界**：
+  - 仅静态模板图标托盘 + 点击显示并聚焦主窗口（Tooltip 仅作跨平台占位，macOS 上为 no-op）。
+  - 不附带菜单、快速捕捉或后台驻留；保持现有关窗退出行为不变（`ApplicationShouldTerminateAfterLastWindowClosed: true`）。
+  - 不做帧动画与深浅变体（macOS 模板图标规范自动跟随系统深浅模式与辅助强调色）。
+  - 不加设置页、不加声音或提醒、不动前端代码，保持最小改动。
+
+### 2. 变更实施内容
+
+#### 2.1 托盘单色模板图标生成与接入
+- 新建目录 `assets/branding/tray/`。
+- 以归档单色模板源 `docs/06-branding/resources/pata-branding-refined-v2/assets/branding/tray/` 为基准。
+- 使用 macOS `sips` 缩放生成标准 44x44（对应 22pt @2x Retina）PNG 资源 `assets/branding/tray/tray.png`：
+  - 严格满足纯黑 RGB `(0, 0, 0)` + 柔和抗锯齿 Alpha 透明通道规范。
+  - 经逐像素检验，无非黑彩色杂质，背景全透明。
+- 模板矢量与多尺寸源以 docs/06-branding/resources/pata-branding-refined-v2/ 归档为准，运行时目录仅保留被 embed 的 `tray.png`（P6-R4 审查后清理无引用副本）。
+
+#### 2.2 main.go 静态托盘与点击聚焦接入
+- 资源嵌入：使用 `//go:embed assets/branding/tray/tray.png` 声明 `var trayIcon []byte`。
+- 实例构建：调用 Wails v3 API `app.SystemTray.New()` 创建托盘实例。
+- 托盘属性配置：
+  - `tray.SetTemplateIcon(trayIcon)`：标记为 Template 图标，系统自动适配菜单栏深浅底色与高亮。
+  - `tray.SetTooltip("Pata")`：跨平台占位；macOS 不支持托盘 Tooltip（Wails 内部 no-op）。
+- 点击交互：
+  - 通过 `tray.OnClick` 注册轻量回调：
+    ```go
+    tray.OnClick(func() {
+        if mainWindow.IsMinimised() {
+            mainWindow.UnMinimise()
+        }
+        mainWindow.Show()
+        mainWindow.Focus()
+    })
+    ```
+  - 点击时若窗口处于最小化则解最小化，并确保显示与激活聚焦主窗口。
+  - 未使用 `AttachWindow`（避免将窗口强绑定重定位为托盘浮窗），保持主窗口原位及原生生命周期。
+
+### 3. 验证命令与结果
+
+#### 3.1 Go 单元与全量包编译
+```bash
+go build ./...
+go test ./...
+```
+- **结果**: 编译与测试全部通过（`ok pata`、`ok pata/internal/storage/markdown`），零构建错误。
+
+#### 3.2 完整桌面端打包
+```bash
+wails3 task package
+```
+- **过程**:
+  1. `go mod tidy`
+  2. `wails3 generate icons`（生成 `build/darwin/icons.icns`）
+  3. `wails3 generate bindings`
+  4. `npm run build`
+  5. `go build -tags production -trimpath -buildvcs=false -ldflags="-w -s" -o "bin/pata"`
+  6. 创建 `bin/pata.app`，复制资源，完成 ad-hoc 签名与严格验证 `codesign --verify --deep --strict "bin/pata.app"`
+- **结果**: `bin/pata.app` 打包与签名成功。
+
+#### 3.3 实机目视与走查标注
+- 标注：托盘静态模板图标与点击聚焦逻辑已接入并完成二进制打包。macOS 菜单栏实机外观渲染（浅色/深色菜单栏下的模板反色适配、点击主窗口唤起与聚焦）留给用户/Lead 验收走查。
+
