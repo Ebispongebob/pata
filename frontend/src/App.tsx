@@ -237,7 +237,11 @@ export default function App() {
   const hasHealthIssues = parseErrorCount > 0 || danglingRefCount > 0;
 
   return (
-    <div className="flex h-screen w-screen overflow-hidden gap-2 p-2 bg-stone-100/60 dark:bg-transparent text-stone-900 dark:text-stone-100 font-sans">
+    <div className="flex flex-col h-screen w-screen overflow-hidden bg-stone-100/60 dark:bg-transparent text-stone-900 dark:text-stone-100 font-sans">
+      {/* Titlebar strip: traffic lights zone + window drag; islands sit below */}
+      <div className="h-9 shrink-0 drag-region" aria-hidden="true" />
+
+      <div className="flex flex-1 min-h-0 gap-2 px-2 pb-2">
       {/* Sidebar */}
       <aside
         style={sidebarCollapsed ? undefined : { width: `${sidebarWidth}px` }}
@@ -266,7 +270,7 @@ export default function App() {
             <>
               <button
                 onClick={() => setSidebarCollapsed(true)}
-                className="ml-16 p-1.5 rounded text-stone-400 hover:text-stone-700 dark:hover:text-stone-200 hover:bg-stone-200/60 dark:hover:bg-stone-800/60 transition no-drag-region"
+                className="p-1.5 rounded text-stone-400 hover:text-stone-700 dark:hover:text-stone-200 hover:bg-stone-200/60 dark:hover:bg-stone-800/60 transition no-drag-region"
                 title="收起侧边栏"
               >
                 <PanelLeft className="w-4 h-4" />
@@ -493,6 +497,7 @@ export default function App() {
           )}
         </div>
       </main>
+      </div>
 
       {/* Global Quick Search Overlay */}
       <SearchOverlay
