@@ -260,8 +260,8 @@ export default function App() {
             onPointerUp={handlePointerUp}
             onPointerCancel={handlePointerUp}
             onLostPointerCapture={handleLostPointerCapture}
-            className={`absolute top-0 right-0 w-1 h-full cursor-col-resize no-drag-region hover:bg-emerald-500/40 transition-colors z-20 touch-none ${
-              isResizing ? 'bg-emerald-500/50' : ''
+            className={`absolute top-0 right-0 w-1 h-full cursor-col-resize no-drag-region hover:bg-stone-400/60 dark:hover:bg-stone-500/60 transition-colors z-20 touch-none ${
+              isResizing ? 'bg-stone-400/50 dark:bg-stone-500/50' : ''
             }`}
             title="拖拽调整侧边栏宽度"
           />
@@ -383,7 +383,7 @@ export default function App() {
       </div>
 
       {/* Main Content Area */}
-      <main className="flex-1 flex flex-col min-w-0 overflow-hidden rounded-2xl border border-stone-200/70 dark:border-stone-800/70 shadow-xs bg-stone-50 dark:bg-stone-900 mr-2 mb-2">
+      <main className="flex-1 flex flex-col min-w-0 overflow-hidden rounded-2xl border border-stone-200/70 dark:border-stone-800/70 shadow-xs bg-stone-50 dark:bg-stone-900 mt-2 mr-2 mb-2">
         {/* Top Header / Draggable Toolbar */}
         <header className="h-12 border-b border-stone-200 dark:border-stone-800 flex items-center justify-between px-4 drag-region select-none shrink-0">
           <div className="flex items-center space-x-3">
