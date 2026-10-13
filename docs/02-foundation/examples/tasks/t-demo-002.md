@@ -3,7 +3,6 @@ type: task
 id: t-demo-002
 title: Flink SQL 批处理 POC
 status: todo
-priority: p2
 due: null
 tags: [Flink, POC]
 note_ids: []

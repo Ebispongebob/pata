@@ -142,7 +142,6 @@ export interface Task {
     "id": string;
     "title": string;
     "status": TaskStatus;
-    "priority": TaskPriority;
 
     /**
      * YYYY-MM-DD or nil
@@ -155,20 +154,6 @@ export interface Task {
     "status_events"?: StatusEvent[] | null;
     "body": string;
 }
-
-/**
- * TaskPriority represents the priority level of a task.
- */
-export enum TaskPriority {
-    /**
-     * The Go zero value for the underlying type of the enum.
-     */
-    $zero = "",
-
-    TaskPriorityP1 = "p1",
-    TaskPriorityP2 = "p2",
-    TaskPriorityP3 = "p3",
-};
 
 /**
  * TaskStatus represents the current status of a task.

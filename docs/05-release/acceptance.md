@@ -1,7 +1,7 @@
 # MVP Acceptance Criteria
 
 - [ ] 用户选择本地 Vault，无需登录或联网。
-- [ ] 新建 Task，设置状态、优先级、due、标签，保存在规范 Markdown 文件。
+- [ ] 新建 Task，设置状态、due、标签，保存在规范 Markdown 文件。
 - [ ] 将同 Task 安排到多个 Today 日期，不修改 due，也不创建任务副本。
 - [ ] Today 按用户顺序显示计划，可移出但不删除 Task；昨日未完不自动移入今天。
 - [ ] 为 Task 添加 Memo 后，Task 详情与对应日期 Today 都能看见同一条记录。

@@ -29,7 +29,6 @@ export interface CreateNoteInput {
 export interface CreateTaskInput {
     "title": string;
     "status"?: markdown$0.TaskStatus;
-    "priority"?: markdown$0.TaskPriority;
     "due"?: string | null;
     "tags"?: string[] | null;
     "note_ids"?: string[] | null;
@@ -41,7 +40,7 @@ export interface CreateTaskInput {
  */
 export interface TimelineItem {
     /**
-     * "memo" | "completion"
+     * "memo" | "completion" | "reopen"
      */
     "kind": string;
     "time": string;
@@ -78,7 +77,6 @@ export interface UpdateTaskInput {
     "id": string;
     "title": string;
     "status": markdown$0.TaskStatus;
-    "priority": markdown$0.TaskPriority;
     "due": string | null;
     "tags"?: string[] | null;
     "note_ids"?: string[] | null;

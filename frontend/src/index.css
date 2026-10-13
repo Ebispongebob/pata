@@ -41,3 +41,30 @@ button, input, textarea, select, a, [role="button"], .vditor {
   }
 }
 
+
+/* 快速输入不使用强调色光圈，仍保留轻量可见的焦点提示。 */
+.quick-entry:focus-visible,
+.quick-entry-group:has(textarea:focus-visible) {
+  outline: 1px solid #a8a29e;
+  outline-offset: 0;
+}
+
+/* 记录输入的可见边框在外层，textarea 不再绘制内层光圈。 */
+.quick-entry-group textarea:focus {
+  outline: none;
+}
+
+/* 弹出层（菜单/建议/模态）的轻量出现动效；系统开启「减少动态效果」时关闭 */
+@keyframes pata-pop {
+  from { opacity: 0; transform: translateY(-4px) scale(0.98); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes pata-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+.pata-pop { animation: pata-pop 140ms cubic-bezier(0.2, 0.8, 0.2, 1); transform-origin: top; }
+.pata-fade { animation: pata-fade 160ms ease-out; }
+@media (prefers-reduced-motion: reduce) {
+  .pata-pop, .pata-fade { animation: none; }
+}

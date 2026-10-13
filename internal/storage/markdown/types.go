@@ -25,15 +25,6 @@ const (
 	TaskStatusDone  TaskStatus = "done"
 )
 
-// TaskPriority represents the priority level of a task.
-type TaskPriority string
-
-const (
-	TaskPriorityP1 TaskPriority = "p1"
-	TaskPriorityP2 TaskPriority = "p2"
-	TaskPriorityP3 TaskPriority = "p3"
-)
-
 // StatusEventAction represents actions recorded in task status events.
 type StatusEventAction string
 
@@ -64,7 +55,6 @@ type Task struct {
 	ID           string               `yaml:"id" json:"id"`
 	Title        string               `yaml:"title" json:"title"`
 	Status       TaskStatus           `yaml:"status" json:"status"`
-	Priority     TaskPriority         `yaml:"priority" json:"priority"`
 	Due          *string              `yaml:"due" json:"due"` // YYYY-MM-DD or nil
 	Tags         []string             `yaml:"tags,omitempty" json:"tags,omitempty"`
 	NoteIDs      []string             `yaml:"note_ids,omitempty" json:"note_ids,omitempty"`
@@ -75,11 +65,11 @@ type Task struct {
 	Body         string               `yaml:"-" json:"body"`
 }
 
-func (t *Task) GetType() EntityType                { return EntityTypeTask }
-func (t *Task) GetID() string                      { return t.ID }
-func (t *Task) GetBody() string                    { return t.Body }
-func (t *Task) SetBody(body string)                { t.Body = body }
-func (t *Task) GetExtra() map[string]yaml.Node     { return t.Extra }
+func (t *Task) GetType() EntityType            { return EntityTypeTask }
+func (t *Task) GetID() string                  { return t.ID }
+func (t *Task) GetBody() string                { return t.Body }
+func (t *Task) SetBody(body string)            { t.Body = body }
+func (t *Task) GetExtra() map[string]yaml.Node { return t.Extra }
 func (t *Task) Clone() Entity {
 	cp := *t
 	if t.Due != nil {

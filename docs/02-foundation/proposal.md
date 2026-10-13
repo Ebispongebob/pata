@@ -15,6 +15,8 @@
 - [x] 实机验证标题栏/窗口行为、系统深浅色、缩放、侧边栏收起；记录系统/Wails 版本及结果；Liquid Glass 不强制。（见 [spike-desktop-result.md](spike-desktop-result.md)）
 - [x] 新建/编辑 Task 写入真实 Markdown，重新启动内容仍正确。（单测模拟重扫；实机手动回归待用户一次性走查）
 - [x] Task 属性合法校验、未知 Frontmatter 字段保留。（测试覆盖）
+- [ ] Task 描述按纯文本编辑与显示，保留换行及已有 Markdown 符号原文；保存、重扫后内容不丢失，Notes 仍支持 Markdown。（待实机走查）
+- [x] 移除任务优先级；新文件不写 `priority`，旧字段按未知属性保留，读取与编辑不受影响。（创建落盘与旧字段保留回归测试）
 - [x] 外部文本编辑器改动可被感知，存在冲突时不覆盖。（fsnotify→vault:changed 事件+ConflictError 拒绝覆盖；单测覆盖，实机走查同上）
 - [x] 任务管理与 UI/Wails 代码解耦，CLI 不属于本阶段工作。（internal/storage/markdown 无 Wails 依赖；未引入 CLI）
 
@@ -92,7 +94,7 @@ vault/
 
 采用不会因重命名文件变化的稳定 ID；文件名可包含可读 slug，但任何关联都不能依赖文件名。最初可以使用 UUID/ULID 类唯一标识（生成方式待实现时确定）。
 
-## 数据优先级
+## 数据源
 
 Markdown 是唯一业务真相；内存索引从文件扫描重建。UI 更新、外部文件编辑、Agent 改写都要遵守同一份 schema。
 
@@ -113,12 +115,12 @@ Frontmatter 由 Go Core 读写；编辑器只编辑正文。允许未知字段�
 
 ## 列表
 
-全量任务池；按状态、截止时间、标签、优先级过滤或排序。可快速创建。无 Inbox、Project、Area、子任务、看板。
+全量任务池；按状态、截止时间、标签过滤或排序。可快速创建。无 Inbox、Project、Area、子任务、看板。
 
 ## Task 详情
 
-- 标题、状态（todo/doing/done）、优先级（p1/p2/p3）、可选 due、标签。
-- Markdown 描述（任务目标与验收，不必贴完整技术方案）。
+- 标题、状态（todo/doing/done）、可选 due、标签。
+- 纯文本描述（任务目标与验收，支持换行，不解析 Markdown；长篇技术方案使用 Note）。
 - 关联 Notes / 代码仓库或 PR 链接（显式引用，可选）。
 - Memo 线程：按时间排列、输入框追加评论。
 

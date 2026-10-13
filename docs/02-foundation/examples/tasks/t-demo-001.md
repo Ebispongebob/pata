@@ -3,7 +3,6 @@ type: task
 id: t-demo-001
 title: 统一资源接入方案
 status: doing
-priority: p1
 due: 2026-10-20
 tags: [架构设计]
 note_ids: [n-demo-001]

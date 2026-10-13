@@ -36,7 +36,6 @@ func TestVaultServiceOpenAndListTasks(t *testing.T) {
 		ID:        markdown.GenerateEntityID(markdown.EntityTypeTask),
 		Title:     "冒烟测试任务",
 		Status:    markdown.TaskStatusTodo,
-		Priority:  markdown.TaskPriorityP2,
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
 	}
@@ -102,13 +101,12 @@ func TestVaultService_CreateTask_PersistAndRestart(t *testing.T) {
 
 	dueStr := "2026-10-15"
 	input := CreateTaskInput{
-		Title:    "阶段2任务落地",
-		Status:   markdown.TaskStatusDoing,
-		Priority: markdown.TaskPriorityP1,
-		Due:      &dueStr,
-		Tags:     []string{"架构设计", "GoCore"},
-		NoteIDs:  []string{refNote.ID},
-		Body:     "## 验收目标\n- 任务必须写真实 Markdown\n- 重扫解析正确",
+		Title:   "阶段2任务落地",
+		Status:  markdown.TaskStatusDoing,
+		Due:     &dueStr,
+		Tags:    []string{"架构设计", "GoCore"},
+		NoteIDs: []string{refNote.ID},
+		Body:    "## 验收目标\n- 任务必须写真实 Markdown\n- 重扫解析正确",
 	}
 
 	created, err := s.CreateTask(input)
@@ -125,9 +123,6 @@ func TestVaultService_CreateTask_PersistAndRestart(t *testing.T) {
 	if created.Status != markdown.TaskStatusDoing {
 		t.Fatalf("status mismatch: %s", created.Status)
 	}
-	if created.Priority != markdown.TaskPriorityP1 {
-		t.Fatalf("priority mismatch: %s", created.Priority)
-	}
 	if created.Due == nil || *created.Due != "2026-10-15" {
 		t.Fatalf("due mismatch: %v", created.Due)
 	}
@@ -143,6 +138,10 @@ func TestVaultService_CreateTask_PersistAndRestart(t *testing.T) {
 	data, err := os.ReadFile(taskPath)
 	if err != nil {
 		t.Fatalf("failed to read created task file from disk %s: %v", taskPath, err)
+	}
+
+	if strings.Contains(string(data), "priority:") {
+		t.Fatalf("new task must not write priority: %s", data)
 	}
 
 	// 2. Parse file from disk to ensure valid YAML frontmatter + Markdown body
@@ -259,11 +258,10 @@ func TestVaultService_StatusTransitions_HistoryPreserved(t *testing.T) {
 
 	// 4. UpdateTask with status todo (reopen): should append reopened event, preserving all 3 prior events
 	tTodo, err := s.UpdateTask(UpdateTaskInput{
-		ID:       created.ID,
-		Title:    "更新标题后的任务",
-		Status:   markdown.TaskStatusTodo,
-		Priority: markdown.TaskPriorityP1,
-		Body:     "更新后的内容",
+		ID:     created.ID,
+		Title:  "更新标题后的任务",
+		Status: markdown.TaskStatusTodo,
+		Body:   "更新后的内容",
 	})
 	if err != nil {
 		t.Fatalf("UpdateTask failed: %v", err)
@@ -419,11 +417,10 @@ custom_id: pi-9988
 
 	// 1. Update task through service
 	updated, err := s.UpdateTask(UpdateTaskInput{
-		ID:       task.ID,
-		Title:    "已知标题被修改",
-		Status:   markdown.TaskStatusDoing,
-		Priority: markdown.TaskPriorityP1,
-		Body:     "更新后的正文内容。",
+		ID:     task.ID,
+		Title:  "已知标题被修改",
+		Status: markdown.TaskStatusDoing,
+		Body:   "更新后的正文内容。",
 	})
 	if err != nil {
 		t.Fatalf("UpdateTask failed: %v", err)
@@ -444,6 +441,11 @@ custom_id: pi-9988
 		t.Fatalf("ReadFile failed: %v", err)
 	}
 	diskStr := string(diskBytes)
+
+	// Legacy priority is now an unknown field, not a task property.
+	if !strings.Contains(diskStr, "priority: p2") {
+		t.Fatalf("legacy priority lost! Disk content:\n%s", diskStr)
+	}
 
 	// Check that unknown YAML fields are preserved!
 	if !strings.Contains(diskStr, "agent_extension:") {
@@ -477,9 +479,9 @@ func TestVaultService_ValidationErrors(t *testing.T) {
 		t.Fatalf("expected error for empty title")
 	}
 
-	// 2. Invalid priority
-	if _, err := s.CreateTask(CreateTaskInput{Title: "T", Priority: "p4"}); err == nil {
-		t.Fatalf("expected error for invalid priority p4")
+	// 2. Invalid status
+	if _, err := s.CreateTask(CreateTaskInput{Title: "T", Status: "invalid"}); err == nil {
+		t.Fatalf("expected error for invalid status")
 	}
 
 	// 3. Invalid due date
@@ -1252,8 +1254,11 @@ func TestVaultService_DayTimeline_IndependenceAndAcceptanceCriteria(t *testing.T
 	if err != nil {
 		t.Fatalf("GetDayTimeline date1 failed: %v", err)
 	}
-	var foundComp1 bool
+	var foundComp1, foundReopen1 bool
 	for _, item := range tlDate1 {
+		if item.Kind == "reopen" && item.TaskID == multiCompTask.ID && item.Time.Equal(tReopen) {
+			foundReopen1 = true
+		}
 		if item.Kind == "completion" && item.TaskID == multiCompTask.ID {
 			foundComp1 = true
 			if !item.Time.Equal(t1) {
@@ -1263,6 +1268,9 @@ func TestVaultService_DayTimeline_IndependenceAndAcceptanceCriteria(t *testing.T
 	}
 	if !foundComp1 {
 		t.Fatalf("expected completion event on date1 timeline")
+	}
+	if !foundReopen1 {
+		t.Fatalf("expected reopen event on date1 timeline")
 	}
 
 	// Check date2 timeline
@@ -1860,11 +1868,10 @@ func TestVaultService_TaskNoteLinking_Lifecycle(t *testing.T) {
 
 	// Update Task to link both Note 1 and Note 2
 	updatedTask, err := s.UpdateTask(UpdateTaskInput{
-		ID:       task.ID,
-		Title:    task.Title,
-		Status:   task.Status,
-		Priority: task.Priority,
-		NoteIDs:  []string{n1.ID, n2.ID},
+		ID:      task.ID,
+		Title:   task.Title,
+		Status:  task.Status,
+		NoteIDs: []string{n1.ID, n2.ID},
 	})
 	if err != nil {
 		t.Fatalf("UpdateTask failed: %v", err)
@@ -1875,11 +1882,10 @@ func TestVaultService_TaskNoteLinking_Lifecycle(t *testing.T) {
 
 	// Unlink all notes: full replacement semantics
 	unlinkedTask, err := s.UpdateTask(UpdateTaskInput{
-		ID:       task.ID,
-		Title:    task.Title,
-		Status:   task.Status,
-		Priority: task.Priority,
-		NoteIDs:  []string{},
+		ID:      task.ID,
+		Title:   task.Title,
+		Status:  task.Status,
+		NoteIDs: []string{},
 	})
 	if err != nil {
 		t.Fatalf("UpdateTask unlinking failed: %v", err)
@@ -2348,11 +2354,10 @@ func TestVaultService_UpdateTask_BaselineConflictAndRescanResolution(t *testing.
 
 	// Attempt UpdateTask without rescan -> baseline conflict must be rejected
 	_, err = s.UpdateTask(UpdateTaskInput{
-		ID:       task.ID,
-		Title:    "服务层尝试覆盖",
-		Status:   task.Status,
-		Priority: task.Priority,
-		Body:     "服务层新描述",
+		ID:     task.ID,
+		Title:  "服务层尝试覆盖",
+		Status: task.Status,
+		Body:   "服务层新描述",
 	})
 	if err == nil || !strings.Contains(err.Error(), "conflict") {
 		t.Fatalf("expected conflict error on external task edit, got: %v", err)
@@ -2365,11 +2370,10 @@ func TestVaultService_UpdateTask_BaselineConflictAndRescanResolution(t *testing.
 
 	// Subsequent UpdateTask should now succeed
 	updated, err := s.UpdateTask(UpdateTaskInput{
-		ID:       task.ID,
-		Title:    "解决冲突后的正常更新",
-		Status:   task.Status,
-		Priority: task.Priority,
-		Body:     "解决冲突后的正常描述",
+		ID:     task.ID,
+		Title:  "解决冲突后的正常更新",
+		Status: task.Status,
+		Body:   "解决冲突后的正常描述",
 	})
 	if err != nil {
 		t.Fatalf("UpdateTask after rescan failed: %v", err)

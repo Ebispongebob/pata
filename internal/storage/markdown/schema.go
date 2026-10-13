@@ -63,17 +63,6 @@ func validateTask(path string, t *Task) error {
 		}
 	}
 
-	switch t.Priority {
-	case TaskPriorityP1, TaskPriorityP2, TaskPriorityP3:
-		// valid
-	default:
-		return &ValidationError{
-			Path:   path,
-			Field:  "priority",
-			Reason: fmt.Sprintf("must be one of 'p1', 'p2', 'p3'; got '%s'", t.Priority),
-		}
-	}
-
 	if t.Due != nil && *t.Due != "" {
 		if err := validateDateFormat(*t.Due); err != nil {
 			return &ValidationError{

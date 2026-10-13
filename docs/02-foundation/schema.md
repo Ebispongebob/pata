@@ -18,7 +18,6 @@ type: task
 id: t-demo-001
 title: 统一资源接入方案
 status: doing            # todo | doing | done
-priority: p1             # p1 | p2 | p3
 due: null                # YYYY-MM-DD | null
 tags: [架构设计]
 note_ids: [n-demo-001]    # 可选明确关联
@@ -33,6 +32,10 @@ status_events:            # 可选，仅记录完成和重新打开
 
 目标：明确接入边界和操作协议。
 ```
+
+Task 正文（UI 中的 description / 描述）为纯文本，支持换行，不解析或渲染 Markdown；仍保存在现有 `.md` 文件的 Frontmatter 后，无需新增字段或迁移文件。已有 Markdown 符号按原文保留，不自动清洗。Note 的 Markdown 编辑不受影响。
+
+Task 不再建模 `priority`；新建任务不写该字段。旧文件中的 `priority` 按未知 Frontmatter 属性保留，不校验其值、不向业务接口暴露，也不在保存时强制删除；无需批量迁移旧文件。
 
 `status` 是当前状态；`status_events` 用于保留 **完成 / 重新打开** 历史，而不是庞大的审计事件系统。创建时间可用于回顾；已完成 Task 的最近一次完成时间可从事件序列中计算。对于只有一个 `done` 状态而无事件的外部手工修改，解析器应明确采取一致的降级策略（待实现 Spike 确定）。
 

@@ -4,7 +4,6 @@
 export {
     EntityType,
     StatusEventAction,
-    TaskPriority,
     TaskStatus
 } from "./models.js";
 

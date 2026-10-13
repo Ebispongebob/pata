@@ -33,7 +33,6 @@ func TestTaskStatusEventsAndValidation(t *testing.T) {
 		ID:        "t-events-01",
 		Title:     "生命周期历史",
 		Status:    TaskStatusDoing,
-		Priority:  TaskPriorityP1,
 		CreatedAt: now.Add(-2 * time.Hour),
 		UpdatedAt: now,
 		StatusEvents: []StatusEvent{
@@ -138,7 +137,6 @@ func TestVault_DeleteEntity_PreservesReferencingMemos(t *testing.T) {
 		ID:        "t-del-01",
 		Title:     "待删除任务",
 		Status:    TaskStatusTodo,
-		Priority:  TaskPriorityP2,
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
 		Body:      "此任务将被删除",
@@ -225,7 +223,6 @@ func TestWatcher_SameID_PathConvergence_AtomicRename_CreateBeforeRemove(t *testi
 		ID:        "t-converge-01",
 		Title:     "重命名收敛测试任务",
 		Status:    TaskStatusTodo,
-		Priority:  TaskPriorityP2,
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
 	}
@@ -296,7 +293,6 @@ func TestWatcher_SameID_PathConvergence_WriteThenDelete_CreateBeforeRemove(t *te
 		ID:        "t-converge-02",
 		Title:     "写入后删除测试任务",
 		Status:    TaskStatusDoing,
-		Priority:  TaskPriorityP1,
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
 	}
@@ -371,7 +367,6 @@ func TestWatcher_SameID_RealFSWatcher_PollingAssert(t *testing.T) {
 		ID:        "t-converge-03",
 		Title:     "真实Watcher收敛测试",
 		Status:    TaskStatusTodo,
-		Priority:  TaskPriorityP2,
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
 	}
@@ -424,7 +419,6 @@ func TestVault_DeleteEntity_ClearsPendingMove_NoResurrection(t *testing.T) {
 		ID:        "t-dup-del-01",
 		Title:     "原版任务",
 		Status:    TaskStatusTodo,
-		Priority:  TaskPriorityP2,
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
 	}
@@ -500,5 +494,3 @@ updated_at: 2026-10-11T12:00:00+08:00
 		}
 	}
 }
-
-

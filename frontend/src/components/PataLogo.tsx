@@ -27,7 +27,7 @@ export const PataLogo = forwardRef<SVGSVGElement, PataLogoProps>(function PataLo
       xmlns="http://www.w3.org/2000/svg"
       viewBox="0 0 828 816"
       role="img"
-      aria-label="啪嗒 Pata 品牌标识"
+      aria-label="Pata 品牌标识"
       className={`pata-logo-svg ${className}`.trim()}
       {...props}
     >

@@ -4,434 +4,143 @@ import {
   Circle,
   CheckCircle2,
   Clock,
-  Trash2,
-  Save,
-  ArrowLeft,
-  Plus,
   AlertCircle,
   Calendar,
-  RefreshCw,
   X,
   Search,
   FolderOpen,
-  MessageSquare,
-  Send,
-  FileText,
-  Link,
-  Unlink,
-  ExternalLink,
 } from 'lucide-react';
 import * as VaultService from '../bindings/pata/vaultservice';
-import { Task, TaskStatus, TaskPriority, Memo, Note } from '../bindings/pata/internal/storage/markdown/models';
-import { VaultStatus, CreateTaskInput, UpdateTaskInput, CreateMemoInput } from '../bindings/pata/models';
-import { playLogoSuccess } from './logoAnimation';
-
-function formatMemoTimestamp(isoString: string): string {
-  if (!isoString) return '';
-  try {
-    const d = new Date(isoString);
-    if (isNaN(d.getTime())) return isoString;
-
-    const pad = (n: number) => n.toString().padStart(2, '0');
-    const hours = pad(d.getHours());
-    const minutes = pad(d.getMinutes());
-
-    const now = new Date();
-    const isToday =
-      d.getFullYear() === now.getFullYear() &&
-      d.getMonth() === now.getMonth() &&
-      d.getDate() === now.getDate();
-
-    if (isToday) {
-      return `${hours}:${minutes}`;
-    }
-
-    const year = d.getFullYear();
-    const month = pad(d.getMonth() + 1);
-    const day = pad(d.getDate());
-    if (year === now.getFullYear()) {
-      return `${month}-${day} ${hours}:${minutes}`;
-    }
-    return `${year}-${month}-${day} ${hours}:${minutes}`;
-  } catch {
-    return isoString;
-  }
-}
-
-function formatRelativeTime(isoString: string): string {
-  if (!isoString) return '';
-  try {
-    const d = new Date(isoString);
-    if (isNaN(d.getTime())) return isoString;
-    const now = new Date();
-    const diffSec = Math.floor((now.getTime() - d.getTime()) / 1000);
-    if (diffSec < 60) return '刚刚';
-    const diffMin = Math.floor(diffSec / 60);
-    if (diffMin < 60) return `${diffMin} 分钟前`;
-    const diffHour = Math.floor(diffMin / 60);
-    if (diffHour < 24) return `${diffHour} 小时前`;
-
-    const yesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
-    const isYesterday =
-      d.getFullYear() === yesterday.getFullYear() &&
-      d.getMonth() === yesterday.getMonth() &&
-      d.getDate() === yesterday.getDate();
-    if (isYesterday) return '昨天';
-
-    const diffDay = Math.floor(diffHour / 24);
-    if (diffDay < 7) return `${diffDay} 天前`;
-
-    const pad = (n: number) => n.toString().padStart(2, '0');
-    const y = d.getFullYear();
-    const m = pad(d.getMonth() + 1);
-    const day = pad(d.getDate());
-    if (y === now.getFullYear()) {
-      return `${m}-${day}`;
-    }
-    return `${y}-${m}-${day}`;
-  } catch {
-    return isoString;
-  }
-}
+import { Task, TaskStatus } from '../bindings/pata/internal/storage/markdown/models';
+import { VaultStatus, CreateTaskInput } from '../bindings/pata/models';
+import { QuickCreateInput } from './QuickCreateInput';
+import { TaskDetailPanel, TaskDetailHandle } from './TaskDetailPanel';
+import { DetailSplit, useDetailOrigin } from './DetailSplit';
 
 interface TasksViewProps {
   vaultStatus: VaultStatus | null;
   onSelectVault: () => void;
-  onRescanVault: () => void;
   vaultBusy?: boolean;
   focusTaskId?: string | null;
   onClearFocusTask?: () => void;
   onOpenNote?: (noteId: string) => void;
+  /** 已有全局标签名（不带 #），用于快速创建补全。 */
+  tagNames: string[];
+  /** 任务写入成功后刷新全局标签等跨页面数据。 */
+  onVaultDataChanged: () => void;
+  /** 页面离开前的未保存草稿确认；返回 false 表示取消离开。 */
+  leaveGuardRef: React.MutableRefObject<(() => Promise<boolean>) | null>;
 }
 
 export function TasksView({
   vaultStatus,
   onSelectVault,
-  onRescanVault,
   vaultBusy = false,
   focusTaskId,
   onClearFocusTask,
   onOpenNote,
+  tagNames,
+  onVaultDataChanged,
+  leaveGuardRef,
 }: TasksViewProps) {
   const [tasks, setTasks] = useState<Task[]>([]);
-  const [loading, setLoading] = useState(false);
   const [listError, setListError] = useState<string | null>(null);
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
+  const panelRef = useRef<TaskDetailHandle>(null);
+  const origin = useDetailOrigin();
 
-  // Consume focusTaskId from parent navigation
-  useEffect(() => {
-    if (focusTaskId) {
-      setSelectedTaskId(focusTaskId);
-      onClearFocusTask?.();
-    }
-  }, [focusTaskId, onClearFocusTask]);
-
-  // Quick create state
-  const [quickTitle, setQuickTitle] = useState('');
-  const [creating, setCreating] = useState(false);
-  const [createError, setCreateError] = useState<string | null>(null);
-
-  // Filtering & Search
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'done'>('all');
   const [searchQuery, setSearchQuery] = useState('');
 
-  // Detail / Editing state
-  const [detailTitle, setDetailTitle] = useState('');
-  const [detailStatus, setDetailStatus] = useState<TaskStatus>(TaskStatus.TaskStatusTodo);
-  const [detailPriority, setDetailPriority] = useState<TaskPriority>(TaskPriority.TaskPriorityP2);
-  const [detailDue, setDetailDue] = useState<string>('');
-  const [detailTags, setDetailTags] = useState<string>('');
-  const [detailBody, setDetailBody] = useState<string>('');
-
-  const [saving, setSaving] = useState(false);
-  const [detailError, setDetailError] = useState<string | null>(null);
-  const [saveSuccessMsg, setSaveSuccessMsg] = useState<string | null>(null);
-
-  // External change / Conflict indicators
-  const [externalModified, setExternalModified] = useState(false);
-  const [conflictError, setConflictError] = useState<string | null>(null);
-
-  // Delete modal state
-  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
-  const [deleting, setDeleting] = useState(false);
-  const [rescanLoading, setRescanLoading] = useState(false);
-
-  // Memo / Comment state for selected task
-  const [taskMemos, setTaskMemos] = useState<Memo[]>([]);
-  const [loadingMemos, setLoadingMemos] = useState(false);
-  const [memoListError, setMemoListError] = useState<string | null>(null);
-  const [newMemoBody, setNewMemoBody] = useState('');
-  const [submittingMemo, setSubmittingMemo] = useState(false);
-  const [submitMemoError, setSubmitMemoError] = useState<string | null>(null);
-
-  // Associated Notes state
-  const [detailNoteIds, setDetailNoteIds] = useState<string[]>([]);
-  const [allNotes, setAllNotes] = useState<Note[]>([]);
-  const [loadingNotes, setLoadingNotes] = useState(false);
-  const [showAddNoteModal, setShowAddNoteModal] = useState(false);
-  const [noteSearchQuery, setNoteSearchQuery] = useState('');
-  const [unlinkTarget, setUnlinkTarget] = useState<{ id: string; title: string } | null>(null);
-
-  // Fetch tasks
   const loadTasks = useCallback(async () => {
     if (!vaultStatus?.open) {
       setTasks([]);
       setListError(null);
       return;
     }
-    setLoading(true);
     setListError(null);
     try {
       const result = await VaultService.ListTasks();
-      const validTasks = (result ?? []).filter((t): t is Task => t !== null);
-      setTasks(validTasks);
+      setTasks((result ?? []).filter((t): t is Task => t !== null));
     } catch (err: any) {
       console.error('Failed to list tasks:', err);
       setListError(err?.message || String(err));
-    } finally {
-      setLoading(false);
     }
   }, [vaultStatus?.open, vaultStatus?.path]);
 
-  // Fetch memos for selected task
-  const loadMemos = useCallback(async (taskId: string) => {
-    if (!taskId) {
-      setTaskMemos([]);
-      setMemoListError(null);
-      return;
-    }
-    setLoadingMemos(true);
-    setMemoListError(null);
-    try {
-      const result = await VaultService.ListMemosByTask(taskId);
-      const validMemos = (result ?? []).filter((m): m is Memo => m !== null);
-      setTaskMemos(validMemos);
-    } catch (err: any) {
-      console.error('Failed to list memos for task:', err);
-      setMemoListError(err?.message || String(err));
-    } finally {
-      setLoadingMemos(false);
-    }
-  }, []);
-
-  // Fetch all notes for note association selector
-  const loadAllNotes = useCallback(async () => {
-    if (!vaultStatus?.open) {
-      setAllNotes([]);
-      return;
-    }
-    setLoadingNotes(true);
-    try {
-      const result = await VaultService.ListNotes();
-      const validNotes = (result ?? []).filter((n): n is Note => n !== null);
-      setAllNotes(validNotes);
-    } catch (err: any) {
-      console.error('Failed to list notes for task association:', err);
-    } finally {
-      setLoadingNotes(false);
-    }
-  }, [vaultStatus?.open]);
+  useEffect(() => {
+    void loadTasks();
+  }, [loadTasks]);
 
   useEffect(() => {
-    loadTasks();
-    loadAllNotes();
-  }, [loadTasks, loadAllNotes]);
-
-  const handleRescan = async () => {
-    setRescanLoading(true);
-    setListError(null);
-    try {
-      await VaultService.RescanVault();
-      if (onRescanVault) {
-        onRescanVault();
-      }
-      await loadTasks();
-    } catch (err: any) {
-      console.error('Failed to rescan vault:', err);
-      setListError(`重新扫描失败: ${err?.message || err}`);
-    } finally {
-      setRescanLoading(false);
-    }
-  };
-
-  // Find currently selected task
-  const selectedTask = useMemo(() => {
-    if (!selectedTaskId) return null;
-    return tasks.find((t) => t.id === selectedTaskId) ?? null;
-  }, [tasks, selectedTaskId]);
-
-  const selectedTaskIdRef = useRef<string | null>(null);
-  useEffect(() => {
-    selectedTaskIdRef.current = selectedTaskId;
-  }, [selectedTaskId]);
-
-  // Reload task from disk discarding uncommitted local edits
-  const reloadSelectedTask = useCallback(async () => {
-    if (!selectedTaskId) return;
-    setDetailError(null);
-    setConflictError(null);
-    setExternalModified(false);
-    try {
-      const task = await VaultService.GetTask(selectedTaskId);
-      if (task) {
-        setDetailTitle(task.title);
-        setDetailStatus(task.status);
-        setDetailPriority(task.priority);
-        setDetailDue(task.due ?? '');
-        setDetailTags((task.tags ?? []).join(', '));
-        setDetailBody(task.body ?? '');
-        setDetailNoteIds(task.note_ids ?? []);
-        setSaveSuccessMsg('已重新加载最新磁盘内容');
-      }
-      await loadTasks();
-      await loadMemos(selectedTaskId);
-      await loadAllNotes();
-    } catch (err: any) {
-      setDetailError(`重新加载失败: ${err?.message || err}`);
-    }
-  }, [selectedTaskId, loadTasks, loadMemos, loadAllNotes]);
-
-  // Subscribe to Wails application events for external vault file changes
-  useEffect(() => {
-    const unsubscribe = Events.On('vault:changed', (ev) => {
-      const data = ev.data as
-        | { op?: string; path?: string; entity_id?: string; type?: string }
-        | undefined;
-      const currentSelectedId = selectedTaskIdRef.current;
-
-      if (currentSelectedId && data?.entity_id === currentSelectedId) {
-        // User is editing details of this task: do NOT overwrite form fields, prompt external modification!
-        setExternalModified(true);
-      }
-      // Refresh background tasks list (form fields are not overwritten)
-      loadTasks();
-      loadAllNotes();
-
-      // Refresh task comments without overwriting in-progress draft
-      if (currentSelectedId) {
-        loadMemos(currentSelectedId);
-      }
+    const unsubscribe = Events.On('vault:changed', () => {
+      void loadTasks();
     });
-
     return () => {
       unsubscribe();
     };
-  }, [loadTasks, loadMemos, loadAllNotes]);
+  }, [loadTasks]);
 
-  const prevSelectedTaskIdRef = useRef<string | null>(null);
-
-  // When selected task ID changes, initialize form fields
   useEffect(() => {
-    if (selectedTaskId && selectedTaskId !== prevSelectedTaskIdRef.current) {
-      prevSelectedTaskIdRef.current = selectedTaskId;
-      setExternalModified(false);
-      setConflictError(null);
-      setDetailError(null);
-      setSaveSuccessMsg(null);
-      setNewMemoBody('');
-      setSubmitMemoError(null);
-      setShowAddNoteModal(false);
-      setUnlinkTarget(null);
-      setNoteSearchQuery('');
-      const task = tasks.find((t) => t.id === selectedTaskId);
-      if (task) {
-        setDetailTitle(task.title);
-        setDetailStatus(task.status);
-        setDetailPriority(task.priority);
-        setDetailDue(task.due ?? '');
-        setDetailTags((task.tags ?? []).join(', '));
-        setDetailBody(task.body ?? '');
-        setDetailNoteIds(task.note_ids ?? []);
-      }
-      loadMemos(selectedTaskId);
-      loadAllNotes();
-    } else if (!selectedTaskId) {
-      prevSelectedTaskIdRef.current = null;
-      setExternalModified(false);
-      setConflictError(null);
-      setDetailError(null);
-      setTaskMemos([]);
-      setDetailNoteIds([]);
-      setShowAddNoteModal(false);
-      setUnlinkTarget(null);
-      setNoteSearchQuery('');
-      setNewMemoBody('');
-      setSubmitMemoError(null);
-      setMemoListError(null);
-    }
-  }, [selectedTaskId, tasks, loadMemos, loadAllNotes]);
+    leaveGuardRef.current = async () => (await panelRef.current?.confirmLeave()) ?? true;
+    return () => {
+      leaveGuardRef.current = null;
+    };
+  }, [leaveGuardRef]);
 
-  // Add new memo / comment to current task
-  const handleAddMemo = async (e?: React.FormEvent) => {
-    if (e) e.preventDefault();
-    if (!selectedTaskId) return;
-    const body = newMemoBody.trim();
-    if (!body) return;
+  const openTask = useCallback(
+    async (id: string) => {
+      if (selectedTaskId && selectedTaskId !== id && !((await panelRef.current?.confirmLeave()) ?? true)) return;
+      origin.capture();
+      setSelectedTaskId(id);
+    },
+    [selectedTaskId, origin]
+  );
 
-    setSubmittingMemo(true);
-    setSubmitMemoError(null);
-
-    try {
-      const input: CreateMemoInput = {
-        body,
-        task_id: selectedTaskId,
-      };
-      await VaultService.CreateMemo(input);
-      playLogoSuccess();
-      setNewMemoBody('');
-      await loadMemos(selectedTaskId);
-    } catch (err: any) {
-      console.error('Failed to create memo:', err);
-      setSubmitMemoError(err?.message || String(err));
-    } finally {
-      setSubmittingMemo(false);
-    }
+  const closePanel = () => {
+    setSelectedTaskId(null);
+    origin.restore();
   };
 
-
-  // Quick create task
-  const handleQuickCreate = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const title = quickTitle.trim();
-    if (!title) return;
-
-    setCreating(true);
-    setCreateError(null);
-
-    try {
-      const input: CreateTaskInput = {
-        title,
-        status: TaskStatus.TaskStatusTodo,
-        priority: TaskPriority.TaskPriorityP2,
-      };
-      const created = await VaultService.CreateTask(input);
-      setQuickTitle('');
-      await loadTasks();
-      if (created) {
-        setSelectedTaskId(created.id);
-      }
-    } catch (err: any) {
-      setCreateError(err?.message || String(err));
-    } finally {
-      setCreating(false);
+  // 来自 Today / 搜索 / 标签页的跳转
+  useEffect(() => {
+    if (focusTaskId) {
+      void openTask(focusTaskId);
+      onClearFocusTask?.();
     }
+  }, [focusTaskId, onClearFocusTask, openTask]);
+
+  const refreshAll = useCallback(() => {
+    void loadTasks();
+    onVaultDataChanged();
+  }, [loadTasks, onVaultDataChanged]);
+
+  // Tasks 只创建，不自动安排到任何日期
+  const handleQuickCreate = async (title: string, tags: string[]) => {
+    const input: CreateTaskInput = {
+      title,
+      tags,
+      status: TaskStatus.TaskStatusTodo,
+    };
+    await VaultService.CreateTask(input);
+    refreshAll();
   };
 
-  // Quick toggle status directly from list
   const handleToggleStatus = async (task: Task, e: React.MouseEvent) => {
     e.stopPropagation();
-    let nextStatus: TaskStatus;
-    if (task.status === TaskStatus.TaskStatusDone) {
-      nextStatus = TaskStatus.TaskStatusTodo;
-    } else if (task.status === TaskStatus.TaskStatusTodo) {
-      nextStatus = TaskStatus.TaskStatusDoing;
-    } else {
-      nextStatus = TaskStatus.TaskStatusDone;
-    }
+    // 同一任务有未保存草稿时，先让用户决定，避免随后的保存覆盖这次状态修改
+    if (task.id === selectedTaskId && !((await panelRef.current?.confirmLeave()) ?? true)) return;
+    const nextStatus =
+      task.status === TaskStatus.TaskStatusDone
+        ? TaskStatus.TaskStatusTodo
+        : task.status === TaskStatus.TaskStatusTodo
+        ? TaskStatus.TaskStatusDoing
+        : TaskStatus.TaskStatusDone;
 
     try {
       await VaultService.SetTaskStatus(task.id, nextStatus);
-      await loadTasks();
+      refreshAll();
+      if (task.id === selectedTaskId) await panelRef.current?.reload();
     } catch (err: any) {
       const isConflict =
         typeof err?.message === 'string' &&
@@ -445,174 +154,16 @@ export function TasksView({
     }
   };
 
-  // Save edited task
-  const handleSaveDetail = useCallback(async () => {
-    if (!selectedTaskId) return;
-    setSaving(true);
-    setDetailError(null);
-    setConflictError(null);
-    setSaveSuccessMsg(null);
-
-    try {
-      const parsedTags = detailTags
-        .split(/[,，]/)
-        .map((t) => t.trim().replace(/^#+/, ''))
-        .filter((t) => t.length > 0);
-
-      const input: UpdateTaskInput = {
-        id: selectedTaskId,
-        title: detailTitle.trim(),
-        status: detailStatus,
-        priority: detailPriority,
-        due: detailDue ? detailDue : null,
-        tags: parsedTags,
-        body: detailBody,
-        note_ids: detailNoteIds,
-      };
-
-      const updated = await VaultService.UpdateTask(input);
-      if (updated) {
-        setSaveSuccessMsg('已安全保存到 Markdown 文件');
-        setConflictError(null);
-        setExternalModified(false);
-      }
-      await loadTasks();
-    } catch (err: any) {
-      const isConflict =
-        typeof err?.message === 'string' &&
-        (err.message.includes('write conflict') || err.message.includes('conflict at'));
-      if (isConflict) {
-        setConflictError(err?.message || '文件已被外部修改（写入冲突）');
-        setExternalModified(true);
-      } else {
-        setDetailError(err?.message || String(err));
-      }
-    } finally {
-      setSaving(false);
-    }
-  }, [selectedTaskId, detailTitle, detailStatus, detailPriority, detailDue, detailTags, detailBody, detailNoteIds, loadTasks]);
-
-  // Persist associated notes changes immediately
-  const saveWithNoteIds = async (nextNoteIds: string[]) => {
-    if (!selectedTaskId) return;
-    setSaving(true);
-    setDetailError(null);
-    setConflictError(null);
-    setSaveSuccessMsg(null);
-
-    try {
-      const parsedTags = detailTags
-        .split(/[,，]/)
-        .map((t) => t.trim().replace(/^#+/, ''))
-        .filter((t) => t.length > 0);
-
-      const input: UpdateTaskInput = {
-        id: selectedTaskId,
-        title: detailTitle.trim(),
-        status: detailStatus,
-        priority: detailPriority,
-        due: detailDue ? detailDue : null,
-        tags: parsedTags,
-        body: detailBody,
-        note_ids: nextNoteIds,
-      };
-
-      const updated = await VaultService.UpdateTask(input);
-      if (updated) {
-        setSaveSuccessMsg('已更新关联笔记');
-        setConflictError(null);
-        setExternalModified(false);
-      }
-      await loadTasks();
-    } catch (err: any) {
-      const isConflict =
-        typeof err?.message === 'string' &&
-        (err.message.includes('write conflict') || err.message.includes('conflict at'));
-      if (isConflict) {
-        setConflictError(err?.message || '文件已被外部修改（写入冲突）');
-        setExternalModified(true);
-      } else {
-        setDetailError(err?.message || String(err));
-      }
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const handleAddNoteLink = async (noteId: string) => {
-    if (detailNoteIds.includes(noteId)) return;
-    const next = [...detailNoteIds, noteId];
-    setDetailNoteIds(next);
-    setShowAddNoteModal(false);
-    await saveWithNoteIds(next);
-  };
-
-  const handleConfirmUnlinkNote = async () => {
-    if (!unlinkTarget) return;
-    const next = detailNoteIds.filter((id) => id !== unlinkTarget.id);
-    setDetailNoteIds(next);
-    setUnlinkTarget(null);
-    await saveWithNoteIds(next);
-  };
-
-  // Clean up saveSuccessMsg auto-dismiss timer
-  useEffect(() => {
-    if (!saveSuccessMsg) return;
-    const timer = setTimeout(() => {
-      setSaveSuccessMsg(null);
-    }, 3000);
-    return () => clearTimeout(timer);
-  }, [saveSuccessMsg]);
-
-  // Confirm delete
-  const handleDeleteTask = async () => {
-    if (!selectedTaskId) return;
-    setDeleting(true);
-    try {
-      await VaultService.DeleteTask(selectedTaskId);
-      setDeleteModalOpen(false);
-      setSelectedTaskId(null);
-      await loadTasks();
-    } catch (err: any) {
-      setDetailError(`删除失败: ${err?.message || err}`);
-      setDeleteModalOpen(false);
-    } finally {
-      setDeleting(false);
-    }
-  };
-
-  // Keyboard shortcut Cmd+S / Ctrl+S
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === 's') {
-        if (selectedTaskId) {
-          e.preventDefault();
-          handleSaveDetail();
-        }
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectedTaskId, handleSaveDetail]);
-
-  // Filter tasks
   const filteredTasks = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase();
     return tasks.filter((t) => {
-      // Status filter (all, active, done)
-      if (statusFilter === 'active') {
-        if (t.status === TaskStatus.TaskStatusDone) return false;
-      } else if (statusFilter === 'done') {
-        if (t.status !== TaskStatus.TaskStatusDone) return false;
-      }
-
-      // Search query
-      if (searchQuery.trim()) {
-        const query = searchQuery.trim().toLowerCase();
+      if (statusFilter === 'active' && t.status === TaskStatus.TaskStatusDone) return false;
+      if (statusFilter === 'done' && t.status !== TaskStatus.TaskStatusDone) return false;
+      if (query) {
         const matchTitle = t.title.toLowerCase().includes(query);
         const matchTag = (t.tags ?? []).some((tag) => tag.toLowerCase().includes(query));
         if (!matchTitle && !matchTag) return false;
       }
-
       return true;
     });
   }, [tasks, statusFilter, searchQuery]);
@@ -620,6 +171,7 @@ export function TasksView({
   // Unconfigured Vault state
   if (!vaultStatus?.configured) {
     return (
+      <div className="h-full overflow-y-auto p-6">
       <div className="py-16 text-center space-y-4 max-w-md mx-auto">
         <FolderOpen className="w-12 h-12 text-emerald-600 mx-auto opacity-75" />
         <h2 className="text-base font-semibold text-stone-800 dark:text-stone-200">尚未配置 Vault 目录</h2>
@@ -635,12 +187,14 @@ export function TasksView({
           <span>选择 Vault 目录</span>
         </button>
       </div>
+      </div>
     );
   }
 
   // Configured but unopened vault state
   if (!vaultStatus.open) {
     return (
+      <div className="h-full overflow-y-auto p-6">
       <div className="p-5 max-w-lg mx-auto rounded-xl border border-amber-200 dark:border-amber-900/60 bg-amber-50/70 dark:bg-amber-950/30 text-xs space-y-3">
         <div className="font-medium text-amber-900 dark:text-amber-200">Vault 打开异常</div>
         <p className="text-stone-600 dark:text-stone-400">
@@ -654,837 +208,218 @@ export function TasksView({
           重新选择目录
         </button>
       </div>
+      </div>
     );
   }
 
-  // Task Detail View (replaces main area in single-column style)
-  if (selectedTask) {
-    return (
-      <div className="max-w-3xl mx-auto space-y-6">
-        {/* Navigation & Actions Top Bar */}
-        <div className="flex items-center justify-between gap-3 pb-3 border-b border-stone-200 dark:border-stone-800">
-          <button
-            onClick={() => {
-              setSelectedTaskId(null);
-              setDetailError(null);
-              setConflictError(null);
-              setExternalModified(false);
-            }}
-            className="flex items-center space-x-1 px-2.5 py-1.5 rounded-md text-xs font-medium text-stone-600 dark:text-stone-300 hover:bg-stone-200/60 dark:hover:bg-stone-800/60 transition"
-          >
-            <ArrowLeft className="w-3.5 h-3.5" />
-            <span>返回任务列表</span>
-          </button>
+  const panel = selectedTaskId ? (
+    <TaskDetailPanel
+      key={selectedTaskId}
+      ref={panelRef}
+      taskId={selectedTaskId}
+      closeLabel="关闭详情"
+      onClose={closePanel}
+      onChanged={refreshAll}
+      onDeleted={closePanel}
+      onOpenNote={onOpenNote}
+    />
+  ) : null;
 
-          <div className="flex items-center space-x-2">
+  return (
+    <DetailSplit panel={panel}>
+      <div className="space-y-5">
+        {/* Quick Create Bar */}
+        <QuickCreateInput
+          placeholder="添加任务…  末尾可加 #标签，如：完成设计 #工作"
+          submitLabel="快速创建"
+          tagNames={tagNames}
+          onSubmit={handleQuickCreate}
+        />
+
+        {/* Filters and Search Bar */}
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5">
+          <div className="flex items-center space-x-1 p-0.5 rounded-lg bg-stone-200/60 dark:bg-stone-800/80 text-xs">
             <button
-              onClick={() => setDeleteModalOpen(true)}
-              className="flex items-center space-x-1 px-2.5 py-1.5 rounded-md text-xs text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 border border-rose-200 dark:border-rose-900/40 transition"
-              title="删除任务"
+              onClick={() => setStatusFilter('all')}
+              className={`px-2.5 py-1 rounded-md font-medium transition ${
+                statusFilter === 'all'
+                  ? 'bg-white dark:bg-stone-900 text-stone-900 dark:text-stone-100 shadow-2xs'
+                  : 'text-stone-600 dark:text-stone-400 hover:text-stone-900'
+              }`}
             >
-              <Trash2 className="w-3.5 h-3.5" />
-              <span>删除</span>
+              全部 ({tasks.length})
             </button>
             <button
-              onClick={handleSaveDetail}
-              disabled={saving}
-              className="flex items-center space-x-1.5 px-3.5 py-1.5 rounded-md bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-medium transition shadow-xs disabled:opacity-50"
+              onClick={() => setStatusFilter('active')}
+              className={`px-2.5 py-1 rounded-md font-medium transition ${
+                statusFilter === 'active'
+                  ? 'bg-white dark:bg-stone-900 text-stone-900 dark:text-stone-100 shadow-2xs'
+                  : 'text-stone-600 dark:text-stone-400 hover:text-stone-900'
+              }`}
             >
-              <Save className={`w-3.5 h-3.5 ${saving ? 'animate-spin' : ''}`} />
-              <span>{saving ? '保存中...' : '保存'}</span>
+              待办中 ({tasks.filter((t) => t.status !== TaskStatus.TaskStatusDone).length})
             </button>
-          </div>
-        </div>
-
-        {/* External Modification / Conflict Warning Banner */}
-        {(externalModified || conflictError) && (
-          <div className="p-3.5 rounded-lg border border-amber-300 dark:border-amber-800/80 bg-amber-50 dark:bg-amber-950/40 text-amber-900 dark:text-amber-200 text-xs flex items-center justify-between gap-3 shadow-xs">
-            <div className="flex items-center space-x-2.5 min-w-0">
-              <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
-              <span className="font-medium">
-                {conflictError
-                  ? '文件已被外部修改（保存冲突），点击重新加载以丢弃本地编辑并重读'
-                  : '文件已被外部修改，点击重新加载'}
-              </span>
-            </div>
             <button
-              type="button"
-              onClick={reloadSelectedTask}
-              className="flex items-center space-x-1 px-3 py-1 rounded-md bg-amber-600 hover:bg-amber-700 text-white text-xs font-medium transition shrink-0 shadow-2xs"
+              onClick={() => setStatusFilter('done')}
+              className={`px-2.5 py-1 rounded-md font-medium transition ${
+                statusFilter === 'done'
+                  ? 'bg-white dark:bg-stone-900 text-stone-900 dark:text-stone-100 shadow-2xs'
+                  : 'text-stone-600 dark:text-stone-400 hover:text-stone-900'
+              }`}
             >
-              <RefreshCw className="w-3 h-3" />
-              <span>重新加载</span>
+              已完成 ({tasks.filter((t) => t.status === TaskStatus.TaskStatusDone).length})
             </button>
           </div>
-        )}
 
-        {/* Generic Error / Success Feedback Banners */}
-        {detailError && !conflictError && (
-          <div className="p-3 rounded-lg border border-rose-200 dark:border-rose-900/60 bg-rose-50/80 dark:bg-rose-950/40 text-rose-800 dark:text-rose-200 text-xs flex items-start space-x-2">
-            <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
-            <div className="space-y-0.5">
-              <div className="font-semibold">保存失败（Go Core 拒绝）</div>
-              <div className="font-mono text-[11px] break-all">{detailError}</div>
-            </div>
-          </div>
-        )}
-
-        {saveSuccessMsg && (
-          <div className="p-2.5 rounded-lg border border-emerald-200 dark:border-emerald-900/60 bg-emerald-50/80 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-200 text-xs flex items-center space-x-2">
-            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-            <span>{saveSuccessMsg}</span>
-          </div>
-        )}
-
-        {/* Task Title Input */}
-        <div>
-          <label className="block text-[11px] font-semibold text-stone-500 uppercase tracking-wider mb-1">
-            任务标题
-          </label>
-          <input
-            type="text"
-            value={detailTitle}
-            onChange={(e) => setDetailTitle(e.target.value)}
-            placeholder="输入任务标题..."
-            className="w-full px-3 py-2 text-base font-semibold rounded-lg border border-stone-200 dark:border-stone-800 bg-white dark:bg-stone-950 text-stone-900 dark:text-stone-100 focus:outline-hidden focus:ring-2 focus:ring-emerald-600"
-          />
-        </div>
-
-        {/* Metadata Controls Grid */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 p-4 rounded-xl border border-stone-200 dark:border-stone-800 bg-white/60 dark:bg-stone-950/40">
-          {/* Status */}
-          <div>
-            <label className="block text-[11px] font-medium text-stone-500 mb-1">状态</label>
-            <select
-              value={detailStatus}
-              onChange={(e) => setDetailStatus(e.target.value as TaskStatus)}
-              className="w-full px-2.5 py-1.5 text-xs rounded-md border border-stone-200 dark:border-stone-800 bg-white dark:bg-stone-900 text-stone-800 dark:text-stone-200 focus:outline-hidden focus:ring-1 focus:ring-emerald-600"
-            >
-              <option value={TaskStatus.TaskStatusTodo}>todo · 待办</option>
-              <option value={TaskStatus.TaskStatusDoing}>doing · 进行中</option>
-              <option value={TaskStatus.TaskStatusDone}>done · 已完成</option>
-            </select>
-          </div>
-
-          {/* Priority */}
-          <div>
-            <label className="block text-[11px] font-medium text-stone-500 mb-1">优先级</label>
-            <select
-              value={detailPriority}
-              onChange={(e) => setDetailPriority(e.target.value as TaskPriority)}
-              className="w-full px-2.5 py-1.5 text-xs rounded-md border border-stone-200 dark:border-stone-800 bg-white dark:bg-stone-900 text-stone-800 dark:text-stone-200 focus:outline-hidden focus:ring-1 focus:ring-emerald-600"
-            >
-              <option value={TaskPriority.TaskPriorityP1}>P1 · 紧急优先</option>
-              <option value={TaskPriority.TaskPriorityP2}>P2 · 默认</option>
-              <option value={TaskPriority.TaskPriorityP3}>P3 · 低优先</option>
-            </select>
-          </div>
-
-          {/* Due Date */}
-          <div>
-            <label className="block text-[11px] font-medium text-stone-500 mb-1">截止日期 (Due)</label>
-            <div className="relative flex items-center">
-              <input
-                type="date"
-                value={detailDue}
-                onChange={(e) => setDetailDue(e.target.value)}
-                className="w-full px-2.5 py-1.5 text-xs rounded-md border border-stone-200 dark:border-stone-800 bg-white dark:bg-stone-900 text-stone-800 dark:text-stone-200 focus:outline-hidden focus:ring-1 focus:ring-emerald-600"
-              />
-              {detailDue && (
-                <button
-                  type="button"
-                  onClick={() => setDetailDue('')}
-                  className="absolute right-2 text-stone-400 hover:text-stone-600 dark:hover:text-stone-200"
-                  title="清除截止时间"
-                >
-                  <X className="w-3 h-3" />
-                </button>
-              )}
-            </div>
-          </div>
-
-          {/* Tags */}
-          <div>
-            <label className="block text-[11px] font-medium text-stone-500 mb-1">标签 (逗号分隔)</label>
+          <div className="relative flex-1 sm:max-w-xs">
+            <Search className="w-3.5 h-3.5 text-stone-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
             <input
               type="text"
-              value={detailTags}
-              onChange={(e) => setDetailTags(e.target.value)}
-              placeholder="架构设计, 性能优化"
-              className="w-full px-2.5 py-1.5 text-xs rounded-md border border-stone-200 dark:border-stone-800 bg-white dark:bg-stone-900 text-stone-800 dark:text-stone-200 focus:outline-hidden focus:ring-1 focus:ring-emerald-600"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="搜索任务标题或标签..."
+              className="w-full pl-8 pr-3 py-1.5 text-xs rounded-lg border border-stone-200 dark:border-stone-800 bg-white dark:bg-stone-950 text-stone-900 dark:text-stone-100 placeholder-stone-400 focus:outline-hidden focus:ring-1 focus:ring-emerald-600"
             />
-          </div>
-        </div>
-
-        {/* Markdown Body Editor */}
-        <div className="space-y-1">
-          <div className="flex items-center justify-between text-xs text-stone-500 mb-1">
-            <span className="font-semibold text-[11px] uppercase tracking-wider">正文描述 (Markdown)</span>
-            <span className="text-[11px] text-stone-400">仅编辑正文，Go Core 维护 Frontmatter</span>
-          </div>
-          <textarea
-            value={detailBody}
-            onChange={(e) => setDetailBody(e.target.value)}
-            placeholder="输入任务描述、目标与验收条件（纯 Markdown 格式）..."
-            rows={12}
-            className="w-full p-3.5 text-sm font-mono rounded-lg border border-stone-200 dark:border-stone-800 bg-white dark:bg-stone-950 text-stone-900 dark:text-stone-100 focus:outline-hidden focus:ring-2 focus:ring-emerald-600 resize-y leading-relaxed"
-          />
-        </div>
-
-        {/* Linked Notes Section */}
-        <div className="space-y-3 pt-3 border-t border-stone-200 dark:border-stone-800">
-          <div className="flex items-center justify-between text-xs text-stone-500">
-            <span className="flex items-center space-x-1.5 font-semibold text-[11px] uppercase tracking-wider text-stone-500">
-              <Link className="w-3.5 h-3.5" />
-              <span>关联笔记 ({detailNoteIds.length})</span>
-            </span>
-            <div className="flex items-center space-x-2">
-              {loadingNotes && <span className="text-[11px] text-stone-400">加载中...</span>}
+            {searchQuery && (
               <button
-                type="button"
-                onClick={() => {
-                  setNoteSearchQuery('');
-                  setShowAddNoteModal(true);
-                }}
-                className="flex items-center space-x-1 text-xs text-emerald-700 dark:text-emerald-400 hover:text-emerald-800 dark:hover:text-emerald-300 transition"
+                onClick={() => setSearchQuery('')}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-stone-400 hover:text-stone-600"
               >
-                <Plus className="w-3 h-3" />
-                <span>添加关联</span>
+                <X className="w-3 h-3" />
               </button>
-            </div>
-          </div>
-
-          {/* Linked Notes List */}
-          {detailNoteIds.length === 0 ? (
-            <div className="p-3 rounded-lg border border-dashed border-stone-200 dark:border-stone-800 text-stone-400 text-xs text-center">
-              暂无关联笔记（仅显式关联，相同标签不会自动建立关联）
-            </div>
-          ) : (
-            <div className="space-y-1.5">
-              {detailNoteIds.map((nid) => {
-                const note = allNotes.find((n) => n.id === nid);
-                const title = note ? note.title : nid;
-                const timeStr = note?.updated_at ? formatRelativeTime(note.updated_at) : '';
-                return (
-                  <div
-                    key={nid}
-                    className="flex items-center justify-between p-2.5 rounded-lg border border-stone-200 dark:border-stone-800 bg-white dark:bg-stone-900/60 hover:border-stone-300 dark:hover:border-stone-700 transition group"
-                  >
-                    <div
-                      onClick={() => onOpenNote?.(nid)}
-                      className={`flex items-center space-x-2 min-w-0 flex-1 ${
-                        onOpenNote ? 'cursor-pointer' : ''
-                      }`}
-                      title={onOpenNote ? '点击在编辑器中打开笔记' : undefined}
-                    >
-                      <FileText className="w-4 h-4 text-emerald-700 dark:text-emerald-400 shrink-0" />
-                      <span className="text-xs font-medium text-stone-800 dark:text-stone-200 truncate group-hover:text-emerald-700 dark:group-hover:text-emerald-400 transition">
-                        {title}
-                      </span>
-                      {timeStr && (
-                        <span className="text-[10px] text-stone-400 shrink-0">
-                          {timeStr}
-                        </span>
-                      )}
-                      {onOpenNote && (
-                        <ExternalLink className="w-3 h-3 text-stone-300 dark:text-stone-600 group-hover:text-emerald-600 dark:group-hover:text-emerald-400 shrink-0 transition" />
-                      )}
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => setUnlinkTarget({ id: nid, title })}
-                      className="p-1 text-stone-400 hover:text-rose-600 dark:hover:text-rose-400 rounded hover:bg-stone-100 dark:hover:bg-stone-800 transition shrink-0 ml-2"
-                      title="解除关联"
-                    >
-                      <Unlink className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
-
-        {/* Comments / Memos Section */}
-        <div className="space-y-3 pt-3 border-t border-stone-200 dark:border-stone-800">
-          <div className="flex items-center justify-between text-xs text-stone-500">
-            <span className="flex items-center space-x-1.5 font-semibold text-[11px] uppercase tracking-wider text-stone-500">
-              <MessageSquare className="w-3.5 h-3.5" />
-              <span>记录 / 评论 ({taskMemos.length})</span>
-            </span>
-            {loadingMemos && <span className="text-[11px] text-stone-400">加载中...</span>}
-          </div>
-
-          {/* Memo List Error Banner */}
-          {memoListError && (
-            <div className="p-2.5 rounded-lg border border-rose-200 dark:border-rose-900/60 bg-rose-50/80 dark:bg-rose-950/40 text-rose-800 dark:text-rose-200 text-xs flex items-center space-x-2">
-              <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
-              <span>加载记录列表失败: {memoListError}</span>
-            </div>
-          )}
-
-          {/* Memo Items List */}
-          {taskMemos.length === 0 ? (
-            <div className="py-3 text-center text-xs text-stone-400 dark:text-stone-500">
-              暂无记录或评论，可在下方快速记录进展
-            </div>
-          ) : (
-            <div className="space-y-2">
-              {taskMemos.map((memo) => (
-                <div
-                  key={memo.id}
-                  className="p-3 rounded-xl border border-stone-200/90 dark:border-stone-800 bg-white dark:bg-stone-900/50 space-y-1.5 shadow-2xs"
-                >
-                  <div className="flex items-center justify-between text-[11px] text-stone-400">
-                    <span className="font-mono text-[10px] text-stone-400">{memo.id}</span>
-                    <span
-                      title={memo.created_at ? memo.created_at.replace('T', ' ').slice(0, 19) : ''}
-                      className="font-mono text-[11px] text-stone-500 dark:text-stone-400"
-                    >
-                      {formatMemoTimestamp(memo.created_at)}
-                    </span>
-                  </div>
-                  <div className="text-xs text-stone-800 dark:text-stone-200 whitespace-pre-wrap leading-relaxed break-words font-sans">
-                    {memo.body}
-                  </div>
-                  {memo.tags && memo.tags.length > 0 && (
-                    <div className="flex flex-wrap gap-1 pt-0.5">
-                      {memo.tags.map((tag) => (
-                        <span
-                          key={tag}
-                          className="inline-flex items-center text-[10px] px-1.5 py-0.2 rounded bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-400 font-mono"
-                        >
-                          #{tag}
-                        </span>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-
-          {/* Submit New Memo Form */}
-          <form onSubmit={handleAddMemo} className="space-y-2 pt-1">
-            <textarea
-              value={newMemoBody}
-              onChange={(e) => setNewMemoBody(e.target.value)}
-              onKeyDown={(e) => {
-                if ((e.metaKey || e.ctrlKey) && e.key === 'Enter' && !submittingMemo && newMemoBody.trim()) {
-                  e.preventDefault();
-                  handleAddMemo();
-                }
-              }}
-              placeholder="输入任务记录或评论...（支持 ⌘+Enter 提交）"
-              rows={3}
-              disabled={submittingMemo}
-              className="w-full p-3 text-xs rounded-lg border border-stone-200 dark:border-stone-800 bg-white dark:bg-stone-950 text-stone-900 dark:text-stone-100 placeholder-stone-400 focus:outline-hidden focus:ring-2 focus:ring-emerald-600 resize-y leading-relaxed shadow-2xs"
-            />
-
-            {/* Submit Error Banner */}
-            {submitMemoError && (
-              <div className="p-2.5 rounded-lg border border-rose-200 dark:border-rose-900/60 bg-rose-50/80 dark:bg-rose-950/40 text-rose-800 dark:text-rose-200 text-xs flex items-start space-x-2">
-                <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
-                <div className="space-y-0.5">
-                  <div className="font-semibold">添加记录失败</div>
-                  <div className="font-mono text-[11px] break-all">{submitMemoError}</div>
-                </div>
-              </div>
             )}
-
-            <div className="flex items-center justify-between">
-              <span className="text-[11px] text-stone-400">支持 ⌘+Enter 快捷提交</span>
-              <button
-                type="submit"
-                disabled={submittingMemo || !newMemoBody.trim()}
-                className="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-medium transition disabled:opacity-40 shadow-2xs shrink-0"
-              >
-                <Send className={`w-3 h-3 ${submittingMemo ? 'animate-spin' : ''}`} />
-                <span>{submittingMemo ? '提交中...' : '添加记录'}</span>
-              </button>
-            </div>
-          </form>
+          </div>
         </div>
 
-        {/* Status Events History & Meta info */}
-        <div className="pt-2 border-t border-stone-200 dark:border-stone-800 space-y-2">
-          <div className="flex items-center justify-between text-[11px] text-stone-400 font-mono">
-            <span>ID: {selectedTask.id}</span>
-            <span>创建时间: {selectedTask.created_at?.slice(0, 19).replace('T', ' ')}</span>
-            <span>更新时间: {selectedTask.updated_at?.slice(0, 19).replace('T', ' ')}</span>
+        {/* List Error Banner */}
+        {listError && (
+          <div className="p-3 rounded-lg border border-rose-200 dark:border-rose-900/60 bg-rose-50/80 dark:bg-rose-950/40 text-rose-800 dark:text-rose-200 text-xs flex items-center space-x-2">
+            <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+            <span>加载任务列表失败: {listError}</span>
           </div>
+        )}
 
-          {selectedTask.status_events && selectedTask.status_events.length > 0 && (
-            <div className="rounded-lg bg-stone-100/70 dark:bg-stone-900/60 p-3 space-y-1.5">
-              <div className="text-[11px] font-semibold text-stone-500">状态流转历史事件 (status_events):</div>
-              <div className="space-y-1">
-                {selectedTask.status_events.map((ev, idx) => (
-                  <div key={idx} className="flex items-center space-x-2 text-xs">
-                    {ev.action === 'completed' ? (
-                      <span className="inline-flex items-center space-x-1 text-emerald-700 dark:text-emerald-400">
-                        <CheckCircle2 className="w-3 h-3" />
-                        <span className="font-medium">已完成 (completed)</span>
+        {/* Task List */}
+        {filteredTasks.length === 0 ? (
+          <div className="py-12 text-center text-xs text-stone-500 dark:text-stone-400 space-y-1">
+            {listError ? (
+              <div className="text-rose-600 dark:text-rose-400 font-mono text-[11px]">
+                列表加载失败: {listError}
+              </div>
+            ) : (
+              <>
+                <div>暂无匹配的任务</div>
+                {tasks.length === 0 && (
+                  <div className="text-[11px] text-stone-400">输入上方标题快速创建第一条任务吧</div>
+                )}
+              </>
+            )}
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {filteredTasks.map((t) => {
+              const isDone = t.status === TaskStatus.TaskStatusDone;
+              const isDoing = t.status === TaskStatus.TaskStatusDoing;
+
+              return (
+                <div
+                  key={t.id}
+                  onClick={() => void openTask(t.id)}
+                  onKeyDown={(e) => {
+                    if (e.target === e.currentTarget && (e.key === 'Enter' || e.key === ' ')) {
+                      e.preventDefault();
+                      void openTask(t.id);
+                    }
+                  }}
+                  tabIndex={0}
+                  role="button"
+                  className={`group p-3.5 rounded-xl border bg-white dark:bg-stone-950 hover:border-emerald-500/60 dark:hover:border-emerald-600/60 hover:shadow-2xs transition cursor-pointer select-none focus:outline-hidden focus-visible:ring-2 focus-visible:ring-emerald-600 ${
+                    t.id === selectedTaskId ? 'border-emerald-500/70' : 'border-stone-200 dark:border-stone-800'
+                  }`}
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="flex items-center space-x-2.5 min-w-0">
+                      {/* Status Toggle Button */}
+                      <button
+                        type="button"
+                        onClick={(e) => handleToggleStatus(t, e)}
+                        className="p-0.5 rounded text-stone-400 hover:text-emerald-600 dark:hover:text-emerald-400 transition shrink-0"
+                        title={
+                          isDone
+                            ? '点击重新打开为待办'
+                            : isDoing
+                            ? '点击标记为完成'
+                            : '点击标记为进行中'
+                        }
+                      >
+                        {isDone ? (
+                          <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                        ) : isDoing ? (
+                          <Clock className="w-4 h-4 text-blue-600" />
+                        ) : (
+                          <Circle className="w-4 h-4 text-stone-400 group-hover:text-stone-600" />
+                        )}
+                      </button>
+
+                      <span
+                        className={`text-xs font-medium truncate ${
+                          isDone
+                            ? 'line-through text-stone-400 dark:text-stone-500'
+                            : 'text-stone-900 dark:text-stone-100'
+                        }`}
+                      >
+                        {t.title}
                       </span>
-                    ) : (
-                      <span className="inline-flex items-center space-x-1 text-blue-700 dark:text-blue-400">
-                        <Clock className="w-3 h-3" />
-                        <span className="font-medium">重新打开 (reopened)</span>
+                    </div>
+
+                    <div className="flex items-center space-x-1.5 shrink-0">
+                      {/* Status Badge */}
+                      <span
+                        className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${
+                          isDone
+                            ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/70 dark:text-emerald-300'
+                            : isDoing
+                            ? 'bg-blue-100 text-blue-700 dark:bg-blue-950/70 dark:text-blue-300'
+                            : 'bg-stone-100 text-stone-600 dark:bg-stone-800 dark:text-stone-400'
+                        }`}
+                      >
+                        {t.status}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Sub row: Due date, Tags, Updated At */}
+                  <div className="flex items-center gap-3 mt-2 text-[11px] text-stone-400">
+                    {t.due && (
+                      <span className="flex items-center space-x-1 text-stone-500 dark:text-stone-400">
+                        <Calendar className="w-3 h-3" />
+                        <span>due {t.due}</span>
                       </span>
                     )}
-                    <span className="text-[11px] text-stone-400 font-mono">
-                      {ev.at?.slice(0, 19).replace('T', ' ')}
+
+                    {t.tags && t.tags.length > 0 && (
+                      <span className="flex items-center gap-1.5">
+                        {t.tags.map((tag) => (
+                          <span
+                            key={tag}
+                            className="inline-flex items-center text-[10px] px-1.5 py-0.2 rounded bg-stone-100 dark:bg-stone-800 text-emerald-700 dark:text-emerald-300"
+                          >
+                            #{tag}
+                          </span>
+                        ))}
+                      </span>
+                    )}
+
+                    <span className="ml-auto font-mono text-[10px] text-stone-400">
+                      {t.updated_at ? t.updated_at.slice(0, 10) : ''}
                     </span>
                   </div>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* Delete Confirmation Modal */}
-        {deleteModalOpen && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs p-4">
-            <div className="w-full max-w-sm rounded-xl border border-stone-200 dark:border-stone-800 bg-white dark:bg-stone-900 p-5 shadow-xl space-y-4">
-              <div className="flex items-start space-x-3">
-                <div className="p-2 rounded-full bg-rose-100 dark:bg-rose-950/60 text-rose-600 shrink-0">
-                  <AlertCircle className="w-5 h-5" />
                 </div>
-                <div className="space-y-1">
-                  <h3 className="text-sm font-semibold text-stone-900 dark:text-stone-100">确认删除任务？</h3>
-                  <p className="text-xs text-stone-500 leading-relaxed">
-                    任务「{selectedTask.title}」的文件将从 Vault 中永久删除。关联的 Memo 将被保留，此操作不可撤销。
-                  </p>
-                </div>
-              </div>
-
-              <div className="flex items-center justify-end space-x-2 pt-2 border-t border-stone-100 dark:border-stone-800">
-                <button
-                  type="button"
-                  onClick={() => setDeleteModalOpen(false)}
-                  disabled={deleting}
-                  className="px-3 py-1.5 rounded-md text-xs font-medium text-stone-600 dark:text-stone-300 hover:bg-stone-100 dark:hover:bg-stone-800 transition"
-                >
-                  取消
-                </button>
-                <button
-                  type="button"
-                  onClick={handleDeleteTask}
-                  disabled={deleting}
-                  className="px-3 py-1.5 rounded-md bg-rose-600 hover:bg-rose-700 text-white text-xs font-medium transition disabled:opacity-50"
-                >
-                  {deleting ? '删除中...' : '确认删除'}
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Add Note Selector Modal */}
-        {showAddNoteModal && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs p-4">
-            <div className="w-full max-w-md rounded-xl border border-stone-200 dark:border-stone-800 bg-white dark:bg-stone-900 p-5 shadow-xl space-y-4">
-              <div className="flex items-center justify-between pb-2 border-b border-stone-100 dark:border-stone-800">
-                <div className="flex items-center space-x-2">
-                  <Link className="w-4 h-4 text-emerald-700 dark:text-emerald-400" />
-                  <h3 className="text-sm font-semibold text-stone-900 dark:text-stone-100">
-                    关联已有笔记
-                  </h3>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setShowAddNoteModal(false)}
-                  className="text-stone-400 hover:text-stone-600 dark:hover:text-stone-200"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-
-              <p className="text-xs text-stone-500">
-                选择要关联的笔记。相同标签不会自动关联，必须在此显式建立关联。
-              </p>
-
-              {/* Search input */}
-              <div className="relative">
-                <Search className="w-3.5 h-3.5 text-stone-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
-                <input
-                  type="text"
-                  value={noteSearchQuery}
-                  onChange={(e) => setNoteSearchQuery(e.target.value)}
-                  placeholder="搜索笔记标题或标签..."
-                  className="w-full pl-8 pr-3 py-1.5 text-xs rounded-lg border border-stone-200 dark:border-stone-800 bg-white dark:bg-stone-950 text-stone-900 dark:text-stone-100 placeholder-stone-400 focus:outline-hidden focus:ring-1 focus:ring-emerald-600"
-                  autoFocus
-                />
-              </div>
-
-              {/* Note options list */}
-              <div className="max-h-60 overflow-y-auto space-y-1 divide-y divide-stone-100 dark:divide-stone-800/50">
-                {allNotes
-                  .filter((n) => {
-                    if (!noteSearchQuery.trim()) return true;
-                    const q = noteSearchQuery.trim().toLowerCase();
-                    const matchTitle = n.title.toLowerCase().includes(q);
-                    const matchTags = (n.tags ?? []).some((t) => t.toLowerCase().includes(q));
-                    return matchTitle || matchTags;
-                  })
-                  .map((n) => {
-                    const alreadyLinked = detailNoteIds.includes(n.id);
-                    return (
-                      <div
-                        key={n.id}
-                        className={`flex items-center justify-between p-2 rounded-lg transition ${
-                          alreadyLinked
-                            ? 'opacity-50 cursor-not-allowed bg-stone-50 dark:bg-stone-950/40'
-                            : 'hover:bg-stone-100 dark:hover:bg-stone-800/60 cursor-pointer'
-                        }`}
-                        onClick={() => {
-                          if (!alreadyLinked) {
-                            handleAddNoteLink(n.id);
-                          }
-                        }}
-                      >
-                        <div className="min-w-0 flex-1 pr-2">
-                          <div className="flex items-center space-x-1.5">
-                            <FileText className="w-3.5 h-3.5 text-stone-400 shrink-0" />
-                            <span className="text-xs font-medium text-stone-800 dark:text-stone-200 truncate">
-                              {n.title}
-                            </span>
-                          </div>
-                          {(n.tags ?? []).length > 0 && (
-                            <div className="flex flex-wrap gap-1 mt-1 pl-5">
-                              {(n.tags ?? []).map((t) => (
-                                <span
-                                  key={t}
-                                  className="text-[10px] px-1 py-0.2 rounded bg-stone-100 dark:bg-stone-800 text-stone-500 font-mono"
-                                >
-                                  #{t}
-                                </span>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                        <div className="shrink-0 text-right">
-                          {alreadyLinked ? (
-                            <span className="text-[10px] text-stone-400 bg-stone-200/60 dark:bg-stone-800 px-1.5 py-0.5 rounded">
-                              已关联
-                            </span>
-                          ) : (
-                            <span className="text-[10px] text-emerald-700 dark:text-emerald-400 font-medium hover:underline">
-                              关联
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })}
-                {allNotes.length === 0 && (
-                  <div className="text-center py-6 text-xs text-stone-400">
-                    Vault 中暂无笔记
-                  </div>
-                )}
-                {allNotes.length > 0 &&
-                  allNotes.filter((n) => {
-                    if (!noteSearchQuery.trim()) return true;
-                    const q = noteSearchQuery.trim().toLowerCase();
-                    return (
-                      n.title.toLowerCase().includes(q) ||
-                      (n.tags ?? []).some((t) => t.toLowerCase().includes(q))
-                    );
-                  }).length === 0 && (
-                    <div className="text-center py-6 text-xs text-stone-400">
-                      无匹配的笔记
-                    </div>
-                  )}
-              </div>
-
-              <div className="flex items-center justify-end pt-2 border-t border-stone-100 dark:border-stone-800">
-                <button
-                  type="button"
-                  onClick={() => setShowAddNoteModal(false)}
-                  className="px-3 py-1.5 rounded-md text-xs font-medium text-stone-600 dark:text-stone-300 hover:bg-stone-100 dark:hover:bg-stone-800 transition"
-                >
-                  关闭
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Unlink Note Confirmation Modal */}
-        {unlinkTarget && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs p-4">
-            <div className="w-full max-w-sm rounded-xl border border-stone-200 dark:border-stone-800 bg-white dark:bg-stone-900 p-5 shadow-xl space-y-4">
-              <div className="flex items-start space-x-3">
-                <div className="p-2 rounded-full bg-amber-100 dark:bg-amber-950/60 text-amber-600 shrink-0">
-                  <Unlink className="w-5 h-5" />
-                </div>
-                <div className="space-y-1">
-                  <h3 className="text-sm font-semibold text-stone-900 dark:text-stone-100">
-                    解除笔记关联
-                  </h3>
-                  <p className="text-xs text-stone-500 leading-relaxed">
-                    确定解除与笔记「<span className="font-medium text-stone-800 dark:text-stone-200">{unlinkTarget.title}</span>」的关联吗？
-                  </p>
-                  <p className="text-xs text-amber-600 dark:text-amber-400 font-medium">
-                    仅解除关联，不删除笔记。
-                  </p>
-                </div>
-              </div>
-
-              <div className="flex items-center justify-end space-x-2 pt-2 border-t border-stone-100 dark:border-stone-800">
-                <button
-                  type="button"
-                  onClick={() => setUnlinkTarget(null)}
-                  className="px-3 py-1.5 rounded-md text-xs font-medium text-stone-600 dark:text-stone-300 hover:bg-stone-100 dark:hover:bg-stone-800 transition"
-                >
-                  取消
-                </button>
-                <button
-                  type="button"
-                  onClick={handleConfirmUnlinkNote}
-                  className="px-3 py-1.5 rounded-md bg-amber-600 hover:bg-amber-700 text-white text-xs font-medium transition shadow-xs"
-                >
-                  确认解除
-                </button>
-              </div>
-            </div>
+              );
+            })}
           </div>
         )}
       </div>
-    );
-  }
-
-  // Tasks List View
-  return (
-    <div className="max-w-3xl mx-auto space-y-5">
-      {/* Top Header Row with Path & Rescan */}
-      <div className="flex items-center justify-between text-xs text-stone-500 dark:text-stone-400 pb-2 border-b border-stone-200/80 dark:border-stone-800">
-        <span className="font-mono text-[11px] truncate max-w-md" title={vaultStatus.path}>
-          {vaultStatus.path}
-        </span>
-        <button
-          onClick={handleRescan}
-          disabled={vaultBusy || loading || rescanLoading}
-          className="flex items-center space-x-1 px-2.5 py-1 rounded border border-stone-200 dark:border-stone-800 hover:bg-stone-100 dark:hover:bg-stone-800 transition disabled:opacity-50"
-          title="从磁盘重新扫描 Markdown 索引"
-        >
-          <RefreshCw className={`w-3 h-3 ${vaultBusy || loading || rescanLoading ? 'animate-spin' : ''}`} />
-          <span>重新扫描</span>
-        </button>
-      </div>
-
-      {/* Quick Create Bar */}
-      <form onSubmit={handleQuickCreate} className="space-y-1">
-        <div className="flex items-center space-x-2">
-          <input
-            type="text"
-            value={quickTitle}
-            onChange={(e) => setQuickTitle(e.target.value)}
-            placeholder="快速添加任务...（按回车或点击创建）"
-            disabled={creating}
-            className="flex-1 px-3 py-2 text-xs rounded-lg border border-stone-200 dark:border-stone-800 bg-white dark:bg-stone-950 text-stone-900 dark:text-stone-100 placeholder-stone-400 focus:outline-hidden focus:ring-2 focus:ring-emerald-600 shadow-2xs"
-          />
-          <button
-            type="submit"
-            disabled={creating || !quickTitle.trim()}
-            className="flex items-center space-x-1 px-3 py-2 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-medium transition disabled:opacity-40 shadow-2xs shrink-0"
-          >
-            <Plus className="w-3.5 h-3.5" />
-            <span>{creating ? '创建中' : '快速创建'}</span>
-          </button>
-        </div>
-        {createError && (
-          <div className="text-[11px] text-rose-600 dark:text-rose-400 px-1 font-mono">
-            创建失败: {createError}
-          </div>
-        )}
-      </form>
-
-      {/* Filters and Search Bar */}
-      <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5">
-        <div className="flex items-center space-x-1 p-0.5 rounded-lg bg-stone-200/60 dark:bg-stone-800/80 text-xs">
-          <button
-            onClick={() => setStatusFilter('all')}
-            className={`px-2.5 py-1 rounded-md font-medium transition ${
-              statusFilter === 'all'
-                ? 'bg-white dark:bg-stone-900 text-stone-900 dark:text-stone-100 shadow-2xs'
-                : 'text-stone-600 dark:text-stone-400 hover:text-stone-900'
-            }`}
-          >
-            全部 ({tasks.length})
-          </button>
-          <button
-            onClick={() => setStatusFilter('active')}
-            className={`px-2.5 py-1 rounded-md font-medium transition ${
-              statusFilter === 'active'
-                ? 'bg-white dark:bg-stone-900 text-stone-900 dark:text-stone-100 shadow-2xs'
-                : 'text-stone-600 dark:text-stone-400 hover:text-stone-900'
-            }`}
-          >
-            待办中 ({tasks.filter((t) => t.status !== TaskStatus.TaskStatusDone).length})
-          </button>
-          <button
-            onClick={() => setStatusFilter('done')}
-            className={`px-2.5 py-1 rounded-md font-medium transition ${
-              statusFilter === 'done'
-                ? 'bg-white dark:bg-stone-900 text-stone-900 dark:text-stone-100 shadow-2xs'
-                : 'text-stone-600 dark:text-stone-400 hover:text-stone-900'
-            }`}
-          >
-            已完成 ({tasks.filter((t) => t.status === TaskStatus.TaskStatusDone).length})
-          </button>
-        </div>
-
-        <div className="relative flex-1 sm:max-w-xs">
-          <Search className="w-3.5 h-3.5 text-stone-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
-          <input
-            type="text"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="搜索任务标题或标签..."
-            className="w-full pl-8 pr-3 py-1.5 text-xs rounded-lg border border-stone-200 dark:border-stone-800 bg-white dark:bg-stone-950 text-stone-900 dark:text-stone-100 placeholder-stone-400 focus:outline-hidden focus:ring-1 focus:ring-emerald-600"
-          />
-          {searchQuery && (
-            <button
-              onClick={() => setSearchQuery('')}
-              className="absolute right-2 top-1/2 -translate-y-1/2 text-stone-400 hover:text-stone-600"
-            >
-              <X className="w-3 h-3" />
-            </button>
-          )}
-        </div>
-      </div>
-
-      {/* List Error Banner */}
-      {listError && (
-        <div className="p-3 rounded-lg border border-rose-200 dark:border-rose-900/60 bg-rose-50/80 dark:bg-rose-950/40 text-rose-800 dark:text-rose-200 text-xs flex items-center space-x-2">
-          <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
-          <span>加载任务列表失败: {listError}</span>
-        </div>
-      )}
-
-      {/* Task List */}
-      {filteredTasks.length === 0 ? (
-        <div className="py-12 text-center text-xs text-stone-500 dark:text-stone-400 space-y-1">
-          {listError ? (
-            <div className="text-rose-600 dark:text-rose-400 font-mono text-[11px]">
-              列表加载失败: {listError}
-            </div>
-          ) : (
-            <>
-              <div>暂无匹配的任务</div>
-              {tasks.length === 0 && (
-                <div className="text-[11px] text-stone-400">输入上方标题快速创建第一条任务吧</div>
-              )}
-            </>
-          )}
-        </div>
-      ) : (
-        <div className="space-y-2">
-          {filteredTasks.map((t) => {
-            const isDone = t.status === TaskStatus.TaskStatusDone;
-            const isDoing = t.status === TaskStatus.TaskStatusDoing;
-
-            return (
-              <div
-                key={t.id}
-                onClick={() => setSelectedTaskId(t.id)}
-                className="group p-3.5 rounded-xl border border-stone-200 dark:border-stone-800 bg-white dark:bg-stone-950 hover:border-emerald-500/60 dark:hover:border-emerald-600/60 hover:shadow-2xs transition cursor-pointer select-none"
-              >
-                <div className="flex items-center justify-between gap-3">
-                  <div className="flex items-center space-x-2.5 min-w-0">
-                    {/* Status Toggle Button */}
-                    <button
-                      type="button"
-                      onClick={(e) => handleToggleStatus(t, e)}
-                      className="p-0.5 rounded text-stone-400 hover:text-emerald-600 dark:hover:text-emerald-400 transition shrink-0"
-                      title={
-                        isDone
-                          ? '点击重新打开为待办'
-                          : isDoing
-                          ? '点击标记为完成'
-                          : '点击标记为进行中'
-                      }
-                    >
-                      {isDone ? (
-                        <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                      ) : isDoing ? (
-                        <Clock className="w-4 h-4 text-blue-600" />
-                      ) : (
-                        <Circle className="w-4 h-4 text-stone-400 group-hover:text-stone-600" />
-                      )}
-                    </button>
-
-                    <span
-                      className={`text-xs font-medium truncate ${
-                        isDone
-                          ? 'line-through text-stone-400 dark:text-stone-500'
-                          : 'text-stone-900 dark:text-stone-100'
-                      }`}
-                    >
-                      {t.title}
-                    </span>
-                  </div>
-
-                  <div className="flex items-center space-x-1.5 shrink-0">
-                    {/* Priority Badge */}
-                    <span
-                      className={`text-[10px] font-mono px-1.5 py-0.5 rounded font-medium ${
-                        t.priority === 'p1'
-                          ? 'bg-rose-100 text-rose-700 dark:bg-rose-950/70 dark:text-rose-300'
-                          : t.priority === 'p2'
-                          ? 'bg-amber-100 text-amber-700 dark:bg-amber-950/70 dark:text-amber-300'
-                          : 'bg-stone-100 text-stone-600 dark:bg-stone-800 dark:text-stone-400'
-                      }`}
-                    >
-                      {t.priority.toUpperCase()}
-                    </span>
-
-                    {/* Status Badge */}
-                    <span
-                      className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${
-                        isDone
-                          ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/70 dark:text-emerald-300'
-                          : isDoing
-                          ? 'bg-blue-100 text-blue-700 dark:bg-blue-950/70 dark:text-blue-300'
-                          : 'bg-stone-100 text-stone-600 dark:bg-stone-800 dark:text-stone-400'
-                      }`}
-                    >
-                      {t.status}
-                    </span>
-                  </div>
-                </div>
-
-                {/* Sub row: Due date, Tags, Updated At */}
-                <div className="flex items-center gap-3 mt-2 text-[11px] text-stone-400">
-                  {t.due && (
-                    <span className="flex items-center space-x-1 text-stone-500 dark:text-stone-400">
-                      <Calendar className="w-3 h-3" />
-                      <span>due {t.due}</span>
-                    </span>
-                  )}
-
-                  {t.tags && t.tags.length > 0 && (
-                    <span className="flex items-center gap-1.5">
-                      {t.tags.map((tag) => (
-                        <span
-                          key={tag}
-                          className="inline-flex items-center text-[10px] px-1.5 py-0.2 rounded bg-stone-100 dark:bg-stone-800 text-emerald-700 dark:text-emerald-300"
-                        >
-                          #{tag}
-                        </span>
-                      ))}
-                    </span>
-                  )}
-
-                  <span className="ml-auto font-mono text-[10px] text-stone-400">
-                    {t.updated_at ? t.updated_at.slice(0, 10) : ''}
-                  </span>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
-    </div>
+    </DetailSplit>
   );
 }

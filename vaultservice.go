@@ -39,26 +39,24 @@ type VaultHealth struct {
 
 // CreateTaskInput defines parameters for creating a new Task.
 type CreateTaskInput struct {
-	Title    string                `json:"title"`
-	Status   markdown.TaskStatus   `json:"status,omitempty"`
-	Priority markdown.TaskPriority `json:"priority,omitempty"`
-	Due      *string               `json:"due,omitempty"`
-	Tags     []string              `json:"tags,omitempty"`
-	NoteIDs  []string              `json:"note_ids,omitempty"`
-	Body     string                `json:"body,omitempty"`
+	Title   string              `json:"title"`
+	Status  markdown.TaskStatus `json:"status,omitempty"`
+	Due     *string             `json:"due,omitempty"`
+	Tags    []string            `json:"tags,omitempty"`
+	NoteIDs []string            `json:"note_ids,omitempty"`
+	Body    string              `json:"body,omitempty"`
 }
 
 // UpdateTaskInput defines parameters for updating an existing Task.
 // Note: tags, note_ids, and body follow full-replacement semantics (not partial patch).
 type UpdateTaskInput struct {
-	ID       string                `json:"id"`
-	Title    string                `json:"title"`
-	Status   markdown.TaskStatus   `json:"status"`
-	Priority markdown.TaskPriority `json:"priority"`
-	Due      *string               `json:"due"`
-	Tags     []string              `json:"tags,omitempty"`
-	NoteIDs  []string              `json:"note_ids,omitempty"`
-	Body     string                `json:"body"`
+	ID      string              `json:"id"`
+	Title   string              `json:"title"`
+	Status  markdown.TaskStatus `json:"status"`
+	Due     *string             `json:"due"`
+	Tags    []string            `json:"tags,omitempty"`
+	NoteIDs []string            `json:"note_ids,omitempty"`
+	Body    string              `json:"body"`
 }
 
 // CreateMemoInput defines parameters for creating a new Memo.
@@ -93,7 +91,7 @@ type UpdateNoteInput struct {
 
 // TimelineItem represents an aggregated item in the day timeline (memo or completion).
 type TimelineItem struct {
-	Kind      string         `json:"kind"` // "memo" | "completion"
+	Kind      string         `json:"kind"` // "memo" | "completion" | "reopen"
 	Time      time.Time      `json:"time"`
 	Memo      *markdown.Memo `json:"memo,omitempty"`
 	TaskID    string         `json:"task_id,omitempty"`
@@ -251,11 +249,6 @@ func (s *VaultService) CreateTask(input CreateTaskInput) (*markdown.Task, error)
 		status = markdown.TaskStatusTodo
 	}
 
-	priority := input.Priority
-	if priority == "" {
-		priority = markdown.TaskPriorityP2
-	}
-
 	cleanedNoteIDs, err := validateAndCleanNoteIDs(v, input.NoteIDs)
 	if err != nil {
 		return nil, err
@@ -273,7 +266,6 @@ func (s *VaultService) CreateTask(input CreateTaskInput) (*markdown.Task, error)
 		ID:        markdown.GenerateEntityID(markdown.EntityTypeTask),
 		Title:     title,
 		Status:    status,
-		Priority:  priority,
 		Due:       due,
 		Tags:      input.Tags,
 		NoteIDs:   cleanedNoteIDs,
@@ -348,7 +340,6 @@ func (s *VaultService) UpdateTask(input UpdateTaskInput) (*markdown.Task, error)
 
 	existing.Title = title
 	existing.Status = input.Status
-	existing.Priority = input.Priority
 	existing.Due = due
 	existing.Tags = input.Tags
 	existing.NoteIDs = cleanedNoteIDs
@@ -825,19 +816,22 @@ func (s *VaultService) GetDayTimeline(date string) ([]TimelineItem, error) {
 		taskMap[t.ID] = t
 	}
 
-	// 1. Task completions: StatusEvents with action=completed whose local date matches
+	// 1. Task status events (completed / reopened) whose local date matches
 	for _, t := range tasks {
 		for _, ev := range t.StatusEvents {
-			if ev.Action == markdown.StatusEventActionCompleted {
-				localDate := ev.At.In(time.Local).Format("2006-01-02")
-				if localDate == trimmedDate {
-					items = append(items, TimelineItem{
-						Kind:      "completion",
-						Time:      ev.At,
-						TaskID:    t.ID,
-						TaskTitle: t.Title,
-					})
-				}
+			kind := "completion"
+			if ev.Action == markdown.StatusEventActionReopened {
+				kind = "reopen"
+			} else if ev.Action != markdown.StatusEventActionCompleted {
+				continue
+			}
+			if ev.At.In(time.Local).Format("2006-01-02") == trimmedDate {
+				items = append(items, TimelineItem{
+					Kind:      kind,
+					Time:      ev.At,
+					TaskID:    t.ID,
+					TaskTitle: t.Title,
+				})
 			}
 		}
 	}
