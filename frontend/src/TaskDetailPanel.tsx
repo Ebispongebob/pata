@@ -23,6 +23,7 @@ import { Task, TaskStatus, Memo, Note } from '../bindings/pata/internal/storage/
 import { UpdateTaskInput, CreateMemoInput } from '../bindings/pata/models';
 import { playLogoSuccess } from './logoAnimation';
 import { dedupeTags } from './quickCreate';
+import { NoteRefText, NoteRefTextarea, NoteRefMap, pruneRefs, sameRefs, useNoteRefs } from './noteRefs';
 
 function formatMemoTimestamp(isoString: string): string {
   if (!isoString) return '';
@@ -106,7 +107,7 @@ interface TaskDetailPanelProps {
   /** 任何成功写入后调用，用于刷新父级列表、全局标签与搜索。 */
   onChanged: () => void;
   onDeleted: () => void;
-  onOpenNote?: (noteId: string) => void;
+  onOpenNote?: (noteId: string, fromTaskId?: string) => void;
 }
 
 const isConflictErr = (err: any) =>
@@ -126,6 +127,10 @@ export const TaskDetailPanel = forwardRef<TaskDetailHandle, TaskDetailPanelProps
   const [detailTags, setDetailTags] = useState<string>('');
   const [detailBody, setDetailBody] = useState<string>('');
   const [detailNoteIds, setDetailNoteIds] = useState<string[]>([]);
+  const [detailRefs, setDetailRefs] = useState<NoteRefMap>({});
+  const [editingBody, setEditingBody] = useState(false);
+  const noteRefs = useNoteRefs();
+  const [newMemoRefs, setNewMemoRefs] = useState<NoteRefMap>({});
 
   const [saving, setSaving] = useState(false);
   const [detailError, setDetailError] = useState<string | null>(null);
@@ -166,6 +171,7 @@ export const TaskDetailPanel = forwardRef<TaskDetailHandle, TaskDetailPanelProps
     setDetailTags((t.tags ?? []).join(', '));
     setDetailBody(t.body ?? '');
     setDetailNoteIds(t.note_ids ?? []);
+    setDetailRefs(t.note_refs ?? {});
   }, []);
 
   const loadMemos = useCallback(async () => {
@@ -241,18 +247,22 @@ export const TaskDetailPanel = forwardRef<TaskDetailHandle, TaskDetailPanelProps
     tags: parseTags(detailTags),
     body: detailBody,
     note_ids: noteIds,
+    note_refs: pruneRefs(detailBody, detailRefs),
   });
 
-  const dirty = useMemo(() => {
+  const formDirty = useMemo(() => {
     if (!task) return false;
     const sig = (title: string, status: string, due: string, tags: string[], body: string) =>
       JSON.stringify([title, status, due, tags, body]);
     return (
       sig(detailTitle.trim(), detailStatus, detailDue, parseTags(detailTags), detailBody) !==
-      sig(task.title, task.status, task.due ?? '', dedupeTags(task.tags ?? []), task.body ?? '')
+        sig(task.title, task.status, task.due ?? '', dedupeTags(task.tags ?? []), task.body ?? '') ||
+      !sameRefs(pruneRefs(detailBody, detailRefs), pruneRefs(task.body ?? '', task.note_refs ?? {}))
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [task, detailTitle, detailStatus, detailDue, detailTags, detailBody]);
+  }, [task, detailTitle, detailStatus, detailDue, detailTags, detailBody, detailRefs]);
+  // 未提交的评论草稿同样要在离开前确认
+  const dirty = formDirty || newMemoBody.trim() !== '';
 
   // 保存；成功返回 true。noteIds 变更与属性共用同一次写入。
   const save = useCallback(
@@ -283,7 +293,7 @@ export const TaskDetailPanel = forwardRef<TaskDetailHandle, TaskDetailPanelProps
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [taskId, detailTitle, detailStatus, detailDue, detailTags, detailBody, applyTask, onChanged]
+    [taskId, detailTitle, detailStatus, detailDue, detailTags, detailBody, detailRefs, applyTask, onChanged]
   );
 
   const handleSave = useCallback(() => save(detailNoteIds, '已安全保存到 Markdown 文件'), [save, detailNoteIds]);
@@ -299,7 +309,7 @@ export const TaskDetailPanel = forwardRef<TaskDetailHandle, TaskDetailPanelProps
     const resolve = leavePrompt;
     if (!resolve) return;
     if (choice === 'save') {
-      const ok = await handleSave();
+      const ok = (!formDirty || (await handleSave())) && (!newMemoBody.trim() || (await handleAddMemo()));
       setLeavePrompt(null);
       resolve(ok);
       return;
@@ -312,22 +322,25 @@ export const TaskDetailPanel = forwardRef<TaskDetailHandle, TaskDetailPanelProps
     if (await confirmLeave()) onClose();
   };
 
-  const handleAddMemo = async (e?: React.FormEvent) => {
+  const handleAddMemo = async (e?: React.FormEvent): Promise<boolean> => {
     if (e) e.preventDefault();
     const body = newMemoBody.trim();
-    if (!body) return;
+    if (!body) return true;
     setSubmittingMemo(true);
     setSubmitMemoError(null);
     try {
-      const input: CreateMemoInput = { body, task_id: taskId };
+      const input: CreateMemoInput = { body, task_id: taskId, note_refs: pruneRefs(body, newMemoRefs) };
       await VaultService.CreateMemo(input);
       playLogoSuccess();
       setNewMemoBody('');
+      setNewMemoRefs({});
       await loadMemos();
       onChanged();
+      return true;
     } catch (err: any) {
       console.error('Failed to create memo:', err);
       setSubmitMemoError(err?.message || String(err));
+      return false;
     } finally {
       setSubmittingMemo(false);
     }
@@ -538,14 +551,36 @@ export const TaskDetailPanel = forwardRef<TaskDetailHandle, TaskDetailPanelProps
             <label htmlFor="task-description" className="font-semibold text-[11px] uppercase tracking-wider">任务描述</label>
             <span className="text-[11px] text-stone-400">纯文本，支持换行</span>
           </div>
-          <textarea
-            id="task-description"
-            value={detailBody}
-            onChange={(e) => setDetailBody(e.target.value)}
-            placeholder="输入任务描述、目标与验收条件..."
-            rows={12}
-            className="w-full p-3.5 text-sm rounded-lg border border-stone-200 dark:border-stone-800 bg-white dark:bg-stone-950 text-stone-900 dark:text-stone-100 focus:outline-hidden focus:ring-2 focus:ring-emerald-600 resize-y leading-relaxed"
-          />
+          {editingBody || !detailBody.trim() ? (
+            <NoteRefTextarea
+              id="task-description"
+              value={detailBody}
+              onChange={setDetailBody}
+              refs={detailRefs}
+              onRefsChange={setDetailRefs}
+              notes={noteRefs}
+              onBlur={() => setEditingBody(false)}
+              autoFocus={editingBody}
+              placeholder="输入任务描述、目标与验收条件...（输入 [[ 引用笔记）"
+              rows={12}
+              className="w-full p-3.5 text-sm rounded-lg border border-stone-200 dark:border-stone-800 bg-white dark:bg-stone-950 text-stone-900 dark:text-stone-100 focus:outline-hidden focus:ring-2 focus:ring-emerald-600 resize-y leading-relaxed"
+            />
+          ) : (
+            <div
+              role="button"
+              tabIndex={0}
+              aria-label="任务描述，点击编辑"
+              onClick={() => {
+                if (!window.getSelection()?.toString()) setEditingBody(true);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') setEditingBody(true);
+              }}
+              className="w-full min-h-[6rem] p-3.5 text-sm rounded-lg border border-stone-200 dark:border-stone-800 bg-white dark:bg-stone-950 text-stone-900 dark:text-stone-100 cursor-text leading-relaxed focus:outline-hidden focus:ring-2 focus:ring-emerald-600"
+            >
+              <NoteRefText text={detailBody} refs={detailRefs} notes={noteRefs} onOpenNote={(id) => onOpenNote?.(id, taskId)} />
+            </div>
+          )}
         </div>
 
         {/* Linked Notes Section */}
@@ -588,7 +623,7 @@ export const TaskDetailPanel = forwardRef<TaskDetailHandle, TaskDetailPanelProps
                     className="flex items-center justify-between p-2.5 rounded-lg border border-stone-200 dark:border-stone-800 bg-white dark:bg-stone-900/60 hover:border-stone-300 dark:hover:border-stone-700 transition group"
                   >
                     <div
-                      onClick={() => onOpenNote?.(nid)}
+                      onClick={() => onOpenNote?.(nid, taskId)}
                       className={`flex items-center space-x-2 min-w-0 flex-1 ${
                         onOpenNote ? 'cursor-pointer' : ''
                       }`}
@@ -661,9 +696,13 @@ export const TaskDetailPanel = forwardRef<TaskDetailHandle, TaskDetailPanelProps
                       {formatMemoTimestamp(memo.created_at)}
                     </span>
                   </div>
-                  <div className="text-xs text-stone-800 dark:text-stone-200 whitespace-pre-wrap leading-relaxed break-words font-sans">
-                    {memo.body}
-                  </div>
+                  <NoteRefText
+                    text={memo.body}
+                    refs={memo.note_refs ?? undefined}
+                    notes={noteRefs}
+                    onOpenNote={(id) => onOpenNote?.(id, taskId)}
+                    className="text-xs text-stone-800 dark:text-stone-200 leading-relaxed font-sans"
+                  />
                   {memo.tags && memo.tags.length > 0 && (
                     <div className="flex flex-wrap gap-1 pt-0.5">
                       {memo.tags.map((tag) => (
@@ -683,16 +722,19 @@ export const TaskDetailPanel = forwardRef<TaskDetailHandle, TaskDetailPanelProps
 
           {/* Submit New Memo Form */}
           <form onSubmit={handleAddMemo} className="space-y-2 pt-1">
-            <textarea
+            <NoteRefTextarea
               value={newMemoBody}
-              onChange={(e) => setNewMemoBody(e.target.value)}
+              onChange={setNewMemoBody}
+              refs={newMemoRefs}
+              onRefsChange={setNewMemoRefs}
+              notes={noteRefs}
               onKeyDown={(e) => {
                 if ((e.metaKey || e.ctrlKey) && e.key === 'Enter' && !submittingMemo && newMemoBody.trim()) {
                   e.preventDefault();
                   handleAddMemo();
                 }
               }}
-              placeholder="输入任务记录或评论...（支持 ⌘+Enter 提交）"
+              placeholder="输入任务记录或评论...（支持 ⌘+Enter 提交，输入 [[ 引用笔记）"
               rows={3}
               disabled={submittingMemo}
               className="w-full p-3 text-xs rounded-lg border border-stone-200 dark:border-stone-800 bg-white dark:bg-stone-950 text-stone-900 dark:text-stone-100 placeholder-stone-400 focus:outline-hidden focus:ring-2 focus:ring-emerald-600 resize-y leading-relaxed shadow-2xs"

@@ -45,6 +45,8 @@ type CreateTaskInput struct {
 	Tags    []string            `json:"tags,omitempty"`
 	NoteIDs []string            `json:"note_ids,omitempty"`
 	Body    string              `json:"body,omitempty"`
+	// NoteRefs binds [[名称]] in Body to real Note IDs.
+	NoteRefs map[string]string `json:"note_refs,omitempty"`
 }
 
 // UpdateTaskInput defines parameters for updating an existing Task.
@@ -57,20 +59,24 @@ type UpdateTaskInput struct {
 	Tags    []string            `json:"tags,omitempty"`
 	NoteIDs []string            `json:"note_ids,omitempty"`
 	Body    string              `json:"body"`
+	// NoteRefs: nil keeps existing bindings; non-nil (even empty) replaces them.
+	NoteRefs map[string]string `json:"note_refs,omitempty"`
 }
 
 // CreateMemoInput defines parameters for creating a new Memo.
 type CreateMemoInput struct {
-	Body   string   `json:"body"`
-	TaskID string   `json:"task_id,omitempty"`
-	Tags   []string `json:"tags,omitempty"`
+	Body     string            `json:"body"`
+	TaskID   string            `json:"task_id,omitempty"`
+	Tags     []string          `json:"tags,omitempty"`
+	NoteRefs map[string]string `json:"note_refs,omitempty"`
 }
 
 // UpdateMemoInput defines parameters for updating an existing Memo.
 type UpdateMemoInput struct {
-	ID   string   `json:"id"`
-	Body string   `json:"body"`
-	Tags []string `json:"tags,omitempty"`
+	ID       string            `json:"id"`
+	Body     string            `json:"body"`
+	Tags     []string          `json:"tags,omitempty"`
+	NoteRefs map[string]string `json:"note_refs,omitempty"` // nil keeps existing
 }
 
 // CreateNoteInput defines parameters for creating a new Note.
@@ -269,6 +275,7 @@ func (s *VaultService) CreateTask(input CreateTaskInput) (*markdown.Task, error)
 		Due:       due,
 		Tags:      input.Tags,
 		NoteIDs:   cleanedNoteIDs,
+		NoteRefs:  cleanNoteRefs(input.NoteRefs),
 		CreatedAt: now,
 		UpdatedAt: now,
 		Body:      input.Body,
@@ -343,6 +350,9 @@ func (s *VaultService) UpdateTask(input UpdateTaskInput) (*markdown.Task, error)
 	existing.Due = due
 	existing.Tags = input.Tags
 	existing.NoteIDs = cleanedNoteIDs
+	if input.NoteRefs != nil {
+		existing.NoteRefs = cleanNoteRefs(input.NoteRefs)
+	}
 	existing.Body = input.Body
 	existing.UpdatedAt = now
 
@@ -353,6 +363,45 @@ func (s *VaultService) UpdateTask(input UpdateTaskInput) (*markdown.Task, error)
 	}
 
 	return existing, nil
+}
+
+// cleanNoteRefs drops blank entries. Bindings to missing notes are kept on purpose:
+// a deleted target must stay dangling instead of being re-guessed by title.
+func cleanNoteRefs(in map[string]string) map[string]string {
+	var out map[string]string
+	for k, v := range in {
+		k, v = strings.TrimSpace(k), strings.TrimSpace(v)
+		if k == "" || v == "" {
+			continue
+		}
+		if out == nil {
+			out = map[string]string{}
+		}
+		out[k] = v
+	}
+	return out
+}
+
+// ListNoteRefs returns all notes (ID, title, vault-relative path) for [[ candidates and link resolution.
+func (s *VaultService) ListNoteRefs() ([]markdown.NoteRef, error) {
+	s.mu.Lock()
+	v := s.vault
+	s.mu.Unlock()
+	if v == nil {
+		return nil, fmt.Errorf("尚未打开 Vault")
+	}
+	return v.Index.ListNoteRefs(v.RootPath), nil
+}
+
+// GetNoteBacklinks returns the notes/tasks referencing noteID, deduped by source identity.
+func (s *VaultService) GetNoteBacklinks(noteID string) ([]markdown.LinkSource, error) {
+	s.mu.Lock()
+	v := s.vault
+	s.mu.Unlock()
+	if v == nil {
+		return nil, fmt.Errorf("尚未打开 Vault")
+	}
+	return v.Index.Backlinks(strings.TrimSpace(noteID), v.RootPath), nil
 }
 
 // validateAndCleanNoteIDs validates that all non-empty note IDs exist in the index.
@@ -522,6 +571,7 @@ func (s *VaultService) CreateMemo(input CreateMemoInput) (*markdown.Memo, error)
 		TaskID:    taskID,
 		CreatedAt: time.Now(),
 		Tags:      tags,
+		NoteRefs:  cleanNoteRefs(input.NoteRefs),
 		Body:      input.Body,
 	}
 
@@ -565,6 +615,9 @@ func (s *VaultService) UpdateMemo(input UpdateMemoInput) (*markdown.Memo, error)
 
 	existing.Body = input.Body
 	existing.Tags = tags
+	if input.NoteRefs != nil {
+		existing.NoteRefs = cleanNoteRefs(input.NoteRefs)
+	}
 
 	baseline := memoBaseline(v, existing)
 	if _, err := v.SaveEntity(existing, baseline); err != nil {

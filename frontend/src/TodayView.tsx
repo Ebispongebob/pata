@@ -27,12 +27,16 @@ import { playLogoSuccess } from './logoAnimation';
 import { QuickCreateInput } from './QuickCreateInput';
 import { TaskDetailPanel, TaskDetailHandle } from './TaskDetailPanel';
 import { DetailSplit, useDetailOrigin } from './DetailSplit';
+import { NoteRefText, NoteRefTextarea, NoteRefMap, pruneRefs, sameRefs, useNoteRefs } from './noteRefs';
 
 interface TodayViewProps {
   vaultStatus: VaultStatus | null;
   onSelectVault: () => void;
   vaultBusy?: boolean;
-  onOpenNote?: (noteId: string) => void;
+  onOpenNote?: (noteId: string, fromTaskId?: string) => void;
+  /** 从笔记返回时恢复打开的任务详情。 */
+  initialTaskId?: string | null;
+  onInitialTaskConsumed?: () => void;
   tagNames: string[];
   onVaultDataChanged: () => void;
   leaveGuardRef: React.MutableRefObject<(() => Promise<boolean>) | null>;
@@ -100,6 +104,8 @@ export function TodayView({
   onSelectVault,
   vaultBusy = false,
   onOpenNote,
+  initialTaskId,
+  onInitialTaskConsumed,
   tagNames,
   onVaultDataChanged,
   leaveGuardRef,
@@ -120,18 +126,26 @@ export function TodayView({
   const [pendingPlan, setPendingPlan] = useState<{ id: string; title: string; date: string; error: string } | null>(null);
 
   // Quick memo + inline edit
+  const noteRefs = useNoteRefs();
   const [quickMemoBody, setQuickMemoBody] = useState('');
+  const [quickMemoRefs, setQuickMemoRefs] = useState<NoteRefMap>({});
   const [creatingMemo, setCreatingMemo] = useState(false);
   const [memoError, setMemoError] = useState<string | null>(null);
   const [editingMemoId, setEditingMemoId] = useState<string | null>(null);
   const [editBody, setEditBody] = useState('');
+  const [editRefs, setEditRefs] = useState<NoteRefMap>({});
   const [editSaving, setEditSaving] = useState(false);
+  const [leavePrompt, setLeavePrompt] = useState<((r: boolean) => void) | null>(null);
 
   const [addModalOpen, setAddModalOpen] = useState(false);
   const [addSearch, setAddSearch] = useState('');
 
   // 原地详情
-  const [openTaskId, setOpenTaskId] = useState<string | null>(null);
+  const [openTaskId, setOpenTaskId] = useState<string | null>(initialTaskId ?? null);
+  useEffect(() => {
+    if (initialTaskId) onInitialTaskConsumed?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const panelRef = useRef<TaskDetailHandle>(null);
   const origin = useDetailOrigin();
 
@@ -193,13 +207,6 @@ export function TodayView({
       unsubscribe();
     };
   }, [loadData]);
-
-  useEffect(() => {
-    leaveGuardRef.current = async () => (await panelRef.current?.confirmLeave()) ?? true;
-    return () => {
-      leaveGuardRef.current = null;
-    };
-  }, [leaveGuardRef]);
 
   const taskMap = useMemo(() => new Map(tasks.map((t) => [t.id, t])), [tasks]);
 
@@ -344,18 +351,21 @@ export function TodayView({
   // ---- Memo ----
   const handleCreateQuickMemo = async () => {
     const body = quickMemoBody.trim();
-    if (!body) return;
+    if (!body) return true;
     setCreatingMemo(true);
     setMemoError(null);
     try {
-      const input: CreateMemoInput = { body, tags: [] };
+      const input: CreateMemoInput = { body, tags: [], note_refs: pruneRefs(body, quickMemoRefs) };
       await VaultService.CreateMemo(input);
       playLogoSuccess();
       setQuickMemoBody('');
+      setQuickMemoRefs({});
       await loadData();
+      return true;
     } catch (err: any) {
       console.error('Failed to create memo:', err);
       setMemoError(err?.message || String(err));
+      return false;
     } finally {
       setCreatingMemo(false);
     }
@@ -365,14 +375,56 @@ export function TodayView({
     setEditSaving(true);
     setMemoError(null);
     try {
-      await VaultService.UpdateMemo({ id, body: editBody, tags });
+      await VaultService.UpdateMemo({ id, body: editBody, tags, note_refs: pruneRefs(editBody, editRefs) });
       setEditingMemoId(null);
       await loadData();
+      return true;
     } catch (err: any) {
       setMemoError(err?.message || String(err));
+      return false;
     } finally {
       setEditSaving(false);
     }
+  };
+
+  const editingMemo = timelineItems.find((item) => item.memo?.id === editingMemoId)?.memo;
+  const editDirty = !!editingMemoId && (!editingMemo || editBody !== editingMemo.body ||
+    !sameRefs(pruneRefs(editBody, editRefs), pruneRefs(editingMemo.body, editingMemo.note_refs ?? {})));
+
+  // 全局导航和笔记跳转共用草稿确认；保存失败时不离开 Today。
+  useEffect(() => {
+    leaveGuardRef.current = async () => {
+      if (creatingMemo || editSaving || leavePrompt) return false;
+      if ((quickMemoBody.trim() || editDirty) && !(await new Promise<boolean>((resolve) => setLeavePrompt(() => resolve)))) return false;
+      return (await panelRef.current?.confirmLeave()) ?? true;
+    };
+    return () => { leaveGuardRef.current = null; };
+  }, [leaveGuardRef, quickMemoBody, editDirty, creatingMemo, editSaving, leavePrompt]);
+
+  const finishLeavePrompt = async (choice: 'save' | 'discard' | 'cancel') => {
+    const resolve = leavePrompt;
+    if (!resolve) return;
+    if (choice === 'save') {
+      // 编辑中的记录可能被外部删除；不能误报已保存或改成另一条记录。
+      if (editDirty && !editingMemo) {
+        setMemoError('编辑中的记录已不可用，请保留草稿并重新加载');
+        setLeavePrompt(null);
+        resolve(false);
+        return;
+      }
+      const ok = (!editDirty || await handleSaveMemoEdit(editingMemoId!, editingMemo?.tags ?? [])) &&
+        (!quickMemoBody.trim() || await handleCreateQuickMemo());
+      setLeavePrompt(null);
+      resolve(ok);
+      return;
+    }
+    if (choice === 'discard') {
+      setQuickMemoBody('');
+      setQuickMemoRefs({});
+      setEditingMemoId(null);
+    }
+    setLeavePrompt(null);
+    resolve(choice === 'discard');
   };
 
   // Unconfigured Vault state
@@ -732,16 +784,20 @@ export function TodayView({
 
             <div className="space-y-1.5">
               <div className="quick-entry-group flex items-center gap-2 px-1.5 rounded-lg border border-stone-200 dark:border-stone-800 bg-white dark:bg-stone-950">
-                <textarea
+                <NoteRefTextarea
                   value={quickMemoBody}
-                  onChange={(e) => setQuickMemoBody(e.target.value)}
+                  onChange={setQuickMemoBody}
+                  refs={quickMemoRefs}
+                  onRefsChange={setQuickMemoRefs}
+                  notes={noteRefs}
+                  aria-label="今日记录"
                   onKeyDown={(e) => {
-                    if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+                    if ((e.metaKey || e.ctrlKey) && e.key === 'Enter' && !e.nativeEvent.isComposing && e.keyCode !== 229) {
                       e.preventDefault();
                       void handleCreateQuickMemo();
                     }
                   }}
-                  placeholder="记录一句话（⌘+Enter 发送）…"
+                  placeholder="记录一句话（输入 [[ 引用笔记，⌘+Enter 发送）…"
                   rows={1}
                   disabled={creatingMemo}
                   className="flex-1 min-w-0 px-1.5 py-2 text-xs bg-transparent text-stone-900 dark:text-stone-100 placeholder-stone-400 resize-none max-h-32 leading-4"
@@ -803,10 +859,16 @@ export function TodayView({
                       <div className="min-w-0 flex-1 space-y-1">
                         {editing && memo ? (
                           <div className="space-y-1.5">
-                            <textarea
+                            <NoteRefTextarea
                               value={editBody}
-                              onChange={(e) => setEditBody(e.target.value)}
+                              onChange={setEditBody}
+                              refs={editRefs}
+                              onRefsChange={setEditRefs}
+                              notes={noteRefs}
+                              aria-label="编辑记录"
+                              disabled={editSaving}
                               onKeyDown={(e) => {
+                                if (e.nativeEvent.isComposing || e.keyCode === 229) return;
                                 if (e.key === 'Escape') setEditingMemoId(null);
                                 if ((e.metaKey || e.ctrlKey) && e.key === 'Enter' && editBody.trim()) {
                                   e.preventDefault();
@@ -836,9 +898,13 @@ export function TodayView({
                             </div>
                           </div>
                         ) : (
-                          <div className="text-stone-800 dark:text-stone-200 whitespace-pre-wrap break-words leading-relaxed">
-                            {memo?.body}
-                          </div>
+                          <NoteRefText
+                            text={memo?.body ?? ''}
+                            refs={memo?.note_refs ?? undefined}
+                            notes={noteRefs}
+                            onOpenNote={onOpenNote}
+                            className="text-stone-800 dark:text-stone-200 leading-relaxed"
+                          />
                         )}
                         {(item.task_id || (memo?.tags ?? []).length > 0) && !editing && (
                           <div className="flex flex-wrap items-center gap-2 text-[11px] text-stone-400">
@@ -865,6 +931,7 @@ export function TodayView({
                           onClick={() => {
                             setEditingMemoId(memo.id);
                             setEditBody(memo.body);
+                            setEditRefs(memo.note_refs ?? {});
                           }}
                           className={iconBtn + ' opacity-0 group-hover:opacity-100 focus:opacity-100'}
                           title="编辑记录"
@@ -880,6 +947,20 @@ export function TodayView({
           </section>
         </div>
       </DetailSplit>
+
+      {leavePrompt && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" role="dialog" aria-modal="true" aria-label="未保存的记录">
+          <div className="w-full max-w-sm rounded-xl bg-white dark:bg-stone-900 p-5 shadow-xl space-y-4">
+            <h3 className="text-sm font-semibold text-stone-900 dark:text-stone-100">有未保存的记录</h3>
+            <p className="text-xs text-stone-500">离开前是否保存今日记录及编辑中的草稿？</p>
+            <div className="flex justify-end gap-2 text-xs">
+              <button type="button" autoFocus disabled={creatingMemo || editSaving} onClick={() => void finishLeavePrompt('cancel')} className="px-3 py-1.5 rounded text-stone-600 dark:text-stone-300">取消</button>
+              <button type="button" disabled={creatingMemo || editSaving} onClick={() => void finishLeavePrompt('discard')} className="px-3 py-1.5 rounded text-rose-600">放弃</button>
+              <button type="button" disabled={creatingMemo || editSaving} onClick={() => void finishLeavePrompt('save')} className="px-3 py-1.5 rounded bg-emerald-700 text-white disabled:opacity-40">保存并离开</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Task Picker Modal */}
       {addModalOpen && (

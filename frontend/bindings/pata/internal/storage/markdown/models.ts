@@ -58,6 +58,16 @@ export enum EntityType {
 };
 
 /**
+ * LinkSource 是「被引用」来源（Note 或 Task，按类型+ID 去重）。
+ */
+export interface LinkSource {
+    "type": EntityType;
+    "id": string;
+    "title": string;
+    "path": string;
+}
+
+/**
  * Memo represents a short memo or task comment.
  */
 export interface Memo {
@@ -66,6 +76,11 @@ export interface Memo {
     "task_id"?: string;
     "created_at": string;
     "tags"?: string[] | null;
+
+    /**
+     * 正文 [[名称]] -> Note ID
+     */
+    "note_refs"?: { [_ in string]?: string } | null;
     "body": string;
 }
 
@@ -80,6 +95,15 @@ export interface Note {
     "created_at": string;
     "updated_at": string;
     "body": string;
+}
+
+/**
+ * NoteRef 是笔记候选：稳定 ID、标题与 Vault 相对路径（斜杠分隔）。
+ */
+export interface NoteRef {
+    "id": string;
+    "title": string;
+    "path": string;
 }
 
 /**
@@ -149,6 +173,11 @@ export interface Task {
     "due": string | null;
     "tags"?: string[] | null;
     "note_ids"?: string[] | null;
+
+    /**
+     * 正文 [[名称]] -> Note ID
+     */
+    "note_refs"?: { [_ in string]?: string } | null;
     "created_at": string;
     "updated_at": string;
     "status_events"?: StatusEvent[] | null;

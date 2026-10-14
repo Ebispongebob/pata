@@ -15,8 +15,9 @@ import {
 } from 'lucide-react';
 import Vditor from 'vditor';
 import * as VaultService from '../bindings/pata/vaultservice';
-import { Note } from '../bindings/pata/internal/storage/markdown/models';
+import { Note, LinkSource, EntityType } from '../bindings/pata/internal/storage/markdown/models';
 import { VaultStatus, CreateNoteInput, UpdateNoteInput } from '../bindings/pata/models';
+import { NotePicker, NoteRef, escapeLinkPath, filterNotes, matchTrigger, pickerKey, relativePath, resolveHref, useNoteRefs } from './noteRefs';
 
 interface NotesViewProps {
   vaultStatus: VaultStatus | null;
@@ -25,6 +26,9 @@ interface NotesViewProps {
   vaultBusy?: boolean;
   focusNoteId?: string | null;
   onClearFocusNote?: () => void;
+  /** 从任务打开笔记时的返回入口（回到来源任务详情）。 */
+  returnToTask?: { label: string; go: () => void } | null;
+  onOpenTask?: (taskId: string) => void;
 }
 
 function formatRelativeTime(isoString: string): string {
@@ -94,10 +98,13 @@ function parseTags(tagStr: string): string[] {
 interface NoteEditorProps {
   noteId: string;
   onBack: () => void;
+  backLabel: string;
+  onOpenNote: (id: string) => void;
+  onOpenTask?: (id: string) => void;
   onNoteUpdated: () => void;
 }
 
-function NoteEditor({ noteId, onBack, onNoteUpdated }: NoteEditorProps) {
+function NoteEditor({ noteId, onBack, backLabel, onOpenNote, onOpenTask, onNoteUpdated }: NoteEditorProps) {
   const [initialNote, setInitialNote] = useState<Note | null>(null);
   const [loadingNote, setLoadingNote] = useState<boolean>(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -112,6 +119,18 @@ function NoteEditor({ noteId, onBack, onNoteUpdated }: NoteEditorProps) {
   const [showLeaveConflictConfirm, setShowLeaveConflictConfirm] = useState<boolean>(false);
   const [showSaveFailedConfirm, setShowSaveFailedConfirm] = useState<boolean>(false);
   const [copiedDraft, setCopiedDraft] = useState<boolean>(false);
+
+  const allNotes = useNoteRefs();
+  const allNotesRef = useRef<NoteRef[]>([]);
+  allNotesRef.current = allNotes;
+  const [backlinks, setBacklinks] = useState<LinkSource[]>([]);
+  const [backlinksOpen, setBacklinksOpen] = useState(false);
+  // `[[` 笔记候选：node 为正在输入的文本节点
+  const [picker, setPicker] = useState<{ start: number; query: string; index: number; left: number; top: number } | null>(null);
+  const pickerRef = useRef(picker);
+  pickerRef.current = picker;
+  const pickerDismissedRef = useRef(-1);
+  const pendingGoRef = useRef<(() => void) | null>(null);
 
   const vditorRef = useRef<Vditor | null>(null);
   const vditorContainerRef = useRef<HTMLDivElement | null>(null);
@@ -349,8 +368,10 @@ function NoteEditor({ noteId, onBack, onNoteUpdated }: NoteEditorProps) {
         'undo',
         'redo',
       ],
+      link: { isOpen: true, click: (a: Element) => linkClickRef.current(a as HTMLElement) },
       input: () => {
         triggerDebouncedSave();
+        syncPickerRef.current();
       },
       after: () => {
         vditorRef.current = vditor;
@@ -459,8 +480,9 @@ function NoteEditor({ noteId, onBack, onNoteUpdated }: NoteEditorProps) {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [doSave]);
 
-  // Back button handling with flush (must-fix 3)
-  const handleBackClick = async () => {
+  // 离开当前笔记（返回/打开引用/打开来源任务）前先 flush 自动保存；冲突或保存失败时留在原处（D19）
+  const leaveThen = async (go: () => void) => {
+    pendingGoRef.current = go;
     if (hasConflictRef.current) {
       setShowLeaveConflictConfirm(true);
       return;
@@ -476,17 +498,116 @@ function NoteEditor({ noteId, onBack, onNoteUpdated }: NoteEditorProps) {
     const dirty = isDirty(currentTitle, currentTags, currentBody);
 
     if (!dirty) {
-      onBack();
+      go();
       return;
     }
 
     const saved = await doSave();
     if (saved) {
-      onBack();
+      go();
     } else {
       setShowSaveFailedConfirm(true);
     }
   };
+  const handleBackClick = () => leaveThen(onBack);
+
+  // ---- `[[` 笔记候选 + 链接点击 ----
+  const syncPicker = () => {
+    const sel = window.getSelection();
+    const root = vditorContainerRef.current;
+    const node = sel?.anchorNode;
+    const m =
+      sel && sel.isCollapsed && root && node && node.nodeType === 3 && root.contains(node) && !node.parentElement?.closest('code, pre')
+        ? matchTrigger((node.textContent ?? '').slice(0, sel.anchorOffset))
+        : null;
+    if (!sel || !m) {
+      pickerDismissedRef.current = -1;
+      setPicker((p) => (p ? null : p));
+      return;
+    }
+    if (pickerDismissedRef.current === m.start) return;
+    const caret = sel.getRangeAt(0).getBoundingClientRect();
+    const r = caret.height ? caret : node!.parentElement!.getBoundingClientRect();
+    setPicker((p) => ({ ...m, index: p && p.query === m.query ? p.index : 0, left: r.left, top: r.bottom + 4 }));
+  };
+
+  const pickNote = (n: NoteRef) => {
+    const vd = vditorRef.current;
+    const st = pickerRef.current;
+    const sel = window.getSelection();
+    const node = sel?.anchorNode;
+    if (!vd || !st || !sel || !node || node.nodeType !== 3) return;
+    const range = sel.getRangeAt(0);
+    range.setStart(node, st.start);
+    range.setEnd(node, sel.anchorOffset);
+    range.deleteContents();
+    const self = allNotesRef.current.find((x) => x.id === noteId);
+    const href = escapeLinkPath(self ? relativePath(self.path, n.path) : n.path);
+    const esc = (t: string) => t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
+    vd.insertValue(`<a href="${esc(href)}">${esc(n.title)}</a>&nbsp;`);
+    setPicker(null);
+  };
+
+  // Vditor 的点击回调需要最新的闭包
+  const syncPickerRef = useRef(syncPicker);
+  syncPickerRef.current = syncPicker;
+  const pickNoteRef = useRef(pickNote);
+  pickNoteRef.current = pickNote;
+  const linkClickRef = useRef<(a: HTMLElement) => void>(() => {});
+  linkClickRef.current = (a) => {
+    const href = a.getAttribute('href') ?? '';
+    const self = allNotesRef.current.find((x) => x.id === noteId);
+    const target = self ? resolveHref(self.path, href, allNotesRef.current) : undefined;
+    if (target) void leaveThen(() => onOpenNote(target.id));
+    else if (/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(href)) window.open(href); // 既有外部链接处理不变
+    else if (href && !href.startsWith('#')) setTitleError('笔记不存在或已移动');
+  };
+
+  // 被引用来源：从文件计算，保存/外部变更后刷新
+  const loadBacklinks = useCallback(() => {
+    VaultService.GetNoteBacklinks(noteId)
+      .then((r) => setBacklinks((r ?? []).filter((x): x is LinkSource => x !== null)))
+      .catch(() => setBacklinks([]));
+  }, [noteId]);
+  useEffect(() => {
+    loadBacklinks();
+    const off = Events.On('vault:changed', loadBacklinks);
+    return () => {
+      off();
+    };
+  }, [loadBacklinks]);
+
+  useEffect(() => {
+    document.addEventListener('selectionchange', syncPicker);
+    return () => document.removeEventListener('selectionchange', syncPicker);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // 候选打开时在捕获阶段接管方向键/回车/Esc（组合输入期间不拦截）
+  useEffect(() => {
+    const root = vditorContainerRef.current;
+    if (!root) return;
+    const onKey = (e: KeyboardEvent) => {
+      const st = pickerRef.current;
+      if (!st) return;
+      const items = filterNotes(allNotesRef.current, st.query);
+      const used = pickerKey(
+        e,
+        e.isComposing || e.keyCode === 229,
+        items.length,
+        st.index,
+        (i) => setPicker({ ...st, index: i }),
+        () => pickNoteRef.current(items[st.index]),
+        () => {
+          pickerDismissedRef.current = st.start;
+          setPicker(null);
+        }
+      );
+      if (used) e.stopPropagation();
+    };
+    root.addEventListener('keydown', onKey, true);
+    return () => root.removeEventListener('keydown', onKey, true);
+  }, [loadingNote, initialNote]);
 
   // Copy draft to clipboard (should-fix 3)
   const handleCopyDraft = async () => {
@@ -544,7 +665,7 @@ function NoteEditor({ noteId, onBack, onNoteUpdated }: NoteEditorProps) {
       debounceTimerRef.current = null;
     }
     hasConflictRef.current = false;
-    onBack();
+    (pendingGoRef.current ?? onBack)();
   };
 
   if (loadingNote) {
@@ -584,10 +705,10 @@ function NoteEditor({ noteId, onBack, onNoteUpdated }: NoteEditorProps) {
             type="button"
             onClick={handleBackClick}
             className="flex items-center space-x-1 px-2.5 py-1.5 rounded-md text-xs font-medium text-stone-600 dark:text-stone-300 hover:bg-stone-200/60 dark:hover:bg-stone-800/60 transition shrink-0"
-            title="返回笔记列表（将自动保存未提交改动）"
+            title={`${backLabel}（将自动保存未提交改动）`}
           >
             <ArrowLeft className="w-3.5 h-3.5" />
-            <span>笔记列表</span>
+            <span>{backLabel}</span>
           </button>
 
           {/* Title Input (Required) */}
@@ -700,6 +821,52 @@ function NoteEditor({ noteId, onBack, onNoteUpdated }: NoteEditorProps) {
         className="flex-1 min-h-0 rounded-xl overflow-hidden border border-stone-200 dark:border-stone-800 bg-white dark:bg-stone-950 shadow-2xs [&_.vditor]:border-0 [&_.vditor]:rounded-xl"
       />
 
+      {picker && (
+        <NotePicker
+          items={filterNotes(allNotes, picker.query)}
+          allNotes={allNotes}
+          index={picker.index}
+          left={picker.left}
+          top={picker.top}
+          onPick={pickNote}
+          onHover={(i) => setPicker({ ...picker, index: i })}
+        />
+      )}
+
+      {/* 被引用来源：默认折叠，无来源时隐藏 */}
+      {backlinks.length > 0 && (
+        <div className="shrink-0 text-xs">
+          <button
+            type="button"
+            aria-expanded={backlinksOpen}
+            onClick={() => setBacklinksOpen((o) => !o)}
+            className="px-1 py-1 text-stone-500 hover:text-stone-700 dark:hover:text-stone-300"
+          >
+            {backlinksOpen ? '▾' : '▸'} 被引用 · {backlinks.length}
+          </button>
+          {backlinksOpen && (
+            <ul className="max-h-32 overflow-y-auto pl-4 space-y-0.5">
+              {backlinks.map((b) => {
+                const dup = backlinks.filter((x) => x.title === b.title).length > 1;
+                return (
+                  <li key={`${b.type}:${b.id}`}>
+                    <button
+                      type="button"
+                      onClick={() => void leaveThen(() => (b.type === EntityType.EntityTypeTask ? onOpenTask?.(b.id) : onOpenNote(b.id)))}
+                      className="text-emerald-700 dark:text-emerald-400 hover:underline"
+                    >
+                      {b.type === EntityType.EntityTypeTask ? '任务 · ' : ''}
+                      {b.title}
+                    </button>
+                    {dup && <span className="ml-1.5 text-[10px] text-stone-400">{b.path}</span>}
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </div>
+      )}
+
       {/* Confirmation Modal for Discarding Local Changes on Reload */}
       {showReloadConfirm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs p-4">
@@ -803,7 +970,7 @@ function NoteEditor({ noteId, onBack, onNoteUpdated }: NoteEditorProps) {
                 type="button"
                 onClick={() => {
                   setShowSaveFailedConfirm(false);
-                  onBack();
+                  (pendingGoRef.current ?? onBack)();
                 }}
                 className="px-3 py-1.5 rounded-md bg-rose-600 hover:bg-rose-700 text-white text-xs font-medium transition shadow-xs"
               >
@@ -824,16 +991,21 @@ export function NotesView({
   vaultBusy = false,
   focusNoteId,
   onClearFocusNote,
+  returnToTask,
+  onOpenTask,
 }: NotesViewProps) {
   const [notes, setNotes] = useState<Note[]>([]);
   const [loading, setLoading] = useState(false);
   const [listError, setListError] = useState<string | null>(null);
   const [selectedNoteId, setSelectedNoteId] = useState<string | null>(null);
+  // 经笔记链接/被引用来源依次打开的笔记栈，「返回」按栈回到上一篇
+  const [trail, setTrail] = useState<string[]>([]);
 
   // Consume focusNoteId from parent navigation (one-time consumption)
   useEffect(() => {
     if (focusNoteId) {
       setSelectedNoteId(focusNoteId);
+      setTrail([]);
       onClearFocusNote?.();
     }
   }, [focusNoteId, onClearFocusNote]);
@@ -1041,8 +1213,21 @@ export function NotesView({
   if (selectedNoteId) {
     return (
       <NoteEditor
+        key={selectedNoteId}
         noteId={selectedNoteId}
-        onBack={() => setSelectedNoteId(null)}
+        onBack={() => {
+          if (trail.length) {
+            setSelectedNoteId(trail[trail.length - 1]);
+            setTrail(trail.slice(0, -1));
+          } else if (returnToTask) returnToTask.go();
+          else setSelectedNoteId(null);
+        }}
+        backLabel={trail.length ? '返回上一篇' : returnToTask ? returnToTask.label : '笔记列表'}
+        onOpenNote={(id) => {
+          setTrail([...trail, selectedNoteId]);
+          setSelectedNoteId(id);
+        }}
+        onOpenTask={onOpenTask}
         onNoteUpdated={loadNotes}
       />
     );

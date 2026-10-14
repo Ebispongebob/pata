@@ -12,6 +12,7 @@ export interface CreateMemoInput {
     "body": string;
     "task_id"?: string;
     "tags"?: string[] | null;
+    "note_refs"?: { [_ in string]?: string } | null;
 }
 
 /**
@@ -33,6 +34,11 @@ export interface CreateTaskInput {
     "tags"?: string[] | null;
     "note_ids"?: string[] | null;
     "body"?: string;
+
+    /**
+     * NoteRefs binds [[名称]] in Body to real Note IDs.
+     */
+    "note_refs"?: { [_ in string]?: string } | null;
 }
 
 /**
@@ -56,6 +62,11 @@ export interface UpdateMemoInput {
     "id": string;
     "body": string;
     "tags"?: string[] | null;
+
+    /**
+     * nil keeps existing
+     */
+    "note_refs"?: { [_ in string]?: string } | null;
 }
 
 /**
@@ -81,6 +92,11 @@ export interface UpdateTaskInput {
     "tags"?: string[] | null;
     "note_ids"?: string[] | null;
     "body": string;
+
+    /**
+     * NoteRefs: nil keeps existing bindings; non-nil (even empty) replaces them.
+     */
+    "note_refs"?: { [_ in string]?: string } | null;
 }
 
 /**

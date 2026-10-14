@@ -23,7 +23,7 @@ interface TasksViewProps {
   vaultBusy?: boolean;
   focusTaskId?: string | null;
   onClearFocusTask?: () => void;
-  onOpenNote?: (noteId: string) => void;
+  onOpenNote?: (noteId: string, fromTaskId?: string) => void;
   /** 已有全局标签名（不带 #），用于快速创建补全。 */
   tagNames: string[];
   /** 任务写入成功后刷新全局标签等跨页面数据。 */

@@ -100,11 +100,22 @@ export default function App() {
     else void guarded(go);
   };
 
-  const handleOpenNote = (noteID: string) => {
+  // 从任务详情打开笔记时记录来源，笔记页「返回」回到该任务
+  const [noteOrigin, setNoteOrigin] = useState<{ nav: 'today' | 'tasks'; taskId: string } | null>(null);
+  const [todayTaskId, setTodayTaskId] = useState<string | null>(null);
+  const handleOpenNote = (noteID: string, fromTaskId?: string) => {
     void guarded(() => {
+      setNoteOrigin(fromTaskId && (activeNav === 'today' || activeNav === 'tasks') ? { nav: activeNav, taskId: fromTaskId } : null);
       setActiveNav('notes');
       setFocusNoteId(noteID);
     });
+  };
+  const returnToOrigin = () => {
+    if (!noteOrigin) return;
+    setActiveNav(noteOrigin.nav);
+    if (noteOrigin.nav === 'tasks') setFocusTaskId(noteOrigin.taskId);
+    else setTodayTaskId(noteOrigin.taskId);
+    setNoteOrigin(null);
   };
 
   const handleSelectTag = (tag: string) => {
@@ -540,6 +551,8 @@ export default function App() {
               onSelectVault={handleSelectVault}
               vaultBusy={vaultBusy}
               onOpenNote={handleOpenNote}
+              initialTaskId={todayTaskId}
+              onInitialTaskConsumed={() => setTodayTaskId(null)}
               tagNames={tagNames}
               onVaultDataChanged={refreshVault}
               leaveGuardRef={leaveGuardRef}
@@ -568,6 +581,8 @@ export default function App() {
               vaultBusy={vaultBusy}
               focusNoteId={focusNoteId}
               onClearFocusNote={() => setFocusNoteId(null)}
+              returnToTask={noteOrigin ? { label: '返回任务', go: returnToOrigin } : null}
+              onOpenTask={handleOpenTask}
             />
           )}
 

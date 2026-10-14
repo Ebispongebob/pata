@@ -58,6 +58,7 @@ type Task struct {
 	Due          *string              `yaml:"due" json:"due"` // YYYY-MM-DD or nil
 	Tags         []string             `yaml:"tags,omitempty" json:"tags,omitempty"`
 	NoteIDs      []string             `yaml:"note_ids,omitempty" json:"note_ids,omitempty"`
+	NoteRefs     map[string]string    `yaml:"note_refs,omitempty" json:"note_refs,omitempty"` // 正文 [[名称]] -> Note ID
 	CreatedAt    time.Time            `yaml:"created_at" json:"created_at"`
 	UpdatedAt    time.Time            `yaml:"updated_at" json:"updated_at"`
 	StatusEvents []StatusEvent        `yaml:"status_events,omitempty" json:"status_events,omitempty"`
@@ -82,6 +83,7 @@ func (t *Task) Clone() Entity {
 	if t.NoteIDs != nil {
 		cp.NoteIDs = append([]string(nil), t.NoteIDs...)
 	}
+	cp.NoteRefs = cloneRefs(t.NoteRefs)
 	if t.StatusEvents != nil {
 		cp.StatusEvents = append([]StatusEvent(nil), t.StatusEvents...)
 	}
@@ -101,6 +103,7 @@ type Memo struct {
 	TaskID    string               `yaml:"task_id,omitempty" json:"task_id,omitempty"`
 	CreatedAt time.Time            `yaml:"created_at" json:"created_at"`
 	Tags      []string             `yaml:"tags,omitempty" json:"tags,omitempty"`
+	NoteRefs  map[string]string    `yaml:"note_refs,omitempty" json:"note_refs,omitempty"` // 正文 [[名称]] -> Note ID
 	Extra     map[string]yaml.Node `yaml:",inline" json:"-"`
 	Body      string               `yaml:"-" json:"body"`
 }
@@ -112,6 +115,7 @@ func (m *Memo) SetBody(body string)            { m.Body = body }
 func (m *Memo) GetExtra() map[string]yaml.Node { return m.Extra }
 func (m *Memo) Clone() Entity {
 	cp := *m
+	cp.NoteRefs = cloneRefs(m.NoteRefs)
 	if m.Tags != nil {
 		cp.Tags = append([]string(nil), m.Tags...)
 	}

@@ -1,6 +1,6 @@
 # Pata · 文档与实施路线
 
-**文档按实施阶段组织，而不是按功能模块组织。** 当前路线包含 **6 个顺序阶段**：前五阶段完成业务 MVP，第六阶段独立完成品牌接入与 Logo 动画。只有实际新增一个独立交付阶段时，才新增对应的 `docs/NN-name/` 目录。
+**文档按实施阶段组织，而不是按功能模块组织。** 当前路线包含 **7 个顺序阶段**：前五阶段完成业务 MVP，第六阶段独立完成品牌接入与 Logo 动画，第七阶段完成笔记引用闭环。只有实际新增一个独立交付阶段时，才新增对应的 `docs/NN-name/` 目录。
 
 | 顺序 | 目录 / 阶段 | 阶段结束应交付什么 | 核心文档 |
 |---|---|---|---|
@@ -10,6 +10,7 @@
 | 4 | [`04-knowledge-loop`](04-knowledge-loop/) · 文档沉淀 | 单列 Notes、长篇 Markdown 编辑、明确的 Task–Note 关联 | [idea](04-knowledge-loop/idea.md) · [proposal](04-knowledge-loop/proposal.md) |
 | 5 | [`05-release`](05-release/) · 整合交付 | 全局标签/搜索、安全性回归、macOS MVP 打包验收 | [idea](05-release/idea.md) · [proposal](05-release/proposal.md) · [验收](05-release/acceptance.md) |
 | 6 | [`06-branding`](06-branding/) · 品牌接入与 Logo 动画 | 三层卡片 V2 静态品牌接入、启动与记录成功动画、菜单栏增强验证 | [idea](06-branding/idea.md) · [proposal](06-branding/proposal.md) |
+| 7 | [`07-note-links`](07-note-links/) · 笔记引用闭环 | 笔记正文 / 任务描述 / 任务评论统一 `[[` 引用、点击跳转、自动被引用来源 | [idea](07-note-links/idea.md) · [proposal](07-note-links/proposal.md) |
 
 阶段 1 的 UI 附加设计： [macOS 27 原生体验与 Magpie 源码参考](01-validate/macos-native.md)，其真实 Wails 验证安排在阶段 2。
 
@@ -35,5 +36,7 @@
 阶段 1 设计已基本完成（待真实用户确认）。阶段 2 已完成：桌面 Spike（P2-001）、存储核心（P2-002，`internal/storage/markdown`）、单 Vault 接入与 Tasks 管理闭环、外部修改感知与冲突提示（P2-003/P2-004）；完成标准已勾选，仅剩用户实机手动走查一次。阶段 3 已完成：Memo 闭环（P3-001，任务详情评论+独立 Memo）、DayPlan 与 Today 计划区块（P3-002，多日安排/due 独立/昨日候选不自动顺延）、今日记录时间线与历史回顾（P3-003，本机时区聚合/完成事件/当前状态注脚）；完成标准已勾选，剩用户实机手动走查。阶段 4 已完成：Notes 服务与单列卡片列表（P4-001）、Vditor 全主区域编辑器与 D19 自动保存（P4-002，含离线包裁剪 23MB→7.5MB 与 cdn dist 层修正）、Task–Note 显式关联（P4-003）；完成标准已勾选，剩用户实机手动走查。阶段 5 代码侧全部完成：全局标签聚合与跨类型搜索后端（P5-001）、侧边栏真实标签与单列标签视图（P5-002）、⌘K/⌘P 全局搜索浮层（P5-003）、GetVaultHealth 错误报告暴露与服务层回归补缺（P5-004）、健康状态 UI/基础无障碍/快捷键与首启审计/macOS 打包验证（P5-005，产出 bin/pata.app 与 bin/pata.dmg）；每批均经独立审查（P5-R1~R5，仅 P5-004 一次通过，余含一次返工）。剩用户实机：真实资料走查、macOS 原生体验回归、MVP 验收清单勾选。
 
 阶段 6 规划与 V2 资源归档已完成；静态品牌接入、应用内动画及可选菜单栏增强尚未实施。
+
+阶段 7 规划已完成，功能待实施：只引用已有笔记，三处统一 `[[` 输入，Note 保存标准 Markdown 相对链接，任务描述与评论保持纯文本；被引用来源默认折叠，按 Note / Task 身份去重，兼容现有 `note_ids`。作为阶段 6 之后的独立交付步骤，不追加为前五阶段 MVP 的验收前提；见 [idea](07-note-links/idea.md) 与 [proposal](07-note-links/proposal.md)。
 
 阶段 3 新增 Today 体验完善方案：末尾 `#标签` 快速创建、类似 ChatGPT 的左导航 / 中间 Today 或 Tasks / 右任务详情三栏、移除任务优先级、明确移出计划语义、紧凑日期及时间线。右栏按需打开，Notes 仍单列浏览与全主区域编辑。文档已整理，新增完成标准尚未验收，见 [idea](03-daily-loop/idea.md) 与 [proposal](03-daily-loop/proposal.md)；不改变原基础能力的已完成记录，也不新增阶段。

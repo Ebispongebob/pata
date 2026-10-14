@@ -75,6 +75,13 @@ export function GetNote(id: string): $CancellablePromise<markdown$0.Note | null>
 }
 
 /**
+ * GetNoteBacklinks returns the notes/tasks referencing noteID, deduped by source identity.
+ */
+export function GetNoteBacklinks(noteID: string): $CancellablePromise<markdown$0.LinkSource[] | null> {
+    return $Call.ByID(3336179693, noteID);
+}
+
+/**
  * GetTagOverview returns aggregated counts of all unique tags across tasks, notes, and memos.
  */
 export function GetTagOverview(): $CancellablePromise<markdown$0.TagOverviewItem[] | null> {
@@ -115,6 +122,13 @@ export function ListByTag(tag: string): $CancellablePromise<markdown$0.EntityRef
  */
 export function ListMemosByTask(taskID: string): $CancellablePromise<(markdown$0.Memo | null)[] | null> {
     return $Call.ByID(2666858332, taskID);
+}
+
+/**
+ * ListNoteRefs returns all notes (ID, title, vault-relative path) for [[ candidates and link resolution.
+ */
+export function ListNoteRefs(): $CancellablePromise<markdown$0.NoteRef[] | null> {
+    return $Call.ByID(1984130979);
 }
 
 /**
