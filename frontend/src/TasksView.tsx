@@ -3,7 +3,6 @@ import { Events } from '@wailsio/runtime';
 import {
   Circle,
   CheckCircle2,
-  Clock,
   AlertCircle,
   Calendar,
   X,
@@ -133,8 +132,6 @@ export function TasksView({
     const nextStatus =
       task.status === TaskStatus.TaskStatusDone
         ? TaskStatus.TaskStatusTodo
-        : task.status === TaskStatus.TaskStatusTodo
-        ? TaskStatus.TaskStatusDoing
         : TaskStatus.TaskStatusDone;
 
     try {
@@ -218,6 +215,7 @@ export function TasksView({
       ref={panelRef}
       taskId={selectedTaskId}
       closeLabel="关闭详情"
+      tagNames={tagNames}
       onClose={closePanel}
       onChanged={refreshAll}
       onDeleted={closePanel}
@@ -278,7 +276,7 @@ export function TasksView({
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="搜索任务标题或标签..."
-              className="w-full pl-8 pr-3 py-1.5 text-xs rounded-lg border border-stone-200 dark:border-stone-800 bg-white dark:bg-stone-950 text-stone-900 dark:text-stone-100 placeholder-stone-400 focus:outline-hidden focus:ring-1 focus:ring-emerald-600"
+              className="w-full pl-8 pr-3 py-1.5 text-xs rounded-lg border border-stone-200 dark:border-stone-800 bg-white dark:bg-stone-950 text-stone-900 dark:text-stone-100 placeholder-stone-400 focus:outline-none focus:ring-0 focus:border-stone-400 dark:focus:border-stone-600"
             />
             {searchQuery && (
               <button
@@ -319,7 +317,6 @@ export function TasksView({
           <div className="space-y-2">
             {filteredTasks.map((t) => {
               const isDone = t.status === TaskStatus.TaskStatusDone;
-              const isDoing = t.status === TaskStatus.TaskStatusDoing;
 
               return (
                 <div
@@ -333,8 +330,10 @@ export function TasksView({
                   }}
                   tabIndex={0}
                   role="button"
-                  className={`group p-3.5 rounded-xl border bg-white dark:bg-stone-950 hover:border-emerald-500/60 dark:hover:border-emerald-600/60 hover:shadow-2xs transition cursor-pointer select-none focus:outline-hidden focus-visible:ring-2 focus-visible:ring-emerald-600 ${
-                    t.id === selectedTaskId ? 'border-emerald-500/70' : 'border-stone-200 dark:border-stone-800'
+                  className={`group p-3.5 rounded-xl border bg-white dark:bg-stone-950 hover:border-stone-300 dark:hover:border-stone-700 hover:shadow-2xs transition cursor-pointer select-none focus:outline-none focus:ring-0 ${
+                    t.id === selectedTaskId
+                      ? 'border-stone-400 dark:border-stone-600 bg-stone-50/70 dark:bg-stone-900/50'
+                      : 'border-stone-200 dark:border-stone-800'
                   }`}
                 >
                   <div className="flex items-center justify-between gap-3">
@@ -344,18 +343,10 @@ export function TasksView({
                         type="button"
                         onClick={(e) => handleToggleStatus(t, e)}
                         className="p-0.5 rounded text-stone-400 hover:text-emerald-600 dark:hover:text-emerald-400 transition shrink-0"
-                        title={
-                          isDone
-                            ? '点击重新打开为待办'
-                            : isDoing
-                            ? '点击标记为完成'
-                            : '点击标记为进行中'
-                        }
+                        title={isDone ? '点击恢复为待办' : '点击标记为完成'}
                       >
                         {isDone ? (
                           <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                        ) : isDoing ? (
-                          <Clock className="w-4 h-4 text-blue-600" />
                         ) : (
                           <Circle className="w-4 h-4 text-stone-400 group-hover:text-stone-600" />
                         )}
@@ -378,12 +369,10 @@ export function TasksView({
                         className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${
                           isDone
                             ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/70 dark:text-emerald-300'
-                            : isDoing
-                            ? 'bg-blue-100 text-blue-700 dark:bg-blue-950/70 dark:text-blue-300'
                             : 'bg-stone-100 text-stone-600 dark:bg-stone-800 dark:text-stone-400'
                         }`}
                       >
-                        {t.status}
+                        {isDone ? '已完成' : '待办'}
                       </span>
                     </div>
                   </div>

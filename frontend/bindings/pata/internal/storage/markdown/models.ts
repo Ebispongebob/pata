@@ -166,6 +166,7 @@ export interface Task {
     "id": string;
     "title": string;
     "status": TaskStatus;
+    "completed_at"?: string | null;
 
     /**
      * YYYY-MM-DD or nil
@@ -194,6 +195,10 @@ export enum TaskStatus {
     $zero = "",
 
     TaskStatusTodo = "todo",
-    TaskStatusDoing = "doing",
     TaskStatusDone = "done",
+
+    /**
+     * Deprecated: legacy status, treated as todo
+     */
+    TaskStatusDoing = "doing",
 };

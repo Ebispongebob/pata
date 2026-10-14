@@ -17,7 +17,8 @@
 type: task
 id: t-demo-001
 title: 统一资源接入方案
-status: doing            # todo | doing | done
+status: todo             # todo | done（仅未完成/已完成二态）
+completed_at: null       # ISO 8601 | null，完成时记录时间戳，未完成时为 null 或省略
 due: null                # YYYY-MM-DD | null
 tags: [架构设计]
 note_ids: [n-demo-001]    # 可选明确关联
@@ -32,6 +33,8 @@ status_events:            # 可选，仅记录完成和重新打开
 
 目标：明确接入边界和操作协议。
 ```
+
+Task 状态采用极简二态模型：仅有未完成 (`todo`) 和已完成 (`done`)，通过勾选直接切换。不再提供进行中 (`doing`)、等待中、已阻塞等内置状态；标签完全自由，不赋予系统级状态语义。完成时间通过 `completed_at` 记录，支持 Today 统计和历史回顾。对于外部或存量文件中的 `status: doing`，解析时平滑兼容规整为 `todo`。
 
 Task 正文（UI 中的 description / 描述）为纯文本，支持换行，不解析或渲染 Markdown；仍保存在现有 `.md` 文件的 Frontmatter 后，无需新增字段或迁移文件。已有 Markdown 符号按原文保留，不自动清洗。Note 的 Markdown 编辑不受影响。
 
@@ -53,7 +56,7 @@ note_refs:                 # 可选；名称 -> Note ID
 
 Task 不再建模 `priority`；新建任务不写该字段。旧文件中的 `priority` 按未知 Frontmatter 属性保留，不校验其值、不向业务接口暴露，也不在保存时强制删除；无需批量迁移旧文件。
 
-`status` 是当前状态；`status_events` 用于保留 **完成 / 重新打开** 历史，而不是庞大的审计事件系统。创建时间可用于回顾；已完成 Task 的最近一次完成时间可从事件序列中计算。对于只有一个 `done` 状态而无事件的外部手工修改，解析器应明确采取一致的降级策略（待实现 Spike 确定）。
+`status` 是当前状态（`todo` 或 `done`）；`completed_at` 在转为 `done` 时写入当前时间戳，转回 `todo` 时清空为 null；`status_events` 用于保留 **完成 / 重新打开** 历史。对于只有一个 `done` 状态而无事件的外部手工修改，以 `completed_at`（或 updated_at 兜底）作为完成时间展示在 Today 时间线。
 
 ## Memo
 

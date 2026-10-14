@@ -494,3 +494,67 @@ updated_at: 2026-10-11T12:00:00+08:00
 		}
 	}
 }
+
+func TestTaskCompletedAtAndLegacyDoing(t *testing.T) {
+	// 1. Legacy doing status is normalized to todo on ParseMarkdown
+	legacyMD := `---
+type: task
+id: t-legacy-01
+title: 兼容旧进行中状态任务
+status: doing
+created_at: 2026-10-14T09:00:00+08:00
+updated_at: 2026-10-14T09:30:00+08:00
+---
+
+正文内容
+`
+	ent, err := ParseMarkdown("task.md", []byte(legacyMD))
+	if err != nil {
+		t.Fatalf("ParseMarkdown failed on legacy doing status: %v", err)
+	}
+	task, ok := ent.(*Task)
+	if !ok {
+		t.Fatalf("expected *Task, got %T", ent)
+	}
+	if task.Status != TaskStatusTodo {
+		t.Fatalf("expected status to be normalized to todo, got %s", task.Status)
+	}
+
+	// 2. Task with explicit completed_at
+	completedMD := `---
+type: task
+id: t-completed-01
+title: 已完成任务
+status: done
+completed_at: 2026-10-14T10:00:00+08:00
+created_at: 2026-10-14T09:00:00+08:00
+updated_at: 2026-10-14T10:00:00+08:00
+---
+`
+	entDone, err := ParseMarkdown("task_done.md", []byte(completedMD))
+	if err != nil {
+		t.Fatalf("ParseMarkdown failed on completed task: %v", err)
+	}
+	taskDone, ok := entDone.(*Task)
+	if !ok {
+		t.Fatalf("expected *Task, got %T", entDone)
+	}
+	if taskDone.Status != TaskStatusDone {
+		t.Fatalf("expected status done, got %s", taskDone.Status)
+	}
+	if taskDone.CompletedAt == nil {
+		t.Fatalf("expected completed_at to be parsed")
+	}
+	if taskDone.CompletedAt.Format(time.RFC3339) != "2026-10-14T10:00:00+08:00" {
+		t.Fatalf("completed_at mismatch: %v", taskDone.CompletedAt)
+	}
+
+	// 3. Serialize and verify completed_at appears in YAML frontmatter
+	bytes, err := SerializeMarkdown(taskDone)
+	if err != nil {
+		t.Fatalf("SerializeMarkdown failed: %v", err)
+	}
+	if !strings.Contains(string(bytes), "completed_at:") {
+		t.Fatalf("serialized markdown missing completed_at: %s", string(bytes))
+	}
+}

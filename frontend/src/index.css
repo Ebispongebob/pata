@@ -28,28 +28,17 @@ button, input, textarea, select, a, [role="button"], .vditor {
   -webkit-user-select: text;
 }
 
-/* Accessibility: standard visible focus ring for keyboard navigation */
+/* 不使用选中光圈，保持 macOS 原生克制风格 */
+:focus,
 :focus-visible {
-  outline: 2px solid #059669;
-  outline-color: AccentColor;
-  outline-offset: 2px;
+  outline: none;
 }
 
-@supports not (outline-color: AccentColor) {
-  :focus-visible {
-    outline-color: #059669;
-  }
-}
-
-
-/* 快速输入不使用强调色光圈，仍保留轻量可见的焦点提示。 */
 .quick-entry:focus-visible,
 .quick-entry-group:has(textarea:focus-visible) {
-  outline: 1px solid #a8a29e;
-  outline-offset: 0;
+  outline: none;
 }
 
-/* 记录输入的可见边框在外层，textarea 不再绘制内层光圈。 */
 .quick-entry-group textarea:focus {
   outline: none;
 }

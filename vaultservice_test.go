@@ -102,7 +102,7 @@ func TestVaultService_CreateTask_PersistAndRestart(t *testing.T) {
 	dueStr := "2026-10-15"
 	input := CreateTaskInput{
 		Title:   "阶段2任务落地",
-		Status:  markdown.TaskStatusDoing,
+		Status:  markdown.TaskStatusTodo,
 		Due:     &dueStr,
 		Tags:    []string{"架构设计", "GoCore"},
 		NoteIDs: []string{refNote.ID},
@@ -120,8 +120,11 @@ func TestVaultService_CreateTask_PersistAndRestart(t *testing.T) {
 	if created.Title != "阶段2任务落地" {
 		t.Fatalf("title mismatch: %s", created.Title)
 	}
-	if created.Status != markdown.TaskStatusDoing {
+	if created.Status != markdown.TaskStatusTodo {
 		t.Fatalf("status mismatch: %s", created.Status)
+	}
+	if created.CompletedAt != nil {
+		t.Fatalf("expected completed_at to be nil for todo task, got: %v", created.CompletedAt)
 	}
 	if created.Due == nil || *created.Due != "2026-10-15" {
 		t.Fatalf("due mismatch: %v", created.Due)
@@ -211,13 +214,16 @@ func TestVaultService_StatusTransitions_HistoryPreserved(t *testing.T) {
 		t.Fatalf("expected 0 status events initially for todo, got %d", len(created.StatusEvents))
 	}
 
-	// 1. todo -> done: should record completed event
+	// 1. todo -> done: should record completed event and set completed_at
 	tDone, err := s.SetTaskStatus(created.ID, markdown.TaskStatusDone)
 	if err != nil {
 		t.Fatalf("SetTaskStatus(done) failed: %v", err)
 	}
 	if tDone.Status != markdown.TaskStatusDone {
 		t.Fatalf("expected done status, got %s", tDone.Status)
+	}
+	if tDone.CompletedAt == nil {
+		t.Fatalf("expected completed_at to be set on task completion")
 	}
 	if len(tDone.StatusEvents) != 1 {
 		t.Fatalf("expected 1 event, got %d", len(tDone.StatusEvents))
@@ -226,28 +232,34 @@ func TestVaultService_StatusTransitions_HistoryPreserved(t *testing.T) {
 		t.Fatalf("unexpected completed event: %+v", tDone.StatusEvents[0])
 	}
 
-	// 2. done -> doing (reopen): should append reopened event, preserving completed
-	tDoing, err := s.SetTaskStatus(created.ID, markdown.TaskStatusDoing)
+	// 2. done -> todo (reopen): should append reopened event, clearing completed_at
+	tReopened, err := s.SetTaskStatus(created.ID, markdown.TaskStatusTodo)
 	if err != nil {
-		t.Fatalf("SetTaskStatus(doing) failed: %v", err)
+		t.Fatalf("SetTaskStatus(todo) failed: %v", err)
 	}
-	if tDoing.Status != markdown.TaskStatusDoing {
-		t.Fatalf("expected doing status, got %s", tDoing.Status)
+	if tReopened.Status != markdown.TaskStatusTodo {
+		t.Fatalf("expected todo status, got %s", tReopened.Status)
 	}
-	if len(tDoing.StatusEvents) != 2 {
-		t.Fatalf("expected 2 events after reopen, got %d", len(tDoing.StatusEvents))
+	if tReopened.CompletedAt != nil {
+		t.Fatalf("expected completed_at to be nil on reopen, got: %v", tReopened.CompletedAt)
 	}
-	if tDoing.StatusEvents[0].Action != markdown.StatusEventActionCompleted {
-		t.Fatalf("expected event 0 to be completed, got %s", tDoing.StatusEvents[0].Action)
+	if len(tReopened.StatusEvents) != 2 {
+		t.Fatalf("expected 2 events after reopen, got %d", len(tReopened.StatusEvents))
 	}
-	if tDoing.StatusEvents[1].Action != markdown.StatusEventActionReopened || tDoing.StatusEvents[1].At.IsZero() {
-		t.Fatalf("expected event 1 to be reopened, got %+v", tDoing.StatusEvents[1])
+	if tReopened.StatusEvents[0].Action != markdown.StatusEventActionCompleted {
+		t.Fatalf("expected event 0 to be completed, got %s", tReopened.StatusEvents[0].Action)
+	}
+	if tReopened.StatusEvents[1].Action != markdown.StatusEventActionReopened || tReopened.StatusEvents[1].At.IsZero() {
+		t.Fatalf("expected event 1 to be reopened, got %+v", tReopened.StatusEvents[1])
 	}
 
-	// 3. doing -> done: should append second completed event
+	// 3. todo -> done: should append second completed event and set completed_at
 	tDoneAgain, err := s.SetTaskStatus(created.ID, markdown.TaskStatusDone)
 	if err != nil {
 		t.Fatalf("SetTaskStatus(done again) failed: %v", err)
+	}
+	if tDoneAgain.CompletedAt == nil {
+		t.Fatalf("expected completed_at to be set on second completion")
 	}
 	if len(tDoneAgain.StatusEvents) != 3 {
 		t.Fatalf("expected 3 events, got %d", len(tDoneAgain.StatusEvents))
@@ -419,7 +431,7 @@ custom_id: pi-9988
 	updated, err := s.UpdateTask(UpdateTaskInput{
 		ID:     task.ID,
 		Title:  "已知标题被修改",
-		Status: markdown.TaskStatusDoing,
+		Status: markdown.TaskStatusTodo,
 		Body:   "更新后的正文内容。",
 	})
 	if err != nil {

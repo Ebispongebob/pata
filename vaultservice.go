@@ -251,8 +251,11 @@ func (s *VaultService) CreateTask(input CreateTaskInput) (*markdown.Task, error)
 	}
 
 	status := input.Status
-	if status == "" {
+	if status == "" || status == markdown.TaskStatusDoing {
 		status = markdown.TaskStatusTodo
+	}
+	if status != markdown.TaskStatusTodo && status != markdown.TaskStatusDone {
+		return nil, fmt.Errorf("无效的任务状态: %s (必须为 todo 或 done)", status)
 	}
 
 	cleanedNoteIDs, err := validateAndCleanNoteIDs(v, input.NoteIDs)
@@ -282,6 +285,7 @@ func (s *VaultService) CreateTask(input CreateTaskInput) (*markdown.Task, error)
 	}
 
 	if status == markdown.TaskStatusDone {
+		task.CompletedAt = &now
 		task.StatusEvents = []markdown.StatusEvent{
 			{
 				Action: markdown.StatusEventActionCompleted,
@@ -315,6 +319,14 @@ func (s *VaultService) UpdateTask(input UpdateTaskInput) (*markdown.Task, error)
 		return nil, fmt.Errorf("任务标题不能为空")
 	}
 
+	status := input.Status
+	if status == markdown.TaskStatusDoing {
+		status = markdown.TaskStatusTodo
+	}
+	if status != markdown.TaskStatusTodo && status != markdown.TaskStatusDone {
+		return nil, fmt.Errorf("无效的任务状态: %s (必须为 todo 或 done)", status)
+	}
+
 	existing, ok := v.Index.GetTask(input.ID)
 	if !ok {
 		return nil, fmt.Errorf("任务不存在: %s", input.ID)
@@ -326,17 +338,21 @@ func (s *VaultService) UpdateTask(input UpdateTaskInput) (*markdown.Task, error)
 	}
 
 	now := time.Now()
-	// Status event semantics: record completion or reopen
-	if existing.Status != markdown.TaskStatusDone && input.Status == markdown.TaskStatusDone {
+	// Status event semantics: record completion or reopen, maintain completed_at
+	if existing.Status != markdown.TaskStatusDone && status == markdown.TaskStatusDone {
+		existing.CompletedAt = &now
 		existing.StatusEvents = append(existing.StatusEvents, markdown.StatusEvent{
 			Action: markdown.StatusEventActionCompleted,
 			At:     now,
 		})
-	} else if existing.Status == markdown.TaskStatusDone && (input.Status == markdown.TaskStatusTodo || input.Status == markdown.TaskStatusDoing) {
+	} else if existing.Status == markdown.TaskStatusDone && status == markdown.TaskStatusTodo {
+		existing.CompletedAt = nil
 		existing.StatusEvents = append(existing.StatusEvents, markdown.StatusEvent{
 			Action: markdown.StatusEventActionReopened,
 			At:     now,
 		})
+	} else if status == markdown.TaskStatusDone && existing.CompletedAt == nil {
+		existing.CompletedAt = &now
 	}
 
 	var due *string
@@ -346,7 +362,7 @@ func (s *VaultService) UpdateTask(input UpdateTaskInput) (*markdown.Task, error)
 	}
 
 	existing.Title = title
-	existing.Status = input.Status
+	existing.Status = status
 	existing.Due = due
 	existing.Tags = input.Tags
 	existing.NoteIDs = cleanedNoteIDs
@@ -445,11 +461,15 @@ func (s *VaultService) SetTaskStatus(id string, status markdown.TaskStatus) (*ma
 		return nil, fmt.Errorf("任务 ID 不能为空")
 	}
 
+	if status == markdown.TaskStatusDoing {
+		status = markdown.TaskStatusTodo
+	}
+
 	switch status {
-	case markdown.TaskStatusTodo, markdown.TaskStatusDoing, markdown.TaskStatusDone:
+	case markdown.TaskStatusTodo, markdown.TaskStatusDone:
 		// valid
 	default:
-		return nil, fmt.Errorf("无效的任务状态: %s (必须为 todo, doing 或 done)", status)
+		return nil, fmt.Errorf("无效的任务状态: %s (必须为 todo 或 done)", status)
 	}
 
 	existing, ok := v.Index.GetTask(id)
@@ -463,11 +483,13 @@ func (s *VaultService) SetTaskStatus(id string, status markdown.TaskStatus) (*ma
 
 	now := time.Now()
 	if status == markdown.TaskStatusDone {
+		existing.CompletedAt = &now
 		existing.StatusEvents = append(existing.StatusEvents, markdown.StatusEvent{
 			Action: markdown.StatusEventActionCompleted,
 			At:     now,
 		})
 	} else if existing.Status == markdown.TaskStatusDone {
+		existing.CompletedAt = nil
 		existing.StatusEvents = append(existing.StatusEvents, markdown.StatusEvent{
 			Action: markdown.StatusEventActionReopened,
 			At:     now,
@@ -871,6 +893,7 @@ func (s *VaultService) GetDayTimeline(date string) ([]TimelineItem, error) {
 
 	// 1. Task status events (completed / reopened) whose local date matches
 	for _, t := range tasks {
+		hasCompletionForDate := false
 		for _, ev := range t.StatusEvents {
 			kind := "completion"
 			if ev.Action == markdown.StatusEventActionReopened {
@@ -879,9 +902,23 @@ func (s *VaultService) GetDayTimeline(date string) ([]TimelineItem, error) {
 				continue
 			}
 			if ev.At.In(time.Local).Format("2006-01-02") == trimmedDate {
+				if kind == "completion" {
+					hasCompletionForDate = true
+				}
 				items = append(items, TimelineItem{
 					Kind:      kind,
 					Time:      ev.At,
+					TaskID:    t.ID,
+					TaskTitle: t.Title,
+				})
+			}
+		}
+		// If task is completed and completed_at falls on this date, but not captured in status_events, include it
+		if !hasCompletionForDate && t.Status == markdown.TaskStatusDone && t.CompletedAt != nil {
+			if t.CompletedAt.In(time.Local).Format("2006-01-02") == trimmedDate {
+				items = append(items, TimelineItem{
+					Kind:      "completion",
+					Time:      *t.CompletedAt,
 					TaskID:    t.ID,
 					TaskTitle: t.Title,
 				})

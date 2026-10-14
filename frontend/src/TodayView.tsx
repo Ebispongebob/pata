@@ -6,7 +6,6 @@ import {
   RotateCcw,
   CheckCircle2,
   Circle,
-  Clock,
   ArrowUp,
   ArrowDown,
   CalendarMinus,
@@ -69,7 +68,7 @@ function formatDateDisplay(dateStr: string): string {
 }
 
 const iconBtn =
-  'p-1 rounded text-stone-400 hover:text-stone-700 dark:hover:text-stone-200 hover:bg-stone-100 dark:hover:bg-stone-800 transition disabled:opacity-20 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-emerald-600';
+  'p-1 rounded text-stone-400 hover:text-stone-700 dark:hover:text-stone-200 hover:bg-stone-100 dark:hover:bg-stone-800 transition disabled:opacity-20 focus:outline-none focus:ring-0';
 
 function Banner({
   tone,
@@ -335,8 +334,6 @@ export function TodayView({
     const nextStatus =
       task.status === TaskStatus.TaskStatusDone
         ? TaskStatus.TaskStatusTodo
-        : task.status === TaskStatus.TaskStatusTodo
-        ? TaskStatus.TaskStatusDoing
         : TaskStatus.TaskStatusDone;
     try {
       await VaultService.SetTaskStatus(task.id, nextStatus);
@@ -495,6 +492,7 @@ export function TodayView({
       ref={panelRef}
       taskId={openTaskId}
       closeLabel="关闭详情"
+      tagNames={tagNames}
       onClose={closePanel}
       onChanged={() => {
         void loadData();
@@ -661,7 +659,6 @@ export function TodayView({
                   }
 
                   const isDone = task.status === TaskStatus.TaskStatusDone;
-                  const isDoing = task.status === TaskStatus.TaskStatusDoing;
                   const idx = validPlanIds.indexOf(task.id);
                   let dueBadge: React.ReactNode = null;
                   if (task.due && !isDone) {
@@ -691,8 +688,8 @@ export function TodayView({
                       }}
                       tabIndex={0}
                       role="button"
-                      className={`group flex items-center gap-3 px-3 py-2.5 cursor-pointer transition first:rounded-t-xl last:rounded-b-xl hover:bg-stone-50 dark:hover:bg-stone-900/60 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-emerald-600 ${
-                        task.id === openTaskId ? 'bg-emerald-50/60 dark:bg-emerald-950/20' : ''
+                      className={`group flex items-center gap-3 px-3 py-2.5 cursor-pointer transition first:rounded-t-xl last:rounded-b-xl hover:bg-stone-50 dark:hover:bg-stone-900/60 focus:outline-none focus:ring-0 ${
+                        task.id === openTaskId ? 'bg-stone-100/80 dark:bg-stone-800/50' : ''
                       }`}
                     >
                       <button
@@ -701,13 +698,11 @@ export function TodayView({
                           e.stopPropagation();
                           void handleToggleStatus(task);
                         }}
-                        className="p-0.5 rounded shrink-0 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-emerald-600"
-                        title={isDone ? '点击重新打开为待办' : isDoing ? '点击标记为完成' : '点击标记为进行中'}
+                        className="p-0.5 rounded shrink-0 focus:outline-none focus:ring-0"
+                        title={isDone ? '点击恢复为待办' : '点击标记为完成'}
                       >
                         {isDone ? (
                           <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                        ) : isDoing ? (
-                          <Clock className="w-4 h-4 text-blue-600" />
                         ) : (
                           <Circle className="w-4 h-4 text-stone-400 group-hover:text-stone-600" />
                         )}
@@ -877,7 +872,7 @@ export function TodayView({
                               }}
                               autoFocus
                               rows={3}
-                              className="w-full p-2 text-xs rounded-lg border border-stone-200 dark:border-stone-800 bg-white dark:bg-stone-950 text-stone-900 dark:text-stone-100 focus:outline-hidden focus:ring-2 focus:ring-emerald-600 resize-y leading-relaxed"
+                              className="w-full p-2 text-xs rounded-lg border border-stone-200 dark:border-stone-800 bg-white dark:bg-stone-950 text-stone-900 dark:text-stone-100 focus:outline-none focus:ring-0 focus:border-stone-400 dark:focus:border-stone-600 resize-y leading-relaxed"
                             />
                             <div className="flex gap-2">
                               <button
@@ -984,7 +979,7 @@ export function TodayView({
                 onChange={(e) => setAddSearch(e.target.value)}
                 placeholder="搜索任务标题或标签..."
                 autoFocus
-                className="w-full pl-8 pr-3 py-1.5 text-xs rounded-lg border border-stone-200 dark:border-stone-800 bg-stone-50 dark:bg-stone-950 text-stone-900 dark:text-stone-100 placeholder-stone-400 focus:outline-hidden focus:ring-1 focus:ring-emerald-600"
+                className="w-full pl-8 pr-3 py-1.5 text-xs rounded-lg border border-stone-200 dark:border-stone-800 bg-stone-50 dark:bg-stone-950 text-stone-900 dark:text-stone-100 placeholder-stone-400 focus:outline-none focus:ring-0 focus:border-stone-400 dark:focus:border-stone-600"
               />
             </div>
 

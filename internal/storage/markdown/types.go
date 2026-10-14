@@ -21,8 +21,8 @@ type TaskStatus string
 
 const (
 	TaskStatusTodo  TaskStatus = "todo"
-	TaskStatusDoing TaskStatus = "doing"
 	TaskStatusDone  TaskStatus = "done"
+	TaskStatusDoing TaskStatus = "doing" // Deprecated: legacy status, treated as todo
 )
 
 // StatusEventAction represents actions recorded in task status events.
@@ -55,6 +55,7 @@ type Task struct {
 	ID           string               `yaml:"id" json:"id"`
 	Title        string               `yaml:"title" json:"title"`
 	Status       TaskStatus           `yaml:"status" json:"status"`
+	CompletedAt  *time.Time           `yaml:"completed_at,omitempty" json:"completed_at,omitempty"`
 	Due          *string              `yaml:"due" json:"due"` // YYYY-MM-DD or nil
 	Tags         []string             `yaml:"tags,omitempty" json:"tags,omitempty"`
 	NoteIDs      []string             `yaml:"note_ids,omitempty" json:"note_ids,omitempty"`
@@ -73,6 +74,10 @@ func (t *Task) SetBody(body string)            { t.Body = body }
 func (t *Task) GetExtra() map[string]yaml.Node { return t.Extra }
 func (t *Task) Clone() Entity {
 	cp := *t
+	if t.CompletedAt != nil {
+		c := *t.CompletedAt
+		cp.CompletedAt = &c
+	}
 	if t.Due != nil {
 		d := *t.Due
 		cp.Due = &d

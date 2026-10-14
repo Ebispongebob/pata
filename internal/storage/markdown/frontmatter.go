@@ -166,6 +166,24 @@ func ParseMarkdown(filePath string, content []byte) (Entity, error) {
 				Err:    err,
 			}
 		}
+		// Gracefully map legacy "doing" status to "todo"
+		if task.Status == TaskStatusDoing {
+			task.Status = TaskStatusTodo
+		}
+		// If task is done but completed_at is not set, infer from latest completed event or UpdatedAt
+		if task.Status == TaskStatusDone && task.CompletedAt == nil {
+			for i := len(task.StatusEvents) - 1; i >= 0; i-- {
+				if task.StatusEvents[i].Action == StatusEventActionCompleted {
+					t := task.StatusEvents[i].At
+					task.CompletedAt = &t
+					break
+				}
+			}
+			if task.CompletedAt == nil && !task.UpdatedAt.IsZero() {
+				t := task.UpdatedAt
+				task.CompletedAt = &t
+			}
+		}
 		task.Body = string(bodyBytes)
 		entity = &task
 

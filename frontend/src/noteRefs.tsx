@@ -2,6 +2,7 @@
 // Note 正文保存标准 Markdown 相对链接；Task 描述 / 任务评论保留 `[[名称]]` 纯文本，
 // 名称到真实 Note ID 的绑定由调用方持久化在 note_refs（见 schema.md）。
 import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Events } from '@wailsio/runtime';
 import * as VaultService from '../bindings/pata/vaultservice';
 import { NoteRef } from '../bindings/pata/internal/storage/markdown/models';
@@ -30,7 +31,7 @@ export function useNoteRefs(): NoteRef[] {
 // ---------- 触发与候选 ----------
 
 // 中文输入法下 `[` 会变成 `【`，一并识别。
-const TRIGGER = /(\[\[|【【)([^\[\]【】\n]*)$/;
+const TRIGGER = /(\[\[|【【|【\[|\[【)([^\[\]【】\n]*)$/;
 
 /** 光标前文本以未完成的 `[[查询` 结尾时返回其起点与查询。 */
 export function matchTrigger(before: string): { start: number; query: string } | null {
@@ -79,6 +80,7 @@ export function NotePicker({
   index,
   left,
   top,
+  bottom,
   onPick,
   onHover,
 }: {
@@ -86,16 +88,22 @@ export function NotePicker({
   allNotes: NoteRef[];
   index: number;
   left: number;
-  top: number;
+  top?: number;
+  bottom?: number;
   onPick: (n: NoteRef) => void;
   onHover: (i: number) => void;
 }) {
   const dup = (title: string) => allNotes.filter((n) => n.title === title).length > 1;
-  return (
+  const picker = (
     <div
       role="listbox"
       aria-label="引用笔记"
-      style={{ position: 'fixed', left: Math.min(left, window.innerWidth - 300), top, width: 280 }}
+      style={{
+        position: 'fixed',
+        left: Math.min(left, Math.max(16, window.innerWidth - 300)),
+        ...(bottom !== undefined ? { bottom } : { top }),
+        width: 280,
+      }}
       className="z-50 max-h-64 overflow-y-auto rounded-lg border border-stone-200 dark:border-stone-700 bg-white dark:bg-stone-900 shadow-xl py-1 text-xs"
     >
       {items.length === 0 ? (
@@ -123,6 +131,11 @@ export function NotePicker({
       )}
     </div>
   );
+
+  if (typeof document !== 'undefined') {
+    return createPortal(picker, document.body);
+  }
+  return picker;
 }
 
 // ---------- 纯文本引用（Task 描述 / 评论） ----------
@@ -145,11 +158,13 @@ export function sameRefs(a: NoteRefMap, b: NoteRefMap): boolean {
 
 /** 已绑定只认绑定的 ID；未绑定仅在标题唯一匹配时解析（与 Go Core 规则一致）。 */
 export function resolveRef(name: string, refs: NoteRefMap | undefined, notes: NoteRef[]): { note?: NoteRef; reason?: string } {
-  if (refs && name in refs) {
-    const n = notes.find((x) => x.id === refs[name]);
-    return n ? { note: n } : { reason: '笔记不存在或已移动' };
+  const trimmed = name.trim();
+  if (refs && (trimmed in refs || name in refs)) {
+    const targetId = refs[trimmed] ?? refs[name];
+    const n = notes.find((x) => x.id === targetId);
+    if (n) return { note: n };
   }
-  const m = notes.filter((x) => x.title === name);
+  const m = notes.filter((x) => x.title.trim() === trimmed);
   if (m.length === 1) return { note: m[0] };
   return { reason: m.length > 1 ? '有多篇同名笔记，请编辑后重新选择' : '笔记不存在或已移动' };
 }
@@ -190,7 +205,7 @@ export function NoteRefText({
             onOpenNote?.(note.id);
           }}
           title={note.path}
-          className="text-emerald-700 dark:text-emerald-400 underline decoration-dotted underline-offset-2 hover:decoration-solid"
+          className="text-emerald-700 dark:text-emerald-400 underline decoration-dotted underline-offset-2 hover:decoration-solid cursor-pointer text-left"
         >
           {name}
         </button>
@@ -211,14 +226,40 @@ type TAProps = Omit<React.TextareaHTMLAttributes<HTMLTextAreaElement>, 'value' |
   refs: NoteRefMap;
   onRefsChange: (r: NoteRefMap) => void;
   notes: NoteRef[];
+  autoAdjustHeight?: boolean;
+  minHeight?: number;
 };
 
 /** 带 `[[` 笔记候选的纯文本输入框。 */
-export function NoteRefTextarea({ value, onChange, refs, onRefsChange, notes, onKeyDown, ...rest }: TAProps) {
+export function NoteRefTextarea({
+  value,
+  onChange,
+  refs,
+  onRefsChange,
+  notes,
+  autoAdjustHeight,
+  minHeight = 22,
+  onKeyDown,
+  ...rest
+}: TAProps) {
   const ta = useRef<HTMLTextAreaElement>(null);
   const dismissed = useRef(-1);
-  const [st, setSt] = useState<{ start: number; query: string; index: number; left: number; top: number } | null>(null);
+  const [st, setSt] = useState<{
+    start: number;
+    query: string;
+    index: number;
+    left: number;
+    top?: number;
+    bottom?: number;
+  } | null>(null);
   const items = st ? filterNotes(notes, st.query) : [];
+
+  useEffect(() => {
+    if (autoAdjustHeight && ta.current) {
+      ta.current.style.height = 'auto';
+      ta.current.style.height = `${Math.max(ta.current.scrollHeight, minHeight)}px`;
+    }
+  }, [value, autoAdjustHeight, minHeight]);
 
   const sync = (el: HTMLTextAreaElement) => {
     const m = matchTrigger(el.value.slice(0, el.selectionStart));
@@ -229,7 +270,16 @@ export function NoteRefTextarea({ value, onChange, refs, onRefsChange, notes, on
     }
     if (dismissed.current === m.start) return;
     const r = el.getBoundingClientRect();
-    setSt((p) => ({ ...m, index: p && p.query === m.query ? p.index : 0, left: r.left, top: r.bottom + 4 }));
+    const pickerHeight = 240;
+    const spaceBelow = window.innerHeight - r.bottom;
+    const showAbove = spaceBelow < pickerHeight && r.top > pickerHeight;
+    setSt((p) => ({
+      ...m,
+      index: p && p.query === m.query ? p.index : 0,
+      left: r.left,
+      top: showAbove ? undefined : r.bottom + 4,
+      bottom: showAbove ? window.innerHeight - r.top + 4 : undefined,
+    }));
   };
 
   const pick = (n: NoteRef) => {
@@ -258,6 +308,10 @@ export function NoteRefTextarea({ value, onChange, refs, onRefsChange, notes, on
         value={value}
         onChange={(e) => {
           onChange(e.target.value);
+          if (autoAdjustHeight) {
+            e.target.style.height = 'auto';
+            e.target.style.height = `${Math.max(e.target.scrollHeight, minHeight)}px`;
+          }
           sync(e.target);
         }}
         onSelect={(e) => sync(e.currentTarget)}
@@ -292,6 +346,7 @@ export function NoteRefTextarea({ value, onChange, refs, onRefsChange, notes, on
           index={st.index}
           left={st.left}
           top={st.top}
+          bottom={st.bottom}
           onPick={pick}
           onHover={(i) => setSt({ ...st, index: i })}
         />

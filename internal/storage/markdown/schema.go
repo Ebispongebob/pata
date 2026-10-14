@@ -53,13 +53,21 @@ func validateTask(path string, t *Task) error {
 	}
 
 	switch t.Status {
-	case TaskStatusTodo, TaskStatusDoing, TaskStatusDone:
-		// valid
+	case TaskStatusTodo, TaskStatusDone, TaskStatusDoing:
+		// valid (TaskStatusDoing allowed for backward compatibility)
 	default:
 		return &ValidationError{
 			Path:   path,
 			Field:  "status",
-			Reason: fmt.Sprintf("must be one of 'todo', 'doing', 'done'; got '%s'", t.Status),
+			Reason: fmt.Sprintf("must be one of 'todo', 'done'; got '%s'", t.Status),
+		}
+	}
+
+	if t.CompletedAt != nil && t.CompletedAt.IsZero() {
+		return &ValidationError{
+			Path:   path,
+			Field:  "completed_at",
+			Reason: "must be valid RFC3339 timestamp or null",
 		}
 	}
 

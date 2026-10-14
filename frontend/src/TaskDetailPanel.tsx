@@ -1,29 +1,70 @@
-import React, { useState, useEffect, useMemo, useCallback, useImperativeHandle, forwardRef } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef, useImperativeHandle, forwardRef } from 'react';
 import { Events } from '@wailsio/runtime';
 import {
-  Clock,
-  Trash2,
-  Save,
   ArrowLeft,
+  MoreHorizontal,
+  Circle,
+  CheckCircle2,
+  Calendar,
   Plus,
+  X,
+  Trash2,
   AlertCircle,
   RefreshCw,
-  X,
-  Search,
-  MessageSquare,
-  Send,
-  FileText,
-  Link,
-  Unlink,
-  ExternalLink,
-  CheckCircle2,
+  Info,
+  ArrowUpRight,
 } from 'lucide-react';
 import * as VaultService from '../bindings/pata/vaultservice';
-import { Task, TaskStatus, Memo, Note } from '../bindings/pata/internal/storage/markdown/models';
+import { Task, TaskStatus, Memo } from '../bindings/pata/internal/storage/markdown/models';
 import { UpdateTaskInput, CreateMemoInput } from '../bindings/pata/models';
 import { playLogoSuccess } from './logoAnimation';
 import { dedupeTags } from './quickCreate';
 import { NoteRefText, NoteRefTextarea, NoteRefMap, pruneRefs, sameRefs, useNoteRefs } from './noteRefs';
+
+function getPresetDates() {
+  const now = new Date();
+  const pad = (n: number) => n.toString().padStart(2, '0');
+  const format = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+
+  const todayStr = format(now);
+
+  const tomorrow = new Date(now);
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  const tomorrowStr = format(tomorrow);
+
+  const nextMonday = new Date(now);
+  const day = nextMonday.getDay();
+  const daysUntilNextMonday = ((8 - day) % 7) || 7;
+  nextMonday.setDate(nextMonday.getDate() + daysUntilNextMonday);
+  const nextMondayStr = format(nextMonday);
+
+  return { todayStr, tomorrowStr, nextMondayStr };
+}
+
+function formatDueDisplay(dueStr: string): { text: string; isOverdue: boolean; isToday: boolean } {
+  if (!dueStr) return { text: '添加截止日期', isOverdue: false, isToday: false };
+  const { todayStr, tomorrowStr } = getPresetDates();
+
+  if (dueStr === todayStr) {
+    return { text: '今天截止', isOverdue: false, isToday: true };
+  }
+  if (dueStr === tomorrowStr) {
+    return { text: '明天截止', isOverdue: false, isToday: false };
+  }
+  if (dueStr < todayStr) {
+    return { text: `${dueStr} (已逾期)`, isOverdue: true, isToday: false };
+  }
+  try {
+    const [y, m, d] = dueStr.split('-').map(Number);
+    const nowYear = new Date().getFullYear();
+    if (y === nowYear) {
+      return { text: `${m}月${d}日截止`, isOverdue: false, isToday: false };
+    }
+    return { text: `${dueStr} 截止`, isOverdue: false, isToday: false };
+  } catch {
+    return { text: `${dueStr} 截止`, isOverdue: false, isToday: false };
+  }
+}
 
 function formatMemoTimestamp(isoString: string): string {
   if (!isoString) return '';
@@ -57,44 +98,14 @@ function formatMemoTimestamp(isoString: string): string {
   }
 }
 
-function formatRelativeTime(isoString: string): string {
-  if (!isoString) return '';
-  try {
-    const d = new Date(isoString);
-    if (isNaN(d.getTime())) return isoString;
-    const now = new Date();
-    const diffSec = Math.floor((now.getTime() - d.getTime()) / 1000);
-    if (diffSec < 60) return '刚刚';
-    const diffMin = Math.floor(diffSec / 60);
-    if (diffMin < 60) return `${diffMin} 分钟前`;
-    const diffHour = Math.floor(diffMin / 60);
-    if (diffHour < 24) return `${diffHour} 小时前`;
-
-    const yesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
-    const isYesterday =
-      d.getFullYear() === yesterday.getFullYear() &&
-      d.getMonth() === yesterday.getMonth() &&
-      d.getDate() === yesterday.getDate();
-    if (isYesterday) return '昨天';
-
-    const diffDay = Math.floor(diffHour / 24);
-    if (diffDay < 7) return `${diffDay} 天前`;
-
-    const pad = (n: number) => n.toString().padStart(2, '0');
-    const y = d.getFullYear();
-    const m = pad(d.getMonth() + 1);
-    const day = pad(d.getDate());
-    if (y === now.getFullYear()) {
-      return `${m}-${day}`;
-    }
-    return `${y}-${m}-${day}`;
-  } catch {
-    return isoString;
-  }
-}
+const adjustTextareaHeight = (el: HTMLTextAreaElement | null, minHeight = 22) => {
+  if (!el) return;
+  el.style.height = 'auto';
+  el.style.height = `${Math.max(el.scrollHeight, minHeight)}px`;
+};
 
 export interface TaskDetailHandle {
-  /** 有未保存草稿时弹出 保存/放弃/取消；返回 true 表示可以继续离开。 */
+  /** 有未保存草稿时返回确认；成功自动保存或返回 true 表示可以继续离开。 */
   confirmLeave: () => Promise<boolean>;
   /** 丢弃表单并从磁盘重读（行内修改后同步）。 */
   reload: () => Promise<void>;
@@ -103,6 +114,7 @@ export interface TaskDetailHandle {
 interface TaskDetailPanelProps {
   taskId: string;
   closeLabel: string;
+  tagNames?: string[];
   onClose: () => void;
   /** 任何成功写入后调用，用于刷新父级列表、全局标签与搜索。 */
   onChanged: () => void;
@@ -115,7 +127,7 @@ const isConflictErr = (err: any) =>
   (err.message.includes('write conflict') || err.message.includes('conflict at'));
 
 export const TaskDetailPanel = forwardRef<TaskDetailHandle, TaskDetailPanelProps>(function TaskDetailPanel(
-  { taskId, closeLabel, onClose, onChanged, onDeleted, onOpenNote },
+  { taskId, closeLabel, tagNames = [], onClose, onChanged, onDeleted, onOpenNote },
   ref
 ) {
   const [task, setTask] = useState<Task | null>(null);
@@ -124,58 +136,96 @@ export const TaskDetailPanel = forwardRef<TaskDetailHandle, TaskDetailPanelProps
   const [detailTitle, setDetailTitle] = useState('');
   const [detailStatus, setDetailStatus] = useState<TaskStatus>(TaskStatus.TaskStatusTodo);
   const [detailDue, setDetailDue] = useState<string>('');
-  const [detailTags, setDetailTags] = useState<string>('');
+  const [detailTags, setDetailTags] = useState<string[]>([]);
   const [detailBody, setDetailBody] = useState<string>('');
-  const [detailNoteIds, setDetailNoteIds] = useState<string[]>([]);
   const [detailRefs, setDetailRefs] = useState<NoteRefMap>({});
-  const [editingBody, setEditingBody] = useState(false);
-  const noteRefs = useNoteRefs();
-  const [newMemoRefs, setNewMemoRefs] = useState<NoteRefMap>({});
+  const [isEditingBody, setIsEditingBody] = useState(false);
 
   const [saving, setSaving] = useState(false);
   const [detailError, setDetailError] = useState<string | null>(null);
-  const [saveSuccessMsg, setSaveSuccessMsg] = useState<string | null>(null);
   const [externalModified, setExternalModified] = useState(false);
   const [conflictError, setConflictError] = useState<string | null>(null);
 
+  // Popover / Menu dropdown states
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [statusOpen, setStatusOpen] = useState(false);
+  const [dueOpen, setDueOpen] = useState(false);
+  const [tagOpen, setTagOpen] = useState(false);
+  const [tagInput, setTagInput] = useState('');
+
+  // Modals
+  const [showTaskInfo, setShowTaskInfo] = useState(false);
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [leavePrompt, setLeavePrompt] = useState<((r: boolean) => void) | null>(null);
 
+  // Activities (Memos)
   const [taskMemos, setTaskMemos] = useState<Memo[]>([]);
-  const [loadingMemos, setLoadingMemos] = useState(false);
   const [memoListError, setMemoListError] = useState<string | null>(null);
   const [newMemoBody, setNewMemoBody] = useState('');
+  const [newMemoRefs, setNewMemoRefs] = useState<NoteRefMap>({});
   const [submittingMemo, setSubmittingMemo] = useState(false);
   const [submitMemoError, setSubmitMemoError] = useState<string | null>(null);
 
-  const [allNotes, setAllNotes] = useState<Note[]>([]);
-  const [loadingNotes, setLoadingNotes] = useState(false);
-  const [showAddNoteModal, setShowAddNoteModal] = useState(false);
-  const [noteSearchQuery, setNoteSearchQuery] = useState('');
-  const [unlinkTarget, setUnlinkTarget] = useState<{ id: string; title: string } | null>(null);
+  const noteRefs = useNoteRefs();
 
-  const parseTags = (s: string) =>
-    dedupeTags(
-      s
-        .split(/[,，]/)
-        .map((t) => t.trim().replace(/^#+/, ''))
-        .filter((t) => t.length > 0)
-    );
+  const titleTextareaRef = useRef<HTMLTextAreaElement>(null);
+  const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Popover refs for outside click detection
+  const menuRef = useRef<HTMLDivElement>(null);
+  const statusRef = useRef<HTMLDivElement>(null);
+  const dueRef = useRef<HTMLDivElement>(null);
+  const tagRef = useRef<HTMLDivElement>(null);
+
+  // Latest state references for safe auto-saving
+  const latestTaskRef = useRef<Task | null>(null);
+  const latestTitleRef = useRef('');
+  const latestStatusRef = useRef<TaskStatus>(TaskStatus.TaskStatusTodo);
+  const latestDueRef = useRef<string>('');
+  const latestTagsRef = useRef<string[]>([]);
+  const latestBodyRef = useRef<string>('');
+  const latestRefsRef = useRef<NoteRefMap>({});
+
+  useEffect(() => {
+    latestTaskRef.current = task;
+  }, [task]);
+  useEffect(() => {
+    latestTitleRef.current = detailTitle;
+  }, [detailTitle]);
+  useEffect(() => {
+    latestStatusRef.current = detailStatus;
+  }, [detailStatus]);
+  useEffect(() => {
+    latestDueRef.current = detailDue;
+  }, [detailDue]);
+  useEffect(() => {
+    latestTagsRef.current = detailTags;
+  }, [detailTags]);
+  useEffect(() => {
+    latestBodyRef.current = detailBody;
+  }, [detailBody]);
+  useEffect(() => {
+    latestRefsRef.current = detailRefs;
+  }, [detailRefs]);
+
+  // Adjust title height on load or change
+  useEffect(() => {
+    adjustTextareaHeight(titleTextareaRef.current, 28);
+  }, [detailTitle]);
 
   const applyTask = useCallback((t: Task) => {
     setTask(t);
     setDetailTitle(t.title);
     setDetailStatus(t.status);
     setDetailDue(t.due ?? '');
-    setDetailTags((t.tags ?? []).join(', '));
+    setDetailTags(t.tags ?? []);
     setDetailBody(t.body ?? '');
-    setDetailNoteIds(t.note_ids ?? []);
     setDetailRefs(t.note_refs ?? {});
+    latestRefsRef.current = t.note_refs ?? {};
   }, []);
 
   const loadMemos = useCallback(async () => {
-    setLoadingMemos(true);
     setMemoListError(null);
     try {
       const result = await VaultService.ListMemosByTask(taskId);
@@ -183,22 +233,8 @@ export const TaskDetailPanel = forwardRef<TaskDetailHandle, TaskDetailPanelProps
     } catch (err: any) {
       console.error('Failed to list memos for task:', err);
       setMemoListError(err?.message || String(err));
-    } finally {
-      setLoadingMemos(false);
     }
   }, [taskId]);
-
-  const loadAllNotes = useCallback(async () => {
-    setLoadingNotes(true);
-    try {
-      const result = await VaultService.ListNotes();
-      setAllNotes((result ?? []).filter((n): n is Note => n !== null));
-    } catch (err: any) {
-      console.error('Failed to list notes for task association:', err);
-    } finally {
-      setLoadingNotes(false);
-    }
-  }, []);
 
   const reload = useCallback(async () => {
     setDetailError(null);
@@ -209,73 +245,112 @@ export const TaskDetailPanel = forwardRef<TaskDetailHandle, TaskDetailPanelProps
       if (!t) throw new Error('任务不存在');
       applyTask(t);
       setLoadError(null);
-      await Promise.all([loadMemos(), loadAllNotes()]);
+      await loadMemos();
     } catch (err: any) {
       setDetailError(`重新加载失败: ${err?.message || err}`);
       setLoadError((prev) => prev ?? (err?.message || String(err)));
     }
-  }, [taskId, applyTask, loadMemos, loadAllNotes]);
+  }, [taskId, applyTask, loadMemos]);
 
   useEffect(() => {
     void reload();
   }, [reload]);
 
-  // 外部文件变化：不覆盖编辑中的表单，只提示。
+  // Outside click listener to dismiss open popovers
+  useEffect(() => {
+    const handleOutsideClick = (e: MouseEvent) => {
+      const target = e.target as Node;
+      if (menuRef.current && !menuRef.current.contains(target)) {
+        setMenuOpen(false);
+      }
+      if (statusRef.current && !statusRef.current.contains(target)) {
+        setStatusOpen(false);
+      }
+      if (dueRef.current && !dueRef.current.contains(target)) {
+        setDueOpen(false);
+      }
+      if (tagRef.current && !tagRef.current.contains(target)) {
+        setTagOpen(false);
+      }
+    };
+    window.addEventListener('mousedown', handleOutsideClick);
+    return () => window.removeEventListener('mousedown', handleOutsideClick);
+  }, []);
+
+  // Escape key listener to dismiss open popovers
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setMenuOpen(false);
+        setStatusOpen(false);
+        setDueOpen(false);
+        setTagOpen(false);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+
+  // External vault file change listener
   useEffect(() => {
     const unsubscribe = Events.On('vault:changed', (ev) => {
       const data = ev.data as { entity_id?: string } | undefined;
       if (data?.entity_id === taskId) setExternalModified(true);
       void loadMemos();
-      void loadAllNotes();
     });
     return () => {
       unsubscribe();
     };
-  }, [taskId, loadMemos, loadAllNotes]);
+  }, [taskId, loadMemos]);
 
+  // Clear debounce timer on unmount
   useEffect(() => {
-    if (!saveSuccessMsg) return;
-    const timer = setTimeout(() => setSaveSuccessMsg(null), 3000);
-    return () => clearTimeout(timer);
-  }, [saveSuccessMsg]);
+    return () => {
+      if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
+    };
+  }, []);
 
-  const buildInput = (noteIds: string[]): UpdateTaskInput => ({
-    id: taskId,
-    title: detailTitle.trim(),
-    status: detailStatus,
-    due: detailDue ? detailDue : null,
-    tags: parseTags(detailTags),
-    body: detailBody,
-    note_ids: noteIds,
-    note_refs: pruneRefs(detailBody, detailRefs),
-  });
+  const saveTask = useCallback(
+    async (patch?: {
+      title?: string;
+      status?: TaskStatus;
+      due?: string | null;
+      tags?: string[];
+      body?: string;
+      refs?: NoteRefMap;
+    }): Promise<boolean> => {
+      const currentTask = latestTaskRef.current;
+      if (!currentTask) return false;
 
-  const formDirty = useMemo(() => {
-    if (!task) return false;
-    const sig = (title: string, status: string, due: string, tags: string[], body: string) =>
-      JSON.stringify([title, status, due, tags, body]);
-    return (
-      sig(detailTitle.trim(), detailStatus, detailDue, parseTags(detailTags), detailBody) !==
-        sig(task.title, task.status, task.due ?? '', dedupeTags(task.tags ?? []), task.body ?? '') ||
-      !sameRefs(pruneRefs(detailBody, detailRefs), pruneRefs(task.body ?? '', task.note_refs ?? {}))
-    );
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [task, detailTitle, detailStatus, detailDue, detailTags, detailBody, detailRefs]);
-  // 未提交的评论草稿同样要在离开前确认
-  const dirty = formDirty || newMemoBody.trim() !== '';
+      const titleToSave = (patch?.title !== undefined ? patch.title : latestTitleRef.current).trim();
+      if (!titleToSave) {
+        return false;
+      }
+      const statusToSave = patch?.status !== undefined ? patch.status : latestStatusRef.current;
+      const dueToSave = patch?.due !== undefined ? (patch.due || null) : (latestDueRef.current || null);
+      const tagsToSave = patch?.tags !== undefined ? patch.tags : latestTagsRef.current;
+      const bodyToSave = patch?.body !== undefined ? patch.body : latestBodyRef.current;
+      const refsToSave = patch?.refs !== undefined ? patch.refs : latestRefsRef.current;
 
-  // 保存；成功返回 true。noteIds 变更与属性共用同一次写入。
-  const save = useCallback(
-    async (noteIds: string[], okMsg: string): Promise<boolean> => {
       setSaving(true);
       setDetailError(null);
       setConflictError(null);
-      setSaveSuccessMsg(null);
+
       try {
-        const updated = await VaultService.UpdateTask(buildInput(noteIds));
+        const input: UpdateTaskInput = {
+          id: taskId,
+          title: titleToSave,
+          status: statusToSave,
+          due: dueToSave,
+          tags: dedupeTags(tagsToSave),
+          body: bodyToSave,
+          note_ids: currentTask.note_ids ?? [],
+          note_refs: pruneRefs(bodyToSave, refsToSave),
+        };
+
+        const updated = await VaultService.UpdateTask(input);
         if (updated) {
           applyTask(updated);
-          setSaveSuccessMsg(okMsg);
           setExternalModified(false);
         }
         onChanged();
@@ -292,16 +367,33 @@ export const TaskDetailPanel = forwardRef<TaskDetailHandle, TaskDetailPanelProps
         setSaving(false);
       }
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [taskId, detailTitle, detailStatus, detailDue, detailTags, detailBody, detailRefs, applyTask, onChanged]
+    [taskId, applyTask, onChanged]
   );
 
-  const handleSave = useCallback(() => save(detailNoteIds, '已安全保存到 Markdown 文件'), [save, detailNoteIds]);
+  const formDirty = useMemo(() => {
+    if (!task) return false;
+    const currentTitle = detailTitle.trim();
+    if (currentTitle && currentTitle !== task.title) return true;
+    if (detailStatus !== task.status) return true;
+    if ((detailDue || '') !== (task.due ?? '')) return true;
+    const curTags = dedupeTags(detailTags).sort().join(',');
+    const taskTags = dedupeTags(task.tags ?? []).sort().join(',');
+    if (curTags !== taskTags) return true;
+    if (detailBody !== (task.body ?? '')) return true;
+    if (!sameRefs(pruneRefs(detailBody, detailRefs), pruneRefs(task.body ?? '', task.note_refs ?? {}))) return true;
+    return false;
+  }, [task, detailTitle, detailStatus, detailDue, detailTags, detailBody, detailRefs]);
 
-  const confirmLeave = useCallback(
-    () => (dirty ? new Promise<boolean>((resolve) => setLeavePrompt(() => resolve)) : Promise.resolve(true)),
-    [dirty]
-  );
+  const confirmLeave = useCallback(async (): Promise<boolean> => {
+    if (formDirty) {
+      const ok = await saveTask();
+      if (!ok) return false;
+    }
+    if (newMemoBody.trim() !== '') {
+      return new Promise<boolean>((resolve) => setLeavePrompt(() => resolve));
+    }
+    return true;
+  }, [formDirty, saveTask, newMemoBody]);
 
   useImperativeHandle(ref, () => ({ confirmLeave, reload }), [confirmLeave, reload]);
 
@@ -309,7 +401,7 @@ export const TaskDetailPanel = forwardRef<TaskDetailHandle, TaskDetailPanelProps
     const resolve = leavePrompt;
     if (!resolve) return;
     if (choice === 'save') {
-      const ok = (!formDirty || (await handleSave())) && (!newMemoBody.trim() || (await handleAddMemo()));
+      const ok = await handleAddMemo();
       setLeavePrompt(null);
       resolve(ok);
       return;
@@ -320,6 +412,78 @@ export const TaskDetailPanel = forwardRef<TaskDetailHandle, TaskDetailPanelProps
 
   const handleCloseClick = async () => {
     if (await confirmLeave()) onClose();
+  };
+
+  const handleStatusChange = async (newStatus: TaskStatus) => {
+    setStatusOpen(false);
+    if (newStatus === detailStatus) return;
+    setDetailStatus(newStatus);
+    if (newStatus === TaskStatus.TaskStatusDone) {
+      playLogoSuccess();
+    }
+    await saveTask({ status: newStatus });
+  };
+
+  const handleDueChange = async (newDue: string | null) => {
+    setDueOpen(false);
+    const formatted = newDue ? newDue : '';
+    if (formatted === detailDue) return;
+    setDetailDue(formatted);
+    await saveTask({ due: formatted ? formatted : null });
+  };
+
+  const handleRemoveTag = async (tagToRemove: string) => {
+    const nextTags = detailTags.filter((t) => t !== tagToRemove);
+    setDetailTags(nextTags);
+    await saveTask({ tags: nextTags });
+  };
+
+  const handleAddTag = async (rawTag: string) => {
+    const clean = rawTag.trim().replace(/^#+/, '');
+    if (!clean) return;
+    if (detailTags.includes(clean)) {
+      setTagInput('');
+      setTagOpen(false);
+      return;
+    }
+    const nextTags = dedupeTags([...detailTags, clean]);
+    setDetailTags(nextTags);
+    setTagInput('');
+    setTagOpen(false);
+    await saveTask({ tags: nextTags });
+  };
+
+  const handleTitleBlur = async () => {
+    const trimmed = detailTitle.trim();
+    if (!trimmed) {
+      if (task) setDetailTitle(task.title);
+      return;
+    }
+    if (task && trimmed !== task.title) {
+      await saveTask({ title: trimmed });
+    }
+  };
+
+  const handleBodyChange = (val: string) => {
+    setDetailBody(val);
+
+    if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
+    debounceTimerRef.current = setTimeout(() => {
+      if (latestTaskRef.current && val !== (latestTaskRef.current.body ?? '')) {
+        void saveTask({ body: val });
+      }
+    }, 1500);
+  };
+
+  const handleBodyBlur = async () => {
+    if (debounceTimerRef.current) {
+      clearTimeout(debounceTimerRef.current);
+      debounceTimerRef.current = null;
+    }
+    if (task && detailBody !== (task.body ?? '')) {
+      await saveTask({ body: detailBody });
+    }
+    setIsEditingBody(false);
   };
 
   const handleAddMemo = async (e?: React.FormEvent): Promise<boolean> => {
@@ -346,19 +510,6 @@ export const TaskDetailPanel = forwardRef<TaskDetailHandle, TaskDetailPanelProps
     }
   };
 
-  const handleAddNoteLink = async (noteId: string) => {
-    if (detailNoteIds.includes(noteId)) return;
-    setShowAddNoteModal(false);
-    await save([...detailNoteIds, noteId], '已更新关联笔记');
-  };
-
-  const handleConfirmUnlinkNote = async () => {
-    if (!unlinkTarget) return;
-    const next = detailNoteIds.filter((id) => id !== unlinkTarget.id);
-    setUnlinkTarget(null);
-    await save(next, '已更新关联笔记');
-  };
-
   const handleDeleteTask = async () => {
     setDeleting(true);
     try {
@@ -374,24 +525,36 @@ export const TaskDetailPanel = forwardRef<TaskDetailHandle, TaskDetailPanelProps
     }
   };
 
-  // ⌘S / Ctrl+S
+  // ⌘S / Ctrl+S keyboard shortcut to force save
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === 's') {
         e.preventDefault();
-        void handleSave();
+        void saveTask();
       }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [handleSave]);
+  }, [saveTask]);
+
+  const { todayStr, tomorrowStr, nextMondayStr } = useMemo(() => getPresetDates(), []);
+  const dueDisplay = useMemo(() => formatDueDisplay(detailDue), [detailDue]);
+
+  const availableSuggestedTags = useMemo(() => {
+    const all = tagNames ?? [];
+    const q = tagInput.trim().toLowerCase();
+    return all
+      .filter((t) => !detailTags.includes(t))
+      .filter((t) => !q || t.toLowerCase().includes(q))
+      .slice(0, 6);
+  }, [tagNames, detailTags, tagInput]);
 
   if (!task) {
     return (
-      <div className="space-y-3 text-xs text-stone-500">
+      <div className="h-full flex flex-col min-h-0 p-6 space-y-4 text-xs text-stone-500">
         <button
           onClick={onClose}
-          className="flex items-center space-x-1 px-2.5 py-1.5 rounded-md font-medium text-stone-600 dark:text-stone-300 hover:bg-stone-200/60 dark:hover:bg-stone-800/60 transition"
+          className="flex items-center space-x-1.5 px-2.5 py-1.5 rounded-md font-medium text-stone-600 dark:text-stone-300 hover:bg-stone-200/60 dark:hover:bg-stone-800/60 transition w-fit"
         >
           <ArrowLeft className="w-3.5 h-3.5" />
           <span>{closeLabel}</span>
@@ -401,59 +564,89 @@ export const TaskDetailPanel = forwardRef<TaskDetailHandle, TaskDetailPanelProps
             加载任务失败: {loadError}
           </div>
         ) : (
-          <div>加载中...</div>
+          <div className="py-8 text-center text-stone-400">加载中...</div>
         )}
       </div>
     );
   }
 
   return (
-      <div className="space-y-5">
-        {/* Navigation & Actions Top Bar */}
-        <div className="flex items-center justify-between gap-3 pb-3 border-b border-stone-200 dark:border-stone-800">
-          <button
-            onClick={handleCloseClick}
-            className="flex items-center space-x-1 px-2.5 py-1.5 rounded-md text-xs font-medium text-stone-600 dark:text-stone-300 hover:bg-stone-200/60 dark:hover:bg-stone-800/60 transition"
-          >
-            <ArrowLeft className="w-3.5 h-3.5" />
-            <span>{closeLabel}</span>
-          </button>
+    <div className="h-full flex flex-col min-h-0 bg-stone-50/50 dark:bg-stone-900/50 select-text">
+      {/* 1. Top Navigation Bar */}
+      <div className="flex items-center justify-between px-6 py-3 border-b border-stone-200/80 dark:border-stone-800/80 shrink-0">
+        <button
+          type="button"
+          onClick={handleCloseClick}
+          className="p-1.5 -ml-1.5 rounded-md text-stone-500 hover:text-stone-800 dark:hover:text-stone-200 hover:bg-stone-200/60 dark:hover:bg-stone-800/60 transition"
+          title={closeLabel}
+        >
+          <ArrowLeft className="w-4 h-4" />
+        </button>
 
-          <div className="flex items-center space-x-2">
+        <div className="flex items-center space-x-1">
+          {saving && (
+            <span className="text-[11px] text-stone-400 dark:text-stone-500 mr-1 select-none animate-pulse">
+              保存中...
+            </span>
+          )}
+          <div className="relative" ref={menuRef}>
             <button
-              onClick={() => setDeleteModalOpen(true)}
-              className="flex items-center space-x-1 px-2.5 py-1.5 rounded-md text-xs text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 border border-rose-200 dark:border-rose-900/40 transition"
-              title="删除任务"
+              type="button"
+              onClick={() => setMenuOpen((v) => !v)}
+              className="p-1.5 -mr-1.5 rounded-md text-stone-500 hover:text-stone-800 dark:hover:text-stone-200 hover:bg-stone-200/60 dark:hover:bg-stone-800/60 transition"
+              title="更多操作"
             >
-              <Trash2 className="w-3.5 h-3.5" />
-              <span>删除</span>
+              <MoreHorizontal className="w-4 h-4" />
             </button>
-            <button
-              onClick={() => void handleSave()}
-              disabled={saving}
-              className="flex items-center space-x-1.5 px-3.5 py-1.5 rounded-md bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-medium transition shadow-xs disabled:opacity-50"
-            >
-              <Save className={`w-3.5 h-3.5 ${saving ? 'animate-spin' : ''}`} />
-              <span>{saving ? '保存中...' : '保存'}</span>
-            </button>
+
+            {menuOpen && (
+              <div className="absolute right-0 top-full mt-1 w-36 rounded-lg border border-stone-200 dark:border-stone-800 bg-white dark:bg-stone-900 shadow-lg py-1 z-30">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMenuOpen(false);
+                    setShowTaskInfo(true);
+                  }}
+                  className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-stone-800 dark:text-stone-200 hover:bg-stone-100 dark:hover:bg-stone-800 transition text-left"
+                >
+                  <Info className="w-3.5 h-3.5 text-stone-400 shrink-0" />
+                  <span>任务信息</span>
+                </button>
+                <div className="my-1 border-t border-stone-100 dark:border-stone-800" />
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMenuOpen(false);
+                    setDeleteModalOpen(true);
+                  }}
+                  className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition text-left"
+                >
+                  <Trash2 className="w-3.5 h-3.5 shrink-0" />
+                  <span>删除任务</span>
+                </button>
+              </div>
+            )}
           </div>
         </div>
+      </div>
 
-        {/* External Modification / Conflict Warning Banner */}
+      {/* 2. Scrollable Middle Content */}
+      <div className="flex-1 min-h-0 overflow-y-auto px-6 py-4 space-y-4">
+        {/* External Modification Warning Banner */}
         {(externalModified || conflictError) && (
-          <div className="p-3.5 rounded-lg border border-amber-300 dark:border-amber-800/80 bg-amber-50 dark:bg-amber-950/40 text-amber-900 dark:text-amber-200 text-xs flex items-center justify-between gap-3 shadow-xs">
-            <div className="flex items-center space-x-2.5 min-w-0">
+          <div className="p-3 rounded-lg border border-amber-300 dark:border-amber-800/80 bg-amber-50 dark:bg-amber-950/40 text-amber-900 dark:text-amber-200 text-xs flex items-center justify-between gap-3 shadow-xs">
+            <div className="flex items-center space-x-2 min-w-0">
               <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
               <span className="font-medium">
                 {conflictError
-                  ? '文件已被外部修改（保存冲突），点击重新加载以丢弃本地编辑并重读'
-                  : '文件已被外部修改，点击重新加载'}
+                  ? '文件已被外部修改（保存冲突）'
+                  : '文件已被外部修改'}
               </span>
             </div>
             <button
               type="button"
               onClick={reload}
-              className="flex items-center space-x-1 px-3 py-1 rounded-md bg-amber-600 hover:bg-amber-700 text-white text-xs font-medium transition shrink-0 shadow-2xs"
+              className="flex items-center space-x-1 px-2.5 py-1 rounded-md bg-amber-600 hover:bg-amber-700 text-white text-xs font-medium transition shrink-0"
             >
               <RefreshCw className="w-3 h-3" />
               <span>重新加载</span>
@@ -461,254 +654,336 @@ export const TaskDetailPanel = forwardRef<TaskDetailHandle, TaskDetailPanelProps
           </div>
         )}
 
-        {/* Generic Error / Success Feedback Banners */}
+        {/* Generic Error Banner */}
         {detailError && !conflictError && (
           <div className="p-3 rounded-lg border border-rose-200 dark:border-rose-900/60 bg-rose-50/80 dark:bg-rose-950/40 text-rose-800 dark:text-rose-200 text-xs flex items-start space-x-2">
             <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
             <div className="space-y-0.5">
-              <div className="font-semibold">保存失败（Go Core 拒绝）</div>
+              <div className="font-semibold">保存失败</div>
               <div className="font-mono text-[11px] break-all">{detailError}</div>
             </div>
           </div>
         )}
 
-        {saveSuccessMsg && (
-          <div className="p-2.5 rounded-lg border border-emerald-200 dark:border-emerald-900/60 bg-emerald-50/80 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-200 text-xs flex items-center space-x-2">
-            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-            <span>{saveSuccessMsg}</span>
-          </div>
-        )}
-
-        {/* Task Title Input */}
+        {/* Task Title (Inline, borderless, natural auto-growing) */}
         <div>
-          <label className="block text-[11px] font-semibold text-stone-500 uppercase tracking-wider mb-1">
-            任务标题
-          </label>
-          <input
-            type="text"
+          <textarea
+            ref={titleTextareaRef}
             value={detailTitle}
-            onChange={(e) => setDetailTitle(e.target.value)}
-            placeholder="输入任务标题..."
-            className="w-full px-3 py-2 text-base font-semibold rounded-lg border border-stone-200 dark:border-stone-800 bg-white dark:bg-stone-950 text-stone-900 dark:text-stone-100 focus:outline-hidden focus:ring-2 focus:ring-emerald-600"
+            onChange={(e) => {
+              setDetailTitle(e.target.value);
+              adjustTextareaHeight(e.target, 28);
+            }}
+            onBlur={handleTitleBlur}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                (e.target as HTMLTextAreaElement).blur();
+              }
+            }}
+            placeholder="任务标题..."
+            rows={1}
+            className="w-full text-lg font-semibold text-stone-900 dark:text-stone-100 bg-transparent border-0 outline-none focus:outline-none focus:ring-0 resize-none overflow-hidden p-0 leading-snug transition-none placeholder:text-stone-400"
           />
         </div>
 
-        {/* Metadata Controls Grid */}
-        <div className="grid grid-cols-2 gap-3 p-4 rounded-xl border border-stone-200 dark:border-stone-800 bg-white/60 dark:bg-stone-950/40">
-          {/* Status */}
-          <div>
-            <label className="block text-[11px] font-medium text-stone-500 mb-1">状态</label>
-            <select
-              value={detailStatus}
-              onChange={(e) => setDetailStatus(e.target.value as TaskStatus)}
-              className="w-full px-2.5 py-1.5 text-xs rounded-md border border-stone-200 dark:border-stone-800 bg-white dark:bg-stone-900 text-stone-800 dark:text-stone-200 focus:outline-hidden focus:ring-1 focus:ring-emerald-600"
-            >
-              <option value={TaskStatus.TaskStatusTodo}>todo · 待办</option>
-              <option value={TaskStatus.TaskStatusDoing}>doing · 进行中</option>
-              <option value={TaskStatus.TaskStatusDone}>done · 已完成</option>
-            </select>
-          </div>
+        {/* Task Properties (Status, Due, Tags) */}
+        <div className="space-y-2 pt-1">
+          {/* Row 1: Status & Due Date */}
+          <div className="flex flex-wrap items-center gap-2">
+            {/* Status Dropdown */}
+            <div className="relative" ref={statusRef}>
+              <button
+                type="button"
+                onClick={() => setStatusOpen((v) => !v)}
+                className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium transition ${
+                  detailStatus === TaskStatus.TaskStatusDone
+                    ? 'text-emerald-700 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/40'
+                    : 'text-stone-700 dark:text-stone-300 hover:bg-stone-200/60 dark:hover:bg-stone-800/60'
+                }`}
+              >
+                {detailStatus === TaskStatus.TaskStatusDone ? (
+                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                ) : (
+                  <Circle className="w-3.5 h-3.5 text-stone-400 dark:text-stone-500 shrink-0" />
+                )}
+                <span>
+                  {detailStatus === TaskStatus.TaskStatusDone ? '已完成' : '待办'}
+                </span>
+              </button>
 
-          {/* Due Date */}
-          <div>
-            <label className="block text-[11px] font-medium text-stone-500 mb-1">截止日期 (Due)</label>
-            <div className="relative flex items-center">
-              <input
-                type="date"
-                value={detailDue}
-                onChange={(e) => setDetailDue(e.target.value)}
-                className="w-full px-2.5 py-1.5 text-xs rounded-md border border-stone-200 dark:border-stone-800 bg-white dark:bg-stone-900 text-stone-800 dark:text-stone-200 focus:outline-hidden focus:ring-1 focus:ring-emerald-600"
-              />
-              {detailDue && (
-                <button
-                  type="button"
-                  onClick={() => setDetailDue('')}
-                  className="absolute right-2 text-stone-400 hover:text-stone-600 dark:hover:text-stone-200"
-                  title="清除截止时间"
-                >
-                  <X className="w-3 h-3" />
-                </button>
+              {statusOpen && (
+                <div className="absolute left-0 top-full mt-1 w-28 rounded-lg border border-stone-200 dark:border-stone-800 bg-white dark:bg-stone-900 shadow-lg py-1 z-30">
+                  <button
+                    type="button"
+                    onClick={() => void handleStatusChange(TaskStatus.TaskStatusTodo)}
+                    className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-stone-800 dark:text-stone-200 hover:bg-stone-100 dark:hover:bg-stone-800 transition text-left"
+                  >
+                    <Circle className="w-3.5 h-3.5 text-stone-400 shrink-0" />
+                    <span>待办</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void handleStatusChange(TaskStatus.TaskStatusDone)}
+                    className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-stone-800 dark:text-stone-200 hover:bg-stone-100 dark:hover:bg-stone-800 transition text-left"
+                  >
+                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                    <span>已完成</span>
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* Completed Time hint if completed */}
+            {detailStatus === TaskStatus.TaskStatusDone && task?.completed_at && (
+              <span className="text-[11px] text-stone-400 dark:text-stone-500">
+                完成于 {task.completed_at.slice(5, 16).replace('T', ' ')}
+              </span>
+            )}
+
+            {/* Due Date Dropdown */}
+            <div className="relative" ref={dueRef}>
+              <button
+                type="button"
+                onClick={() => setDueOpen((v) => !v)}
+                className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium transition ${
+                  dueDisplay.isOverdue
+                    ? 'text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40'
+                    : dueDisplay.isToday
+                    ? 'text-amber-700 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-950/40'
+                    : detailDue
+                    ? 'text-stone-700 dark:text-stone-300 hover:bg-stone-200/60 dark:hover:bg-stone-800/60'
+                    : 'text-stone-400 dark:text-stone-500 hover:text-stone-700 dark:hover:text-stone-300 hover:bg-stone-200/60 dark:hover:bg-stone-800/60'
+                }`}
+              >
+                <Calendar className="w-3.5 h-3.5 shrink-0" />
+                <span>{dueDisplay.text}</span>
+              </button>
+
+              {dueOpen && (
+                <div className="absolute left-0 top-full mt-1 w-48 rounded-lg border border-stone-200 dark:border-stone-800 bg-white dark:bg-stone-900 shadow-lg p-2 z-30 space-y-2">
+                  <div className="space-y-0.5">
+                    <button
+                      type="button"
+                      onClick={() => void handleDueChange(todayStr)}
+                      className="w-full text-left px-2 py-1 rounded text-xs text-stone-800 dark:text-stone-200 hover:bg-stone-100 dark:hover:bg-stone-800 transition"
+                    >
+                      今天
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void handleDueChange(tomorrowStr)}
+                      className="w-full text-left px-2 py-1 rounded text-xs text-stone-800 dark:text-stone-200 hover:bg-stone-100 dark:hover:bg-stone-800 transition"
+                    >
+                      明天
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void handleDueChange(nextMondayStr)}
+                      className="w-full text-left px-2 py-1 rounded text-xs text-stone-800 dark:text-stone-200 hover:bg-stone-100 dark:hover:bg-stone-800 transition"
+                    >
+                      下周一
+                    </button>
+                  </div>
+
+                  <div className="pt-1.5 border-t border-stone-100 dark:border-stone-800">
+                    <label className="block text-[10px] text-stone-400 mb-1">选择具体日期</label>
+                    <input
+                      type="date"
+                      value={detailDue}
+                      onChange={(e) => void handleDueChange(e.target.value)}
+                      className="w-full px-2 py-1 text-xs rounded border border-stone-200 dark:border-stone-800 bg-stone-50 dark:bg-stone-950 text-stone-900 dark:text-stone-100 focus:outline-none focus:ring-0 focus:border-stone-300 dark:focus:border-stone-700"
+                    />
+                  </div>
+
+                  {detailDue && (
+                    <div className="pt-1 border-t border-stone-100 dark:border-stone-800">
+                      <button
+                        type="button"
+                        onClick={() => void handleDueChange(null)}
+                        className="w-full text-left px-2 py-1 rounded text-xs text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition"
+                      >
+                        清除截止日期
+                      </button>
+                    </div>
+                  )}
+                </div>
               )}
             </div>
           </div>
 
-          {/* Tags */}
-          <div>
-            <label className="block text-[11px] font-medium text-stone-500 mb-1">标签 (逗号分隔)</label>
-            <input
-              type="text"
-              value={detailTags}
-              onChange={(e) => setDetailTags(e.target.value)}
-              placeholder="架构设计, 性能优化"
-              className="w-full px-2.5 py-1.5 text-xs rounded-md border border-stone-200 dark:border-stone-800 bg-white dark:bg-stone-900 text-stone-800 dark:text-stone-200 focus:outline-hidden focus:ring-1 focus:ring-emerald-600"
-            />
+          {/* Row 2: Tags */}
+          <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
+            {detailTags.map((tag) => (
+              <span
+                key={tag}
+                className="group inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-mono text-stone-600 dark:text-stone-400 bg-stone-100 dark:bg-stone-800/80 hover:bg-stone-200/70 dark:hover:bg-stone-700/70 transition"
+              >
+                <span>#{tag}</span>
+                <button
+                  type="button"
+                  onClick={() => void handleRemoveTag(tag)}
+                  className="text-stone-400 hover:text-rose-600 dark:hover:text-rose-400 transition"
+                  title={`移除 #${tag}`}
+                >
+                  <X className="w-2.5 h-2.5" />
+                </button>
+              </span>
+            ))}
+
+            <div className="relative" ref={tagRef}>
+              <button
+                type="button"
+                onClick={() => {
+                  setTagOpen((v) => !v);
+                  setTagInput('');
+                }}
+                className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs text-stone-400 hover:text-stone-700 dark:hover:text-stone-300 hover:bg-stone-100 dark:hover:bg-stone-800 transition"
+                title="添加标签"
+              >
+                <Plus className="w-3 h-3" />
+                <span>标签</span>
+              </button>
+
+              {tagOpen && (
+                <div className="absolute left-0 top-full mt-1 w-44 rounded-lg border border-stone-200 dark:border-stone-800 bg-white dark:bg-stone-900 shadow-lg p-2 z-30 space-y-2">
+                  <input
+                    type="text"
+                    value={tagInput}
+                    onChange={(e) => setTagInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        void handleAddTag(tagInput);
+                      }
+                    }}
+                    placeholder="输入新标签..."
+                    autoFocus
+                    className="w-full px-2 py-1 text-xs rounded border border-stone-200 dark:border-stone-800 bg-stone-50 dark:bg-stone-950 text-stone-900 dark:text-stone-100 placeholder-stone-400 focus:outline-none focus:ring-0 focus:border-stone-300 dark:focus:border-stone-700"
+                  />
+
+                  {availableSuggestedTags.length > 0 && (
+                    <div className="space-y-0.5 max-h-32 overflow-y-auto">
+                      <div className="text-[10px] text-stone-400 px-1">已有标签</div>
+                      {availableSuggestedTags.map((t) => (
+                        <button
+                          key={t}
+                          type="button"
+                          onClick={() => void handleAddTag(t)}
+                          className="w-full text-left px-2 py-1 rounded text-xs text-stone-700 dark:text-stone-300 hover:bg-stone-100 dark:hover:bg-stone-800 transition font-mono truncate"
+                        >
+                          #{t}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
         </div>
 
-        {/* Task Description */}
-        <div className="space-y-1">
-          <div className="flex items-center justify-between text-xs text-stone-500 mb-1">
-            <label htmlFor="task-description" className="font-semibold text-[11px] uppercase tracking-wider">任务描述</label>
-            <span className="text-[11px] text-stone-400">纯文本，支持换行</span>
+        {/* Task Description (Seamless inline viewing and editing, 0px size jumping, clickable [[ notes) */}
+        <div className="space-y-1 pt-1">
+          <div className="text-[11px] font-medium text-stone-400 dark:text-stone-500">
+            描述
           </div>
-          {editingBody || !detailBody.trim() ? (
+          {isEditingBody || !detailBody.trim() ? (
             <NoteRefTextarea
-              id="task-description"
               value={detailBody}
-              onChange={setDetailBody}
+              onChange={handleBodyChange}
               refs={detailRefs}
-              onRefsChange={setDetailRefs}
+              onRefsChange={(nextRefs) => {
+                setDetailRefs(nextRefs);
+                latestRefsRef.current = nextRefs;
+                if (latestTaskRef.current) {
+                  void saveTask({ refs: nextRefs });
+                }
+              }}
               notes={noteRefs}
-              onBlur={() => setEditingBody(false)}
-              autoFocus={editingBody}
-              placeholder="输入任务描述、目标与验收条件...（输入 [[ 引用笔记）"
-              rows={12}
-              className="w-full p-3.5 text-sm rounded-lg border border-stone-200 dark:border-stone-800 bg-white dark:bg-stone-950 text-stone-900 dark:text-stone-100 focus:outline-hidden focus:ring-2 focus:ring-emerald-600 resize-y leading-relaxed"
+              autoAdjustHeight
+              minHeight={22}
+              onBlur={handleBodyBlur}
+              autoFocus={isEditingBody}
+              onKeyDown={(e) => {
+                if (e.key === 'Escape') {
+                  setIsEditingBody(false);
+                }
+              }}
+              placeholder="添加描述… (输入 [[ 引用笔记)"
+              rows={1}
+              className="w-full text-xs sm:text-sm text-stone-800 dark:text-stone-200 placeholder-stone-400 dark:placeholder-stone-500 bg-transparent border-0 outline-none focus:outline-none focus:ring-0 resize-none overflow-hidden leading-relaxed p-0 min-h-[22px] transition-none"
             />
           ) : (
             <div
               role="button"
               tabIndex={0}
-              aria-label="任务描述，点击编辑"
               onClick={() => {
-                if (!window.getSelection()?.toString()) setEditingBody(true);
+                if (!window.getSelection()?.toString()) {
+                  setIsEditingBody(true);
+                }
               }}
               onKeyDown={(e) => {
-                if (e.key === 'Enter') setEditingBody(true);
+                if (e.key === 'Enter') {
+                  setIsEditingBody(true);
+                }
               }}
-              className="w-full min-h-[6rem] p-3.5 text-sm rounded-lg border border-stone-200 dark:border-stone-800 bg-white dark:bg-stone-950 text-stone-900 dark:text-stone-100 cursor-text leading-relaxed focus:outline-hidden focus:ring-2 focus:ring-emerald-600"
+              className="cursor-text leading-relaxed text-xs sm:text-sm text-stone-800 dark:text-stone-200 p-0 border-0 outline-none focus:outline-none min-h-[22px] select-text"
             >
-              <NoteRefText text={detailBody} refs={detailRefs} notes={noteRefs} onOpenNote={(id) => onOpenNote?.(id, taskId)} />
+              <NoteRefText
+                text={detailBody}
+                refs={detailRefs}
+                notes={noteRefs}
+                onOpenNote={(id) => onOpenNote?.(id, taskId)}
+                className="leading-relaxed"
+              />
             </div>
           )}
         </div>
 
-        {/* Linked Notes Section */}
-        <div className="space-y-3 pt-3 border-t border-stone-200 dark:border-stone-800">
-          <div className="flex items-center justify-between text-xs text-stone-500">
-            <span className="flex items-center space-x-1.5 font-semibold text-[11px] uppercase tracking-wider text-stone-500">
-              <Link className="w-3.5 h-3.5" />
-              <span>关联笔记 ({detailNoteIds.length})</span>
-            </span>
-            <div className="flex items-center space-x-2">
-              {loadingNotes && <span className="text-[11px] text-stone-400">加载中...</span>}
-              <button
-                type="button"
-                onClick={() => {
-                  setNoteSearchQuery('');
-                  setShowAddNoteModal(true);
-                }}
-                className="flex items-center space-x-1 text-xs text-emerald-700 dark:text-emerald-400 hover:text-emerald-800 dark:hover:text-emerald-300 transition"
-              >
-                <Plus className="w-3 h-3" />
-                <span>添加关联</span>
-              </button>
-            </div>
+        {/* Divider */}
+        <div className="border-t border-stone-200/80 dark:border-stone-800/80 my-3" />
+
+        {/* Activities Section */}
+        <div className="space-y-3 pt-1">
+          <div className="text-[11px] font-semibold text-stone-500 dark:text-stone-400 uppercase tracking-wider">
+            活动
           </div>
 
-          {/* Linked Notes List */}
-          {detailNoteIds.length === 0 ? (
-            <div className="p-3 rounded-lg border border-dashed border-stone-200 dark:border-stone-800 text-stone-400 text-xs text-center">
-              暂无关联笔记（仅显式关联，相同标签不会自动建立关联）
-            </div>
-          ) : (
-            <div className="space-y-1.5">
-              {detailNoteIds.map((nid) => {
-                const note = allNotes.find((n) => n.id === nid);
-                const title = note ? note.title : nid;
-                const timeStr = note?.updated_at ? formatRelativeTime(note.updated_at) : '';
-                return (
-                  <div
-                    key={nid}
-                    className="flex items-center justify-between p-2.5 rounded-lg border border-stone-200 dark:border-stone-800 bg-white dark:bg-stone-900/60 hover:border-stone-300 dark:hover:border-stone-700 transition group"
-                  >
-                    <div
-                      onClick={() => onOpenNote?.(nid, taskId)}
-                      className={`flex items-center space-x-2 min-w-0 flex-1 ${
-                        onOpenNote ? 'cursor-pointer' : ''
-                      }`}
-                      title={onOpenNote ? '点击在编辑器中打开笔记' : undefined}
-                    >
-                      <FileText className="w-4 h-4 text-emerald-700 dark:text-emerald-400 shrink-0" />
-                      <span className="text-xs font-medium text-stone-800 dark:text-stone-200 truncate group-hover:text-emerald-700 dark:group-hover:text-emerald-400 transition">
-                        {title}
-                      </span>
-                      {timeStr && (
-                        <span className="text-[10px] text-stone-400 shrink-0">
-                          {timeStr}
-                        </span>
-                      )}
-                      {onOpenNote && (
-                        <ExternalLink className="w-3 h-3 text-stone-300 dark:text-stone-600 group-hover:text-emerald-600 dark:group-hover:text-emerald-400 shrink-0 transition" />
-                      )}
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => setUnlinkTarget({ id: nid, title })}
-                      className="p-1 text-stone-400 hover:text-rose-600 dark:hover:text-rose-400 rounded hover:bg-stone-100 dark:hover:bg-stone-800 transition shrink-0 ml-2"
-                      title="解除关联"
-                    >
-                      <Unlink className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
-
-        {/* Comments / Memos Section */}
-        <div className="space-y-3 pt-3 border-t border-stone-200 dark:border-stone-800">
-          <div className="flex items-center justify-between text-xs text-stone-500">
-            <span className="flex items-center space-x-1.5 font-semibold text-[11px] uppercase tracking-wider text-stone-500">
-              <MessageSquare className="w-3.5 h-3.5" />
-              <span>记录 / 评论 ({taskMemos.length})</span>
-            </span>
-            {loadingMemos && <span className="text-[11px] text-stone-400">加载中...</span>}
-          </div>
-
-          {/* Memo List Error Banner */}
           {memoListError && (
             <div className="p-2.5 rounded-lg border border-rose-200 dark:border-rose-900/60 bg-rose-50/80 dark:bg-rose-950/40 text-rose-800 dark:text-rose-200 text-xs flex items-center space-x-2">
               <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
-              <span>加载记录列表失败: {memoListError}</span>
+              <span>加载活动列表失败: {memoListError}</span>
             </div>
           )}
 
-          {/* Memo Items List */}
           {taskMemos.length === 0 ? (
-            <div className="py-3 text-center text-xs text-stone-400 dark:text-stone-500">
-              暂无记录或评论，可在下方快速记录进展
+            <div className="py-4 text-center text-xs text-stone-400 dark:text-stone-500">
+              暂无活动记录
             </div>
           ) : (
-            <div className="space-y-2">
+            <div className="space-y-3.5">
               {taskMemos.map((memo) => (
-                <div
-                  key={memo.id}
-                  className="p-3 rounded-xl border border-stone-200/90 dark:border-stone-800 bg-white dark:bg-stone-900/50 space-y-1.5 shadow-2xs"
-                >
-                  <div className="flex items-center justify-between text-[11px] text-stone-400">
-                    <span className="font-mono text-[10px] text-stone-400">{memo.id}</span>
-                    <span
-                      title={memo.created_at ? memo.created_at.replace('T', ' ').slice(0, 19) : ''}
-                      className="font-mono text-[11px] text-stone-500 dark:text-stone-400"
-                    >
-                      {formatMemoTimestamp(memo.created_at)}
-                    </span>
+                <div key={memo.id} className="space-y-1">
+                  <div
+                    className="text-[11px] font-mono text-stone-400 dark:text-stone-500"
+                    title={memo.created_at ? memo.created_at.replace('T', ' ').slice(0, 19) : ''}
+                  >
+                    {formatMemoTimestamp(memo.created_at)}
                   </div>
                   <NoteRefText
                     text={memo.body}
                     refs={memo.note_refs ?? undefined}
                     notes={noteRefs}
                     onOpenNote={(id) => onOpenNote?.(id, taskId)}
-                    className="text-xs text-stone-800 dark:text-stone-200 leading-relaxed font-sans"
+                    className="text-xs text-stone-800 dark:text-stone-200 leading-relaxed font-sans whitespace-pre-wrap break-words"
                   />
                   {memo.tags && memo.tags.length > 0 && (
                     <div className="flex flex-wrap gap-1 pt-0.5">
                       {memo.tags.map((tag) => (
                         <span
                           key={tag}
-                          className="inline-flex items-center text-[10px] px-1.5 py-0.2 rounded bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-400 font-mono"
+                          className="inline-flex items-center text-[10px] text-stone-400 font-mono"
                         >
                           #{tag}
                         </span>
@@ -719,9 +994,13 @@ export const TaskDetailPanel = forwardRef<TaskDetailHandle, TaskDetailPanelProps
               ))}
             </div>
           )}
+        </div>
+      </div>
 
-          {/* Submit New Memo Form */}
-          <form onSubmit={handleAddMemo} className="space-y-2 pt-1">
+      {/* 3. Docked Activity Input Bar */}
+      <div className="shrink-0 p-4 border-t border-stone-200/80 dark:border-stone-800/80 bg-stone-50/70 dark:bg-stone-900/70 backdrop-blur-md">
+        <form onSubmit={handleAddMemo} className="space-y-2">
+          <div className="rounded-xl border border-stone-200 dark:border-stone-800 bg-white dark:bg-stone-950 p-2.5 focus-within:border-stone-300 dark:focus-within:border-stone-700 transition shadow-2xs">
             <NoteRefTextarea
               value={newMemoBody}
               onChange={setNewMemoBody}
@@ -731,320 +1010,198 @@ export const TaskDetailPanel = forwardRef<TaskDetailHandle, TaskDetailPanelProps
               onKeyDown={(e) => {
                 if ((e.metaKey || e.ctrlKey) && e.key === 'Enter' && !submittingMemo && newMemoBody.trim()) {
                   e.preventDefault();
-                  handleAddMemo();
+                  void handleAddMemo();
                 }
               }}
-              placeholder="输入任务记录或评论...（支持 ⌘+Enter 提交，输入 [[ 引用笔记）"
-              rows={3}
+              placeholder="记录进展… (输入 [[ 引用笔记)"
+              rows={2}
               disabled={submittingMemo}
-              className="w-full p-3 text-xs rounded-lg border border-stone-200 dark:border-stone-800 bg-white dark:bg-stone-950 text-stone-900 dark:text-stone-100 placeholder-stone-400 focus:outline-hidden focus:ring-2 focus:ring-emerald-600 resize-y leading-relaxed shadow-2xs"
+              className="w-full text-xs text-stone-900 dark:text-stone-100 placeholder-stone-400 bg-transparent resize-none border-0 outline-none focus:outline-none focus:ring-0 leading-relaxed"
             />
-
-            {/* Submit Error Banner */}
-            {submitMemoError && (
-              <div className="p-2.5 rounded-lg border border-rose-200 dark:border-rose-900/60 bg-rose-50/80 dark:bg-rose-950/40 text-rose-800 dark:text-rose-200 text-xs flex items-start space-x-2">
-                <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
-                <div className="space-y-0.5">
-                  <div className="font-semibold">添加记录失败</div>
-                  <div className="font-mono text-[11px] break-all">{submitMemoError}</div>
-                </div>
-              </div>
-            )}
-
-            <div className="flex items-center justify-between">
-              <span className="text-[11px] text-stone-400">支持 ⌘+Enter 快捷提交</span>
+            <div className="flex items-center justify-between pt-1">
+              <span className="text-[10px] text-stone-400 select-none">⌘ Enter 发送</span>
               <button
                 type="submit"
                 disabled={submittingMemo || !newMemoBody.trim()}
-                className="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-medium transition disabled:opacity-40 shadow-2xs shrink-0"
+                className="p-1 rounded-md text-stone-400 hover:text-emerald-700 dark:hover:text-emerald-400 hover:bg-stone-100 dark:hover:bg-stone-800 disabled:opacity-30 disabled:hover:text-stone-400 disabled:hover:bg-transparent transition"
+                title="发送 (⌘+Enter)"
               >
-                <Send className={`w-3 h-3 ${submittingMemo ? 'animate-spin' : ''}`} />
-                <span>{submittingMemo ? '提交中...' : '添加记录'}</span>
+                <ArrowUpRight className={`w-4 h-4 ${submittingMemo ? 'animate-spin' : ''}`} />
               </button>
             </div>
-          </form>
-        </div>
-
-        {/* Status Events History & Meta info */}
-        <div className="pt-2 border-t border-stone-200 dark:border-stone-800 space-y-2">
-          <div className="flex items-center justify-between text-[11px] text-stone-400 font-mono">
-            <span>ID: {task.id}</span>
-            <span>创建时间: {task.created_at?.slice(0, 19).replace('T', ' ')}</span>
-            <span>更新时间: {task.updated_at?.slice(0, 19).replace('T', ' ')}</span>
           </div>
 
-          {task.status_events && task.status_events.length > 0 && (
-            <div className="rounded-lg bg-stone-100/70 dark:bg-stone-900/60 p-3 space-y-1.5">
-              <div className="text-[11px] font-semibold text-stone-500">状态流转历史事件 (status_events):</div>
-              <div className="space-y-1">
-                {task.status_events.map((ev, idx) => (
-                  <div key={idx} className="flex items-center space-x-2 text-xs">
-                    {ev.action === 'completed' ? (
-                      <span className="inline-flex items-center space-x-1 text-emerald-700 dark:text-emerald-400">
-                        <CheckCircle2 className="w-3 h-3" />
-                        <span className="font-medium">已完成 (completed)</span>
-                      </span>
-                    ) : (
-                      <span className="inline-flex items-center space-x-1 text-blue-700 dark:text-blue-400">
-                        <Clock className="w-3 h-3" />
-                        <span className="font-medium">重新打开 (reopened)</span>
-                      </span>
-                    )}
-                    <span className="text-[11px] text-stone-400 font-mono">
-                      {ev.at?.slice(0, 19).replace('T', ' ')}
-                    </span>
-                  </div>
-                ))}
+          {submitMemoError && (
+            <div className="p-2 rounded-lg border border-rose-200 dark:border-rose-900/60 bg-rose-50/80 dark:bg-rose-950/40 text-rose-800 dark:text-rose-200 text-xs flex items-start space-x-2">
+              <AlertCircle className="w-3.5 h-3.5 text-rose-600 shrink-0 mt-0.5" />
+              <div className="space-y-0.5">
+                <div className="font-semibold text-[11px]">添加记录失败</div>
+                <div className="font-mono text-[10px] break-all">{submitMemoError}</div>
               </div>
             </div>
           )}
-        </div>
+        </form>
+      </div>
 
-        {/* Delete Confirmation Modal */}
-        {deleteModalOpen && (
-          <div className="pata-fade fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs p-4">
-            <div className="w-full max-w-sm rounded-xl border border-stone-200 dark:border-stone-800 bg-white dark:bg-stone-900 p-5 shadow-xl space-y-4">
-              <div className="flex items-start space-x-3">
-                <div className="p-2 rounded-full bg-rose-100 dark:bg-rose-950/60 text-rose-600 shrink-0">
-                  <AlertCircle className="w-5 h-5" />
-                </div>
-                <div className="space-y-1">
-                  <h3 className="text-sm font-semibold text-stone-900 dark:text-stone-100">确认删除任务？</h3>
-                  <p className="text-xs text-stone-500 leading-relaxed">
-                    任务「{task.title}」的文件将从 Vault 中永久删除。关联的 Memo 将被保留，此操作不可撤销。
-                  </p>
-                </div>
-              </div>
-
-              <div className="flex items-center justify-end space-x-2 pt-2 border-t border-stone-100 dark:border-stone-800">
-                <button
-                  type="button"
-                  onClick={() => setDeleteModalOpen(false)}
-                  disabled={deleting}
-                  className="px-3 py-1.5 rounded-md text-xs font-medium text-stone-600 dark:text-stone-300 hover:bg-stone-100 dark:hover:bg-stone-800 transition"
-                >
-                  取消
-                </button>
-                <button
-                  type="button"
-                  onClick={handleDeleteTask}
-                  disabled={deleting}
-                  className="px-3 py-1.5 rounded-md bg-rose-600 hover:bg-rose-700 text-white text-xs font-medium transition disabled:opacity-50"
-                >
-                  {deleting ? '删除中...' : '确认删除'}
-                </button>
-              </div>
+      {/* Task Info Modal */}
+      {showTaskInfo && (
+        <div className="pata-fade fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs p-4">
+          <div className="w-full max-w-sm rounded-xl border border-stone-200 dark:border-stone-800 bg-white dark:bg-stone-900 p-5 shadow-xl space-y-4">
+            <div className="flex items-center justify-between pb-2 border-b border-stone-100 dark:border-stone-800">
+              <h3 className="text-sm font-semibold text-stone-900 dark:text-stone-100">任务信息</h3>
+              <button
+                type="button"
+                onClick={() => setShowTaskInfo(false)}
+                className="text-stone-400 hover:text-stone-600 dark:hover:text-stone-200 transition"
+              >
+                <X className="w-4 h-4" />
+              </button>
             </div>
-          </div>
-        )}
 
-        {/* Add Note Selector Modal */}
-        {showAddNoteModal && (
-          <div className="pata-fade fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs p-4">
-            <div className="w-full max-w-md rounded-xl border border-stone-200 dark:border-stone-800 bg-white dark:bg-stone-900 p-5 shadow-xl space-y-4">
-              <div className="flex items-center justify-between pb-2 border-b border-stone-100 dark:border-stone-800">
-                <div className="flex items-center space-x-2">
-                  <Link className="w-4 h-4 text-emerald-700 dark:text-emerald-400" />
-                  <h3 className="text-sm font-semibold text-stone-900 dark:text-stone-100">
-                    关联已有笔记
-                  </h3>
+            <div className="space-y-3 text-xs">
+              <div>
+                <div className="text-[11px] text-stone-400 mb-0.5">任务 ID</div>
+                <div className="font-mono text-stone-800 dark:text-stone-200 select-all bg-stone-100/60 dark:bg-stone-800/60 px-2 py-1 rounded">
+                  {task.id}
                 </div>
-                <button
-                  type="button"
-                  onClick={() => setShowAddNoteModal(false)}
-                  className="text-stone-400 hover:text-stone-600 dark:hover:text-stone-200"
-                >
-                  <X className="w-4 h-4" />
-                </button>
               </div>
-
-              <p className="text-xs text-stone-500">
-                选择要关联的笔记。相同标签不会自动关联，必须在此显式建立关联。
-              </p>
-
-              {/* Search input */}
-              <div className="relative">
-                <Search className="w-3.5 h-3.5 text-stone-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
-                <input
-                  type="text"
-                  value={noteSearchQuery}
-                  onChange={(e) => setNoteSearchQuery(e.target.value)}
-                  placeholder="搜索笔记标题或标签..."
-                  className="w-full pl-8 pr-3 py-1.5 text-xs rounded-lg border border-stone-200 dark:border-stone-800 bg-white dark:bg-stone-950 text-stone-900 dark:text-stone-100 placeholder-stone-400 focus:outline-hidden focus:ring-1 focus:ring-emerald-600"
-                  autoFocus
-                />
-              </div>
-
-              {/* Note options list */}
-              <div className="max-h-60 overflow-y-auto space-y-1 divide-y divide-stone-100 dark:divide-stone-800/50">
-                {allNotes
-                  .filter((n) => {
-                    if (!noteSearchQuery.trim()) return true;
-                    const q = noteSearchQuery.trim().toLowerCase();
-                    const matchTitle = n.title.toLowerCase().includes(q);
-                    const matchTags = (n.tags ?? []).some((t) => t.toLowerCase().includes(q));
-                    return matchTitle || matchTags;
-                  })
-                  .map((n) => {
-                    const alreadyLinked = detailNoteIds.includes(n.id);
-                    return (
-                      <div
-                        key={n.id}
-                        className={`flex items-center justify-between p-2 rounded-lg transition ${
-                          alreadyLinked
-                            ? 'opacity-50 cursor-not-allowed bg-stone-50 dark:bg-stone-950/40'
-                            : 'hover:bg-stone-100 dark:hover:bg-stone-800/60 cursor-pointer'
-                        }`}
-                        onClick={() => {
-                          if (!alreadyLinked) {
-                            handleAddNoteLink(n.id);
-                          }
-                        }}
-                      >
-                        <div className="min-w-0 flex-1 pr-2">
-                          <div className="flex items-center space-x-1.5">
-                            <FileText className="w-3.5 h-3.5 text-stone-400 shrink-0" />
-                            <span className="text-xs font-medium text-stone-800 dark:text-stone-200 truncate">
-                              {n.title}
-                            </span>
-                          </div>
-                          {(n.tags ?? []).length > 0 && (
-                            <div className="flex flex-wrap gap-1 mt-1 pl-5">
-                              {(n.tags ?? []).map((t) => (
-                                <span
-                                  key={t}
-                                  className="text-[10px] px-1 py-0.2 rounded bg-stone-100 dark:bg-stone-800 text-stone-500 font-mono"
-                                >
-                                  #{t}
-                                </span>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                        <div className="shrink-0 text-right">
-                          {alreadyLinked ? (
-                            <span className="text-[10px] text-stone-400 bg-stone-200/60 dark:bg-stone-800 px-1.5 py-0.5 rounded">
-                              已关联
-                            </span>
-                          ) : (
-                            <span className="text-[10px] text-emerald-700 dark:text-emerald-400 font-medium hover:underline">
-                              关联
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })}
-                {allNotes.length === 0 && (
-                  <div className="text-center py-6 text-xs text-stone-400">
-                    Vault 中暂无笔记
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <div className="text-[11px] text-stone-400 mb-0.5">创建时间</div>
+                  <div className="font-mono text-[11px] text-stone-700 dark:text-stone-300">
+                    {task.created_at?.slice(0, 19).replace('T', ' ') || '-'}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-[11px] text-stone-400 mb-0.5">更新时间</div>
+                  <div className="font-mono text-[11px] text-stone-700 dark:text-stone-300">
+                    {task.updated_at?.slice(0, 19).replace('T', ' ') || '-'}
+                  </div>
+                </div>
+                {task.completed_at && (
+                  <div className="col-span-2">
+                    <div className="text-[11px] text-stone-400 mb-0.5">完成时间</div>
+                    <div className="font-mono text-[11px] text-emerald-600 dark:text-emerald-400">
+                      {task.completed_at.slice(0, 19).replace('T', ' ')}
+                    </div>
                   </div>
                 )}
-                {allNotes.length > 0 &&
-                  allNotes.filter((n) => {
-                    if (!noteSearchQuery.trim()) return true;
-                    const q = noteSearchQuery.trim().toLowerCase();
-                    return (
-                      n.title.toLowerCase().includes(q) ||
-                      (n.tags ?? []).some((t) => t.toLowerCase().includes(q))
-                    );
-                  }).length === 0 && (
-                    <div className="text-center py-6 text-xs text-stone-400">
-                      无匹配的笔记
-                    </div>
-                  )}
               </div>
 
-              <div className="flex items-center justify-end pt-2 border-t border-stone-100 dark:border-stone-800">
-                <button
-                  type="button"
-                  onClick={() => setShowAddNoteModal(false)}
-                  className="px-3 py-1.5 rounded-md text-xs font-medium text-stone-600 dark:text-stone-300 hover:bg-stone-100 dark:hover:bg-stone-800 transition"
-                >
-                  关闭
-                </button>
-              </div>
+              {task.status_events && task.status_events.length > 0 && (
+                <div className="pt-2 border-t border-stone-100 dark:border-stone-800 space-y-1.5">
+                  <div className="text-[11px] text-stone-400">状态流转历史</div>
+                  <div className="space-y-1 max-h-36 overflow-y-auto">
+                    {task.status_events.map((ev, idx) => (
+                      <div key={idx} className="flex items-center justify-between text-[11px] py-0.5">
+                        <span
+                          className={
+                            ev.action === 'completed'
+                              ? 'text-emerald-600 dark:text-emerald-400'
+                              : 'text-blue-600 dark:text-blue-400'
+                          }
+                        >
+                          {ev.action === 'completed' ? '已完成' : '重新打开'}
+                        </span>
+                        <span className="font-mono text-[10px] text-stone-400">
+                          {ev.at?.slice(0, 19).replace('T', ' ')}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="flex justify-end pt-2 border-t border-stone-100 dark:border-stone-800">
+              <button
+                type="button"
+                onClick={() => setShowTaskInfo(false)}
+                className="px-3 py-1.5 rounded-md text-xs font-medium text-stone-600 dark:text-stone-300 hover:bg-stone-100 dark:hover:bg-stone-800 transition"
+              >
+                关闭
+              </button>
             </div>
           </div>
-        )}
+        </div>
+      )}
 
-        {/* Unlink Note Confirmation Modal */}
-        {unlinkTarget && (
-          <div className="pata-fade fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs p-4">
-            <div className="w-full max-w-sm rounded-xl border border-stone-200 dark:border-stone-800 bg-white dark:bg-stone-900 p-5 shadow-xl space-y-4">
-              <div className="flex items-start space-x-3">
-                <div className="p-2 rounded-full bg-amber-100 dark:bg-amber-950/60 text-amber-600 shrink-0">
-                  <Unlink className="w-5 h-5" />
-                </div>
-                <div className="space-y-1">
-                  <h3 className="text-sm font-semibold text-stone-900 dark:text-stone-100">
-                    解除笔记关联
-                  </h3>
-                  <p className="text-xs text-stone-500 leading-relaxed">
-                    确定解除与笔记「<span className="font-medium text-stone-800 dark:text-stone-200">{unlinkTarget.title}</span>」的关联吗？
-                  </p>
-                  <p className="text-xs text-amber-600 dark:text-amber-400 font-medium">
-                    仅解除关联，不删除笔记。
-                  </p>
-                </div>
+      {/* Delete Confirmation Modal */}
+      {deleteModalOpen && (
+        <div className="pata-fade fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs p-4">
+          <div className="w-full max-w-sm rounded-xl border border-stone-200 dark:border-stone-800 bg-white dark:bg-stone-900 p-5 shadow-xl space-y-4">
+            <div className="flex items-start space-x-3">
+              <div className="p-2 rounded-full bg-rose-100 dark:bg-rose-950/60 text-rose-600 shrink-0">
+                <AlertCircle className="w-5 h-5" />
               </div>
-
-              <div className="flex items-center justify-end space-x-2 pt-2 border-t border-stone-100 dark:border-stone-800">
-                <button
-                  type="button"
-                  onClick={() => setUnlinkTarget(null)}
-                  className="px-3 py-1.5 rounded-md text-xs font-medium text-stone-600 dark:text-stone-300 hover:bg-stone-100 dark:hover:bg-stone-800 transition"
-                >
-                  取消
-                </button>
-                <button
-                  type="button"
-                  onClick={handleConfirmUnlinkNote}
-                  className="px-3 py-1.5 rounded-md bg-amber-600 hover:bg-amber-700 text-white text-xs font-medium transition shadow-xs"
-                >
-                  确认解除
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Unsaved Draft Prompt */}
-        {leavePrompt && (
-          <div className="pata-fade fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs p-4">
-            <div className="w-full max-w-sm rounded-xl border border-stone-200 dark:border-stone-800 bg-white dark:bg-stone-900 p-5 shadow-xl space-y-4">
               <div className="space-y-1">
-                <h3 className="text-sm font-semibold text-stone-900 dark:text-stone-100">有未保存的修改</h3>
-                <p className="text-xs text-stone-500 leading-relaxed">任务「{task.title}」的编辑尚未保存，是否保存后继续？</p>
-              </div>
-              <div className="flex items-center justify-end space-x-2 pt-2 border-t border-stone-100 dark:border-stone-800">
-                <button
-                  type="button"
-                  autoFocus
-                  onClick={() => void finishLeavePrompt('cancel')}
-                  className="px-3 py-1.5 rounded-md text-xs font-medium text-stone-600 dark:text-stone-300 hover:bg-stone-100 dark:hover:bg-stone-800 transition"
-                >
-                  取消
-                </button>
-                <button
-                  type="button"
-                  onClick={() => void finishLeavePrompt('discard')}
-                  className="px-3 py-1.5 rounded-md text-xs font-medium text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition"
-                >
-                  放弃
-                </button>
-                <button
-                  type="button"
-                  onClick={() => void finishLeavePrompt('save')}
-                  disabled={saving}
-                  className="px-3 py-1.5 rounded-md bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-medium transition disabled:opacity-50"
-                >
-                  保存
-                </button>
+                <h3 className="text-sm font-semibold text-stone-900 dark:text-stone-100">确认删除任务？</h3>
+                <p className="text-xs text-stone-500 leading-relaxed">
+                  任务「{task.title}」的文件将从 Vault 中永久删除。关联的 Memo 将被保留，此操作不可撤销。
+                </p>
               </div>
             </div>
+
+            <div className="flex items-center justify-end space-x-2 pt-2 border-t border-stone-100 dark:border-stone-800">
+              <button
+                type="button"
+                onClick={() => setDeleteModalOpen(false)}
+                disabled={deleting}
+                className="px-3 py-1.5 rounded-md text-xs font-medium text-stone-600 dark:text-stone-300 hover:bg-stone-100 dark:hover:bg-stone-800 transition"
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                onClick={handleDeleteTask}
+                disabled={deleting}
+                className="px-3 py-1.5 rounded-md bg-rose-600 hover:bg-rose-700 text-white text-xs font-medium transition disabled:opacity-50"
+              >
+                {deleting ? '删除中...' : '确认删除'}
+              </button>
+            </div>
           </div>
-        )}
-      </div>
+        </div>
+      )}
+
+      {/* Unsaved Memo Draft Leave Prompt */}
+      {leavePrompt && (
+        <div className="pata-fade fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs p-4">
+          <div className="w-full max-w-sm rounded-xl border border-stone-200 dark:border-stone-800 bg-white dark:bg-stone-900 p-5 shadow-xl space-y-4">
+            <div className="space-y-1">
+              <h3 className="text-sm font-semibold text-stone-900 dark:text-stone-100">有未发送的活动记录</h3>
+              <p className="text-xs text-stone-500 leading-relaxed">
+                活动输入框中有未发送的草稿，是否发送后继续离开？
+              </p>
+            </div>
+            <div className="flex items-center justify-end space-x-2 pt-2 border-t border-stone-100 dark:border-stone-800">
+              <button
+                type="button"
+                autoFocus
+                onClick={() => void finishLeavePrompt('cancel')}
+                className="px-3 py-1.5 rounded-md text-xs font-medium text-stone-600 dark:text-stone-300 hover:bg-stone-100 dark:hover:bg-stone-800 transition"
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                onClick={() => void finishLeavePrompt('discard')}
+                className="px-3 py-1.5 rounded-md text-xs font-medium text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition"
+              >
+                放弃
+              </button>
+              <button
+                type="button"
+                onClick={() => void finishLeavePrompt('save')}
+                disabled={submittingMemo}
+                className="px-3 py-1.5 rounded-md bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-medium transition disabled:opacity-50"
+              >
+                发送
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
   );
 });
