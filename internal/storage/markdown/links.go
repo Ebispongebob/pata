@@ -80,15 +80,33 @@ func textRefKeys(body string) []string {
 // resolveTextRefLocked: 已绑定则只认绑定的 ID（目标不存在即失效，不按标题改猜）；
 // 未绑定仅在标题唯一匹配时解析。
 func (idx *MemoryIndex) resolveTextRefLocked(name string, refs map[string]string) string {
+	trimmed := strings.TrimSpace(name)
 	if id, ok := refs[name]; ok {
 		if _, exists := idx.notes[id]; exists {
 			return id
 		}
 		return ""
 	}
+	if id, ok := refs[trimmed]; ok {
+		if _, exists := idx.notes[id]; exists {
+			return id
+		}
+		return ""
+	}
+	for k, id := range refs {
+		if strings.TrimSpace(k) == trimmed {
+			if _, exists := idx.notes[id]; exists {
+				return id
+			}
+			return ""
+		}
+	}
+	if trimmed == "" {
+		return ""
+	}
 	found, n := "", 0
 	for id, note := range idx.notes {
-		if note.Title == name {
+		if note.Title == name || strings.TrimSpace(note.Title) == trimmed {
 			found, n = id, n+1
 		}
 	}

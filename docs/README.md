@@ -39,7 +39,7 @@
 
 **阶段 6：代码完成，待实机验收。** 已接入静态品牌、应用内动画、离线预览与静态菜单栏托盘，并留有打包记录；不继续开发菜单栏帧动画、额外悬停动画等增强项。
 
-**阶段 7：主体完成，只剩一项必修正确性修复及实机验收。** Notes / Task 描述 / 任务评论 / Today 记录的 `[[` 选择、跳转与持久绑定，Note 相对链接及按 Note/Task 身份去重的“被引用”已有代码及部分测试。**必修：已绑定 Note ID 失效时不可退回同名标题匹配**（`noteRefs.tsx:resolveRef`）。返回来源页面/日期是可选优化，不阻塞阶段 8；外部移动跨文件自动维护、批量更新/重试和精确滚动/光标恢复均取消。与阶段 8 Activity 内嵌模型衔接时须保留现有引用能力；见 [idea](07-note-links/idea.md) 与 [proposal](07-note-links/proposal.md)。
+**阶段 7：代码完成，待实机验收。** Notes / Task 描述 / 任务评论 / Today 记录的 `[[` 选择、跳转与持久绑定，Note 相对链接及按 Note/Task 身份去重的“被引用”均已实现。唯一必修项「已绑定 Note ID 失效时禁止退回同名标题匹配」已修复并补充前端独立单测（`src/noteRefs.test.ts`）；Go 与前端单元测试全部通过。返回来源页面/日期是可选优化，不阻塞阶段 8；外部移动跨文件自动维护、批量更新/重试和精确滚动/光标恢复均取消。与阶段 8 Activity 内嵌模型衔接时须保留现有引用能力；见 [idea](07-note-links/idea.md) 与 [proposal](07-note-links/proposal.md)。
 
 **阶段 8 设计已确认、待实施**：统一 `a-` Activity；Task Frontmatter 改存纯文本描述、Body 存活动；Today 沿用 `.pata/plans/`，Body 存独立活动。删除 Task 连同 Activity 一起删除并清理 DayPlan 引用；单文件原子写入、幂等修复、异常文件隔离。仅计划存储和业务重构，不实现 CLI。详见 [idea](08-activity-storage/idea.md)、[proposal](08-activity-storage/proposal.md)；Schema 见 [阶段 2 规范](02-foundation/schema.md)。
 

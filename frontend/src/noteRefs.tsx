@@ -5,10 +5,17 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Events } from '@wailsio/runtime';
 import * as VaultService from '../bindings/pata/vaultservice';
-import { NoteRef } from '../bindings/pata/internal/storage/markdown/models';
+import {
+  NoteRef,
+  NoteRefMap,
+  filterNotes,
+  matchTrigger,
+  pickerKey,
+  resolveRef,
+  textRefRe,
+} from './noteRefsCore';
 
-export type { NoteRef };
-export type NoteRefMap = { [name: string]: string | undefined };
+export * from './noteRefsCore';
 
 /** 当前 Vault 全部笔记（ID/标题/相对路径），随 vault:changed 刷新。 */
 export function useNoteRefs(): NoteRef[] {
@@ -26,52 +33,6 @@ export function useNoteRefs(): NoteRef[] {
     };
   }, [load]);
   return notes;
-}
-
-// ---------- 触发与候选 ----------
-
-// 中文输入法下 `[` 会变成 `【`，一并识别。
-const TRIGGER = /(\[\[|【【|【\[|\[【)([^\[\]【】\n]*)$/;
-
-/** 光标前文本以未完成的 `[[查询` 结尾时返回其起点与查询。 */
-export function matchTrigger(before: string): { start: number; query: string } | null {
-  const m = TRIGGER.exec(before);
-  return m ? { start: m.index, query: m[2] } : null;
-}
-
-export function filterNotes(notes: NoteRef[], query: string): NoteRef[] {
-  const q = query.trim().toLowerCase();
-  return notes.filter((n) => !q || n.title.toLowerCase().includes(q)).slice(0, 8);
-}
-
-/** 候选弹层键盘处理；返回 true 表示已消费该按键。组合输入期间不拦截。 */
-export function pickerKey(
-  e: { key: string; metaKey: boolean; ctrlKey: boolean; shiftKey: boolean; preventDefault(): void },
-  composing: boolean,
-  count: number,
-  index: number,
-  setIndex: (i: number) => void,
-  pick: () => void,
-  close: () => void
-): boolean {
-  if (composing) return false;
-  if (e.key === 'Escape') {
-    e.preventDefault();
-    close();
-    return true;
-  }
-  if (count === 0) return false; // 无结果时 Enter 仍是普通换行
-  if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
-    e.preventDefault();
-    setIndex((index + (e.key === 'ArrowDown' ? 1 : count - 1)) % count);
-    return true;
-  }
-  if ((e.key === 'Enter' || e.key === 'Tab') && !e.metaKey && !e.ctrlKey && !e.shiftKey) {
-    e.preventDefault();
-    pick();
-    return true;
-  }
-  return false;
 }
 
 export function NotePicker({
@@ -136,37 +97,6 @@ export function NotePicker({
     return createPortal(picker, document.body);
   }
   return picker;
-}
-
-// ---------- 纯文本引用（Task 描述 / 评论） ----------
-
-const textRefRe = () => /(\\)?\[\[([^\[\]\n]+)\]\]/g;
-
-/** 只保留正文中实际出现（未转义）的绑定。 */
-export function pruneRefs(text: string, refs: NoteRefMap): NoteRefMap {
-  const out: NoteRefMap = {};
-  for (const m of text.matchAll(textRefRe())) {
-    if (!m[1] && refs[m[2]]) out[m[2]] = refs[m[2]];
-  }
-  return out;
-}
-
-export function sameRefs(a: NoteRefMap, b: NoteRefMap): boolean {
-  const ka = Object.keys(a);
-  return ka.length === Object.keys(b).length && ka.every((k) => a[k] === b[k]);
-}
-
-/** 已绑定只认绑定的 ID；未绑定仅在标题唯一匹配时解析（与 Go Core 规则一致）。 */
-export function resolveRef(name: string, refs: NoteRefMap | undefined, notes: NoteRef[]): { note?: NoteRef; reason?: string } {
-  const trimmed = name.trim();
-  if (refs && (trimmed in refs || name in refs)) {
-    const targetId = refs[trimmed] ?? refs[name];
-    const n = notes.find((x) => x.id === targetId);
-    if (n) return { note: n };
-  }
-  const m = notes.filter((x) => x.title.trim() === trimmed);
-  if (m.length === 1) return { note: m[0] };
-  return { reason: m.length > 1 ? '有多篇同名笔记，请编辑后重新选择' : '笔记不存在或已移动' };
 }
 
 /** 阅读态：按纯文本显示，仅把 `[[名称]]` 渲染成可点击名称。 */
@@ -353,40 +283,4 @@ export function NoteRefTextarea({
       )}
     </>
   );
-}
-
-// ---------- Note 正文：标准 Markdown 相对链接 ----------
-
-const dirOf = (p: string) => p.slice(0, p.lastIndexOf('/') + 1);
-
-/** `fromPath` 所在目录到 `toPath` 的相对路径（均为 Vault 相对、斜杠分隔），以 ./ 或 ../ 开头。 */
-export function relativePath(fromPath: string, toPath: string): string {
-  const from = dirOf(fromPath).split('/').filter(Boolean);
-  const to = toPath.split('/');
-  let i = 0;
-  while (i < from.length && i < to.length - 1 && from[i] === to[i]) i++;
-  const rel = [...Array(from.length - i).fill('..'), ...to.slice(i)].join('/');
-  return rel.startsWith('..') ? rel : `./${rel}`;
-}
-
-/** 链接目标里只转义会破坏 Markdown 语法的字符（空格、括号、%），中文保持可读。 */
-export function escapeLinkPath(p: string): string {
-  return p.replace(/[ ()%]/g, (c) => '%' + c.charCodeAt(0).toString(16).toUpperCase());
-}
-
-/** 把编辑器里点击的 href 解析为 Vault 内的 Note；非相对 .md 链接返回 undefined。 */
-export function resolveHref(fromPath: string, href: string, notes: NoteRef[]): NoteRef | undefined {
-  if (/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(href) || href.startsWith('/') || href.startsWith('#')) return undefined;
-  try {
-    const clean = decodeURIComponent(href.split(/[#?]/)[0]);
-    const parts: string[] = [];
-    for (const seg of (dirOf(fromPath) + clean).split('/')) {
-      if (seg === '..') parts.pop();
-      else if (seg && seg !== '.') parts.push(seg);
-    }
-    const target = parts.join('/');
-    return notes.find((n) => n.path === target);
-  } catch {
-    return undefined;
-  }
 }
