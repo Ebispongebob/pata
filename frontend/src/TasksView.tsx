@@ -5,8 +5,6 @@ import {
   CheckCircle2,
   AlertCircle,
   Calendar,
-  X,
-  Search,
   FolderOpen,
 } from 'lucide-react';
 import * as VaultService from '../bindings/pata/vaultservice';
@@ -49,7 +47,6 @@ export function TasksView({
   const origin = useDetailOrigin();
 
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'done'>('all');
-  const [searchQuery, setSearchQuery] = useState('');
 
   const loadTasks = useCallback(async () => {
     if (!vaultStatus?.open) {
@@ -152,18 +149,12 @@ export function TasksView({
   };
 
   const filteredTasks = useMemo(() => {
-    const query = searchQuery.trim().toLowerCase();
     return tasks.filter((t) => {
       if (statusFilter === 'active' && t.status === TaskStatus.TaskStatusDone) return false;
       if (statusFilter === 'done' && t.status !== TaskStatus.TaskStatusDone) return false;
-      if (query) {
-        const matchTitle = t.title.toLowerCase().includes(query);
-        const matchTag = (t.tags ?? []).some((tag) => tag.toLowerCase().includes(query));
-        if (!matchTitle && !matchTag) return false;
-      }
       return true;
     });
-  }, [tasks, statusFilter, searchQuery]);
+  }, [tasks, statusFilter]);
 
   // Unconfigured Vault state
   if (!vaultStatus?.configured) {
@@ -234,59 +225,38 @@ export function TasksView({
           onSubmit={handleQuickCreate}
         />
 
-        {/* Filters and Search Bar */}
-        <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5">
-          <div className="flex items-center space-x-1 p-0.5 rounded-lg bg-stone-200/60 dark:bg-stone-800/80 text-xs">
-            <button
-              onClick={() => setStatusFilter('all')}
-              className={`px-2.5 py-1 rounded-md font-medium transition ${
-                statusFilter === 'all'
-                  ? 'bg-white dark:bg-stone-900 text-stone-900 dark:text-stone-100 shadow-2xs'
-                  : 'text-stone-600 dark:text-stone-400 hover:text-stone-900'
-              }`}
-            >
-              全部 ({tasks.length})
-            </button>
-            <button
-              onClick={() => setStatusFilter('active')}
-              className={`px-2.5 py-1 rounded-md font-medium transition ${
-                statusFilter === 'active'
-                  ? 'bg-white dark:bg-stone-900 text-stone-900 dark:text-stone-100 shadow-2xs'
-                  : 'text-stone-600 dark:text-stone-400 hover:text-stone-900'
-              }`}
-            >
-              待办中 ({tasks.filter((t) => t.status !== TaskStatus.TaskStatusDone).length})
-            </button>
-            <button
-              onClick={() => setStatusFilter('done')}
-              className={`px-2.5 py-1 rounded-md font-medium transition ${
-                statusFilter === 'done'
-                  ? 'bg-white dark:bg-stone-900 text-stone-900 dark:text-stone-100 shadow-2xs'
-                  : 'text-stone-600 dark:text-stone-400 hover:text-stone-900'
-              }`}
-            >
-              已完成 ({tasks.filter((t) => t.status === TaskStatus.TaskStatusDone).length})
-            </button>
-          </div>
-
-          <div className="relative flex-1 sm:max-w-xs">
-            <Search className="w-3.5 h-3.5 text-stone-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="搜索任务标题或标签..."
-              className="w-full pl-8 pr-3 py-1.5 text-xs rounded-lg border border-stone-200 dark:border-stone-800 bg-white dark:bg-stone-950 text-stone-900 dark:text-stone-100 placeholder-stone-400 focus:outline-none focus:ring-0 focus:border-stone-400 dark:focus:border-stone-600"
-            />
-            {searchQuery && (
-              <button
-                onClick={() => setSearchQuery('')}
-                className="absolute right-2 top-1/2 -translate-y-1/2 text-stone-400 hover:text-stone-600"
-              >
-                <X className="w-3 h-3" />
-              </button>
-            )}
-          </div>
+        {/* Status Filters */}
+        <div className="flex items-center space-x-1 p-0.5 rounded-lg bg-stone-200/60 dark:bg-stone-800/80 text-xs w-fit">
+          <button
+            onClick={() => setStatusFilter('all')}
+            className={`px-2.5 py-1 rounded-md font-medium transition cursor-pointer ${
+              statusFilter === 'all'
+                ? 'bg-white dark:bg-stone-900 text-stone-900 dark:text-stone-100 shadow-2xs'
+                : 'text-stone-600 dark:text-stone-400 hover:text-stone-900 dark:hover:text-stone-200'
+            }`}
+          >
+            全部 ({tasks.length})
+          </button>
+          <button
+            onClick={() => setStatusFilter('active')}
+            className={`px-2.5 py-1 rounded-md font-medium transition cursor-pointer ${
+              statusFilter === 'active'
+                ? 'bg-white dark:bg-stone-900 text-stone-900 dark:text-stone-100 shadow-2xs'
+                : 'text-stone-600 dark:text-stone-400 hover:text-stone-900 dark:hover:text-stone-200'
+            }`}
+          >
+            未完成 ({tasks.filter((t) => t.status !== TaskStatus.TaskStatusDone).length})
+          </button>
+          <button
+            onClick={() => setStatusFilter('done')}
+            className={`px-2.5 py-1 rounded-md font-medium transition cursor-pointer ${
+              statusFilter === 'done'
+                ? 'bg-white dark:bg-stone-900 text-stone-900 dark:text-stone-100 shadow-2xs'
+                : 'text-stone-600 dark:text-stone-400 hover:text-stone-900 dark:hover:text-stone-200'
+            }`}
+          >
+            已完成 ({tasks.filter((t) => t.status === TaskStatus.TaskStatusDone).length})
+          </button>
         </div>
 
         {/* List Error Banner */}
@@ -304,13 +274,13 @@ export function TasksView({
               <div className="text-rose-600 dark:text-rose-400 font-mono text-[11px]">
                 列表加载失败: {listError}
               </div>
-            ) : (
+            ) : tasks.length === 0 ? (
               <>
-                <div>暂无匹配的任务</div>
-                {tasks.length === 0 && (
-                  <div className="text-[11px] text-stone-400">输入上方标题快速创建第一条任务吧</div>
-                )}
+                <div>Vault 中暂无任务</div>
+                <div className="text-[11px] text-stone-400">输入上方标题快速创建第一条任务吧</div>
               </>
+            ) : (
+              <div>当前分类下暂无任务</div>
             )}
           </div>
         ) : (

@@ -1,10 +1,8 @@
-import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Events } from '@wailsio/runtime';
 import {
   FileText,
   Plus,
-  Search,
-  X,
   AlertCircle,
   RefreshCw,
   FolderOpen,
@@ -1283,14 +1281,9 @@ export function NotesView({
     }
   }, [focusNoteId, onClearFocusNote]);
 
-  // Search filter (preserved across navigation)
-  const [searchQuery, setSearchQuery] = useState('');
-
   // Scroll position preservation
   const rootRef = useRef<HTMLDivElement | null>(null);
   const scrollTopRef = useRef<number>(0);
-
-  const [rescanLoading, setRescanLoading] = useState(false);
 
   // Load notes
   const loadNotes = useCallback(async () => {
@@ -1350,35 +1343,6 @@ export function NotesView({
       }
     }
   }, [selectedNoteId]);
-
-  const handleRescan = async () => {
-    setRescanLoading(true);
-    setListError(null);
-    try {
-      await VaultService.RescanVault();
-      if (onRescanVault) {
-        onRescanVault();
-      }
-      await loadNotes();
-    } catch (err: any) {
-      console.error('Failed to rescan vault:', err);
-      setListError(`重新扫描失败: ${err?.message || err}`);
-    } finally {
-      setRescanLoading(false);
-    }
-  };
-
-  // Filter notes by title, body, and tags (case-insensitive)
-  const filteredNotes = useMemo(() => {
-    const q = searchQuery.trim().toLowerCase();
-    if (!q) return notes;
-    return notes.filter((n) => {
-      const titleMatch = (n.title ?? '').toLowerCase().includes(q);
-      const bodyMatch = (n.body ?? '').toLowerCase().includes(q);
-      const tagMatch = (n.tags ?? []).some((t) => t.toLowerCase().includes(q));
-      return titleMatch || bodyMatch || tagMatch;
-    });
-  }, [notes, searchQuery]);
 
   // Select note and record scroll position
   const handleSelectNote = (id: string) => {
@@ -1490,52 +1454,25 @@ export function NotesView({
     );
   }
 
-  // Single-column Flomo-style Card List View
+  // Single-column Card List View
   return (
     <div ref={rootRef} className="max-w-3xl mx-auto space-y-5">
-      {/* Top Header Row with Path & Rescan */}
-      <div className="flex items-center justify-between text-xs text-stone-500 dark:text-stone-400 pb-2 border-b border-stone-200/80 dark:border-stone-800">
-        <span className="font-mono text-[11px] truncate max-w-md" title={vaultStatus.path}>
-          {vaultStatus.path}
-        </span>
-        <button
-          onClick={handleRescan}
-          disabled={vaultBusy || loading || rescanLoading}
-          className="flex items-center space-x-1 px-2.5 py-1 rounded border border-stone-200 dark:border-stone-800 hover:bg-stone-100 dark:hover:bg-stone-800 transition disabled:opacity-50"
-          title="从磁盘重新扫描 Markdown 索引"
-        >
-          <RefreshCw className={`w-3 h-3 ${vaultBusy || loading || rescanLoading ? 'animate-spin' : ''}`} />
-          <span>重新扫描</span>
-        </button>
-      </div>
-
-      {/* Top Search Bar & Create Button */}
-      <div className="flex items-center justify-between gap-3">
-        <div className="relative flex-1">
-          <Search className="w-3.5 h-3.5 text-stone-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
-          <input
-            type="text"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="搜索笔记标题、内容或标签..."
-            className="w-full pl-8 pr-8 py-2 text-xs rounded-lg border border-stone-200 dark:border-stone-800 bg-white dark:bg-stone-950 text-stone-900 dark:text-stone-100 placeholder-stone-400 focus:outline-hidden focus:ring-2 focus:ring-emerald-600 shadow-2xs"
-          />
-          {searchQuery && (
-            <button
-              type="button"
-              onClick={() => setSearchQuery('')}
-              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-stone-400 hover:text-stone-600 dark:hover:text-stone-200"
-              title="清除搜索"
-            >
-              <X className="w-3.5 h-3.5" />
-            </button>
-          )}
+      {/* Top Action Bar */}
+      <div className="flex items-center justify-between pt-1">
+        <div className="flex items-center space-x-2">
+          <h2 className="text-sm font-semibold text-stone-900 dark:text-stone-100">
+            全部笔记
+          </h2>
+          <span className="text-xs font-mono text-stone-400">
+            {notes.length}
+          </span>
+          {loading && <span className="text-[11px] text-stone-400">加载中...</span>}
         </div>
 
         <button
           type="button"
           onClick={handleStartCreateNote}
-          className="flex items-center space-x-1 px-3.5 py-2 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-medium transition shadow-2xs shrink-0"
+          className="flex items-center space-x-1 px-3.5 py-1.5 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-medium transition shadow-2xs shrink-0 cursor-pointer"
         >
           <Plus className="w-3.5 h-3.5" />
           <span>新建笔记</span>
@@ -1550,58 +1487,36 @@ export function NotesView({
         </div>
       )}
 
-      {/* Section Header */}
-      <div className="flex items-center justify-between text-xs text-stone-500 pt-1">
-        <div className="flex items-center space-x-2">
-          <h2 className="text-sm font-semibold text-stone-900 dark:text-stone-100">
-            最近修改
-          </h2>
-          <span className="text-xs font-mono text-stone-400">
-            {filteredNotes.length}
-          </span>
-          {loading && <span className="text-[11px] text-stone-400">加载中...</span>}
-        </div>
-        <span className="text-[11px] text-stone-400">
-          Flomo 式单列卡片浏览 · 无嵌套侧栏
-        </span>
-      </div>
-
       {/* Single-column Card Stack */}
-      {filteredNotes.length === 0 ? (
+      {notes.length === 0 ? (
         <div className="py-16 text-center rounded-xl border border-dashed border-stone-200 dark:border-stone-800 bg-white/40 dark:bg-stone-950/20 text-xs text-stone-400 space-y-2">
           <FileText className="w-8 h-8 text-stone-300 dark:text-stone-700 mx-auto" />
-          {notes.length === 0 ? (
-            loading ? (
-              <div className="font-medium text-stone-600 dark:text-stone-300">
-                加载中...
-              </div>
-            ) : (
-              <>
-                <div className="font-medium text-stone-600 dark:text-stone-300">
-                  Vault 中暂无笔记
-                </div>
-                <div className="text-[11px] text-stone-400 max-w-xs mx-auto">
-                  点击右上角「新建笔记」写下第一篇长文或记录吧，写 Note 无须建 Task
-                </div>
-                <button
-                  type="button"
-                  onClick={handleStartCreateNote}
-                  className="mt-2 inline-flex items-center space-x-1 px-3 py-1.5 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-medium transition shadow-2xs"
-                >
-                  <Plus className="w-3 h-3" />
-                  <span>立即新建</span>
-                </button>
-              </>
-            )
-          ) : (
-            <div className="font-medium text-stone-500 dark:text-stone-400">
-              未搜索到匹配的笔记
+          {loading ? (
+            <div className="font-medium text-stone-600 dark:text-stone-300">
+              加载中...
             </div>
+          ) : (
+            <>
+              <div className="font-medium text-stone-600 dark:text-stone-300">
+                Vault 中暂无笔记
+              </div>
+              <div className="text-[11px] text-stone-400 max-w-xs mx-auto">
+                点击右上角「新建笔记」写下第一篇长文或记录吧，写 Note 无须建 Task
+              </div>
+              <button
+                type="button"
+                onClick={handleStartCreateNote}
+                className="mt-2 inline-flex items-center space-x-1 px-3 py-1.5 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-medium transition shadow-2xs cursor-pointer"
+              >
+                <Plus className="w-3 h-3" />
+                <span>立即新建</span>
+              </button>
+            </>
           )}
         </div>
       ) : (
         <div className="space-y-3">
-          {filteredNotes.map((n) => {
+          {notes.map((n) => {
             const excerpt = getNoteExcerpt(n.title, n.body);
             const relativeTime = formatRelativeTime(n.updated_at);
 

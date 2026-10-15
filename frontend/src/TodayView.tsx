@@ -529,7 +529,6 @@ export function TodayView({
               <span className="text-base font-semibold text-stone-900 dark:text-stone-100 truncate">
                 {formatDateDisplay(selectedDate)}
               </span>
-              <span className="text-xs text-stone-400 shrink-0">{isToday ? '今天' : selectedDate}</span>
             </div>
             {!isToday && (
               <button

@@ -432,17 +432,30 @@ export default function App() {
                 onClick={() => setVaultMenuOpen((v) => !v)}
                 aria-haspopup="menu"
                 aria-expanded={vaultMenuOpen}
-                className="relative flex items-center space-x-1.5 min-w-0 px-2 py-1.5 rounded-md text-xs text-stone-500 dark:text-stone-400 hover:bg-stone-200/60 dark:hover:bg-stone-800/60 transition"
+                className="relative flex items-center space-x-1.5 min-w-0 px-2 py-1.5 rounded-md text-xs text-stone-500 dark:text-stone-400 hover:bg-stone-200/60 dark:hover:bg-stone-800/60 transition cursor-pointer"
                 title={vaultStatus.path}
               >
                 <FolderOpen className="w-3.5 h-3.5 shrink-0" />
                 <span className="truncate max-w-[110px]">{vaultStatus.path.split('/').filter(Boolean).pop() || vaultStatus.path}</span>
-                {(rescanError || !vaultStatus.open) && (
-                  <span className="absolute top-1 left-1 w-1.5 h-1.5 rounded-full bg-rose-500" />
+                {(rescanError || !vaultStatus.open || hasHealthIssues) && (
+                  <span className={`absolute top-1 left-1 w-1.5 h-1.5 rounded-full ${hasHealthIssues && !rescanError && vaultStatus.open ? 'bg-amber-500' : 'bg-rose-500'}`} />
                 )}
               </button>
             ) : (
               <span />
+            )}
+            {hasHealthIssues && (
+              <button
+                onClick={() => {
+                  healthTriggerRef.current = document.activeElement as HTMLElement | null;
+                  setShowHealthModal(true);
+                }}
+                className="flex items-center space-x-1 px-1.5 py-1 rounded text-xs font-medium bg-amber-100 dark:bg-amber-950/70 text-amber-900 dark:text-amber-200 border border-amber-300 dark:border-amber-800/80 hover:bg-amber-200/80 dark:hover:bg-amber-900/60 transition cursor-pointer shrink-0"
+                title="Vault 健康异常提示"
+              >
+                <AlertTriangle className="w-3 h-3 text-amber-600 dark:text-amber-400 shrink-0" />
+                {!sidebarCollapsed && <span>{parseErrorCount + danglingRefCount}</span>}
+              </button>
             )}
             {vaultMenuOpen && vaultStatus?.configured && (
               <>
@@ -517,15 +530,12 @@ export default function App() {
 
       {/* Main Content Area */}
       <main className="flex-1 flex flex-col min-w-0 overflow-hidden rounded-2xl border border-stone-200/70 dark:border-stone-800/70 shadow-xs bg-stone-50 dark:bg-stone-900 mt-2 mr-2 mb-2">
-        {/* Top Header / Draggable Toolbar: 在笔记编辑页时不显示该整行，保持安静专注 */}
-        {!(activeNav === 'notes' && isEditingNote) && (
+        {/* Top Header / Draggable Toolbar: 仅在标签视图展示，Today / Tasks / Notes 主视图已移除顶部冗余标题 */}
+        {activeNav === 'tag' && (
           <header className="h-12 border-b border-stone-200 dark:border-stone-800 flex items-center justify-between px-4 drag-region select-none shrink-0">
             <div className="flex items-center space-x-3">
               <h1 className="text-sm font-semibold text-stone-800 dark:text-stone-200">
-                {activeNav === 'today' && 'Today — 今日计划与记录'}
-                {activeNav === 'tasks' && 'Tasks — 全量任务池'}
-                {activeNav === 'notes' && 'Notes — 单列笔记'}
-                {activeNav === 'tag' && `#${selectedTag || '标签视图'}`}
+                #{selectedTag || '标签视图'}
               </h1>
             </div>
 
