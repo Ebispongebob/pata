@@ -19,7 +19,7 @@
 ## 阶段交付
 
 1. Task：Frontmatter 保存任务属性及纯文本 `description`；正文仅保存属于该 Task 的 Activity。
-2. DayPlan：沿用 `.pata/plans/YYYY-MM-DD.md`；Frontmatter 保留有序 `task_ids`，正文保存该日期独立 Activity。
+2. DayPlan：目标位置改为根 `plans/YYYY-MM-DD.md`（当前实现仍可能使用 `.pata/plans/`）；Frontmatter 保留有序 `task_ids`，正文保存该日期独立 Activity。
 3. 统一 Activity：`a-` + ULID、`at` 时间、可选 `tags` / `note_refs`，使用成对 HTML Comment 包围正文。
 4. 删除 Task 同时删除其 Activity，清理所有 DayPlan 中对该 Task 的引用；失败时允许可恢复的最终一致性。
 5. Today、Tasks、标签、全局搜索、反向链接及健康检查保持功能闭环；已有 Notes `[[` 引用交互不得回退。

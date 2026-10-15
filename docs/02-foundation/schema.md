@@ -1,6 +1,6 @@
 # Markdown Schema — V2 目标规范（阶段 8）
 
-> **状态：已确认的目标协议，尚未实施。** 现有源码和 `docs/02-foundation/examples/` 仍可能使用 V1 Memo/Task Body 布局；示例文件暂作为旧测试固件保留，待 [阶段 8](../08-activity-storage/proposal.md) 编码时同步更换。**本文件是未来存储协议的唯一规范来源**；第 8 阶段 proposal 只说明实施步骤。
+> **状态：已确认的目标协议，尚未实施。** 阶段 8 落地 Activity 归属模型；阶段 9 增补 Vault 边界与文件资源引用。 现有源码和 `docs/02-foundation/examples/` 仍可能使用 V1 Memo/Task Body 布局；示例文件暂作为旧测试固件保留，待 [阶段 8](../08-activity-storage/proposal.md) 编码时同步更换。**本文件是未来存储协议的唯一规范来源**；第 8 阶段 proposal 只说明实施步骤。
 
 ## 通用约定
 
@@ -18,10 +18,12 @@
 vault/
   tasks/                         # 每 Task 一个 Markdown，Activity 内嵌
   notes/                         # 每 Note 一个 Markdown，可有子目录
-  .pata/plans/YYYY-MM-DD.md      # 每日期一个 DayPlan，独立 Activity 内嵌
+  plans/YYYY-MM-DD.md            # 每日期一个 DayPlan，独立 Activity 内嵌
+  files/                         # 原始 PDF、Office、图片等，无 Frontmatter
+  .pata/                         # 内部状态，可重建；不保存唯一业务数据
 ~~~
 
-`memos/YYYY/MM/*.md` 不再是新版本的业务写入路径。因目前仅为测试期，不做自动兼容迁移；现存文件不得被程序静默删除。`.pata/plans/` 是真实业务数据，不是可丢弃缓存。
+`memos/YYYY/MM/*.md` 不再是新版本的业务写入路径。因目前仅为测试期，不做自动兼容迁移；现存文件不得被程序静默删除。`plans/` 是真实业务数据，不是可丢弃缓存。当前应用仍可能使用旧 `.pata/plans/`；阶段 8 尚未实施，目标直接采用根 `plans/`，不得静默删掉旧测试资料。阶段 9 实现专属目录扫描与文件资源引用。
 
 ## Task
 
@@ -139,7 +141,7 @@ note_refs:
 
 ## Note 与 `[[笔记引用]]`
 
-- Task 的 `description`、每条 Activity 的正文中，`[[名称]]` 可以指向 Note；只识别 Note 引用，其余内容保持纯文本。
+- Task 的 `description`、每条 Activity 的正文中，`[[名称]]` 仅表示 Note 引用；阶段 9 的文件候选由同一个 `[[` 选择入口插入**标准 Markdown 文件链接**，不将文件编码为 `[[文件名]]`，也不为其新增 ID 绑定。其余内容保持纯文本。
 - 已通过 `note_refs` 绑定的名称只解析到绑定的真实 Note ID；失效不按同名新 Note 自动接管。未绑定的 `[[名称]]` 只有在标题唯一匹配时才解析；`\[[名称]]` 是转义字面量。
 - 同一作用域中如存在同名不同 Note，使用 `名称 (相对路径)` 区分；`note_refs` 仅保留实际出现的名称。
 - Note 自身仍保存标准 Markdown 相对链接，Notes WYSIWYG/IR 输入、补全和点击行为不变。
@@ -171,7 +173,17 @@ updated_at: 2026-10-15T09:20:00+08:00
 3. 不做跨文件事务或 WAL。清理失败时，Task 文件删除本身不被伪装回滚；遗留任务引用读取时忽略、健康检查可解释，并允许后续**幂等**清理。
 4. 外部删除/改写也可能造成无效引用；这类可恢复引用问题不应让整个 Vault 进入不可用的降级状态。
 5. 解析错误、重复 ID 等会危及结构化读写的情况按文件隔离；绝不自动覆盖/删除不可解析的原始 Markdown。
-6. 索引、搜索和页面缓存都可从有效 Markdown 重建，`.pata/plans` 以及 Task/Note 文件则必须保存。
+6. 索引、搜索和页面缓存都可从有效 Markdown 重建，根 `plans/` 以及 Task/Note 文件则必须保存；阶段 9 的原始 `files/` 同样必须保存。
+
+## Vault 与文件资源引用（阶段 9 目标，未实施）
+
+- Vault 的业务扫描范围仅为 `notes/**`（Note）、`tasks/**`（Task）、`plans/`（DayPlan）与 `files/**`（文件资源）；Vault 根目录、`.pata/` 等位置不递归当作 Note 来源。
+- `files/**` 里的 PDF、PPT、Word、图片等是普通原始文件，**没有** `type: file`、File ID、`file_refs`、包装 Note 或 JSON 侧车。一个文件可以被多个来源引用，也可以零引用。
+- 阶段 9 的 `[[` 候选同时允许选择已有 Note 与已有文件，但两者保存规则**不同**：Note 遵守本文件既有 Note ID/相对链接机制；文件使用标准 Markdown 相对路径链接，如 `[晋升答辩.pptx](../files/晋升答辩.pptx)`，路径从实际宿主 Task/DayPlan/Note 文件位置计算。带空格、括号等路径字符需按 Markdown URL 规则转义。
+- Task/Activity 是纯文本，仅额外识别并以可点击项展示有效**文件链接**；不因文件引用而解释其它 Markdown 语法。Note 则按原有 Markdown 编辑/渲染规则工作。
+- 文件的搜索身份为 Vault 内当前路径与文件名；不承诺外部重命名自动修复。路径失效保留原文并提示，不重绑定猜测文件；解析路径必须限制在 Vault 内，禁止 `../`/符号链接逃逸。
+- 删除 Note/Task/Activity/文件链接时**不级联删除** `files/` 资源；不设自动清理。文件导入复制且不覆盖同名文件，首次导入生成新链接、再次从候选选择已有文件只生成链接。
+- 本节仅定义阶段 9 的未来行为，不表示当前 Go Core 已实现。
 
 ## 与 V1 的关系
 

@@ -1,6 +1,6 @@
 # Pata · 文档与实施路线
 
-**文档按实施阶段组织，而不是按功能模块组织。** 当前路线包含 **8 个顺序阶段**：前五阶段完成业务 MVP，第六阶段负责品牌接入，第七阶段负责笔记引用，第八阶段以一个独立交付阶段完成 Activity 归属式存储重构。只有实际新增一个独立交付阶段时，才新增对应的 `docs/NN-name/` 目录。
+**文档按实施阶段组织，而不是按功能模块组织。** 当前路线包含 **9 个顺序阶段**：前五阶段完成业务 MVP，第六阶段负责品牌接入，第七阶段负责笔记引用，第八阶段完成 Activity 归属式存储重构，第九阶段收敛专属 Vault、文件资源引用与搜索。只有实际新增一个独立交付阶段时，才新增对应的 `docs/NN-name/` 目录。
 
 | 顺序 | 目录 / 阶段 | 阶段结束应交付什么 | 核心文档 |
 |---|---|---|---|
@@ -12,6 +12,7 @@
 | 6 | [`06-branding`](06-branding/) · 品牌接入与 Logo 动画 | 三层卡片 V2 静态品牌接入、启动与记录成功动画、菜单栏增强验证 | [idea](06-branding/idea.md) · [proposal](06-branding/proposal.md) |
 | 7 | [`07-note-links`](07-note-links/) · 笔记引用闭环 | 笔记正文 / 任务描述 / 活动记录统一 `[[` 引用、点击跳转、自动被引用来源 | [idea](07-note-links/idea.md) · [proposal](07-note-links/proposal.md) |
 | 8 | [`08-activity-storage`](08-activity-storage/) · Activity 归属式存储重构 | 统一内嵌 Activity，Task/DayPlan 新格式、删除生命周期、搜索/时间线/链接回归 | [idea](08-activity-storage/idea.md) · [proposal](08-activity-storage/proposal.md) · [Schema](02-foundation/schema.md) |
+| 9 | [`09-vault-files`](09-vault-files/) · 专属 Vault 与统一资源引用 | Vault 目录边界、拖入文件与 `[[` 复用、文件名搜索和系统预览 | [idea](09-vault-files/idea.md) · [proposal](09-vault-files/proposal.md) |
 
 阶段 1 的 UI 附加设计： [macOS 27 原生体验与 Magpie 源码参考](01-validate/macos-native.md)，其真实 Wails 验证安排在阶段 2。
 
@@ -26,7 +27,8 @@
 
 ## 重要约束
 
-- 三主导航：Today / Tasks / Notes；Activity 不独立设导航。
+- 三主导航：Today / Tasks / Notes；Activity 与文件不独立设导航。
+- 专属 Vault：`notes/`、`tasks/`、`plans/` 是业务 Markdown，`files/` 是原始文件资源，`.pata/` 只存内部状态；阶段 9 才实现文件引用与搜索。
 - 标签是 Task、Note、Activity 的全局聚合；Task 内 Activity 动态继承 Task 标签；无 Projects / Inbox。
 - Notes 是**单列卡片浏览 → 单主区域编辑**；原型位于 [`01-validate/prototype/index.html`](01-validate/prototype/index.html)。
 - Markdown 是数据源；Task/DayPlan 的 Activity 各自存于所属文件而不复制；DayPlan 不等于 Due；记录只有一份。
@@ -41,6 +43,8 @@
 
 **阶段 7：代码完成，待实机验收。** Notes / Task 描述 / 任务评论 / Today 记录的 `[[` 选择、跳转与持久绑定，Note 相对链接及按 Note/Task 身份去重的“被引用”均已实现。唯一必修项「已绑定 Note ID 失效时禁止退回同名标题匹配」已修复并补充前端独立单测（`src/noteRefs.test.ts`）；Go 与前端单元测试全部通过。返回来源页面/日期是可选优化，不阻塞阶段 8；外部移动跨文件自动维护、批量更新/重试和精确滚动/光标恢复均取消。与阶段 8 Activity 内嵌模型衔接时须保留现有引用能力；见 [idea](07-note-links/idea.md) 与 [proposal](07-note-links/proposal.md)。
 
-**阶段 8 设计已确认、待实施**：统一 `a-` Activity；Task Frontmatter 改存纯文本描述、Body 存活动；Today 沿用 `.pata/plans/`，Body 存独立活动。删除 Task 连同 Activity 一起删除并清理 DayPlan 引用；单文件原子写入、幂等修复、异常文件隔离。仅计划存储和业务重构，不实现 CLI。详见 [idea](08-activity-storage/idea.md)、[proposal](08-activity-storage/proposal.md)；Schema 见 [阶段 2 规范](02-foundation/schema.md)。
+**阶段 8 设计已确认、待实施**：统一 `a-` Activity；Task Frontmatter 改存纯文本描述、Body 存活动；DayPlan 目标调整为 Vault 根目录 `plans/`（当前代码仍可能在 `.pata/plans/`），Body 存独立活动。删除 Task 连同 Activity 一起删除并清理 DayPlan 引用；单文件原子写入、幂等修复、异常文件隔离。仅计划存储和业务重构，不实现 CLI。详见 [idea](08-activity-storage/idea.md)、[proposal](08-activity-storage/proposal.md)；Schema 见 [阶段 2 规范](02-foundation/schema.md)。
+
+**阶段 9 设计已确认、待实施**：Vault 专属且仅管理约定目录；通过 Activity/Note 拖入文件、复制到 `files/` 并插入标准链接，已有 `[[` 同时搜索 Note 和 File；全局搜索支持按文件名直接找回资源。文件可被多处引用、没有引用也继续保留。无 Files 页面、自动清理、inode 追踪或文件内容全文索引；详见 [idea](09-vault-files/idea.md)、[proposal](09-vault-files/proposal.md)。
 
 阶段 3 新增 Today 体验完善方案：末尾 `#标签` 快速创建、类似 ChatGPT 的左导航 / 中间 Today 或 Tasks / 右任务详情三栏、移除任务优先级、明确移出计划语义、紧凑日期及时间线。右栏按需打开，Notes 仍单列浏览与全主区域编辑。文档已整理，新增完成标准尚未验收，见 [idea](03-daily-loop/idea.md) 与 [proposal](03-daily-loop/proposal.md)；不改变原基础能力的已完成记录，也不新增阶段。
