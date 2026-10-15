@@ -325,6 +325,23 @@ export default function App() {
 
         {/* Primary Navigation */}
         <div className="flex-1 overflow-y-auto px-2 py-2 space-y-0.5">
+          {/* Quick Search */}
+          <button
+            onClick={() => setIsSearchOpen(true)}
+            className="w-full flex items-center justify-between px-2.5 py-1.5 mb-2 rounded-md text-xs text-stone-500 dark:text-stone-400 hover:text-stone-800 dark:hover:text-stone-200 hover:bg-stone-200/60 dark:hover:bg-stone-800/60 border border-stone-200/80 dark:border-stone-800/80 bg-stone-50/70 dark:bg-stone-900/50 transition-colors shadow-2xs cursor-pointer group"
+            title="全局搜索 (⌘K / ⌘P)"
+          >
+            <div className="flex items-center space-x-2 truncate">
+              <Search className="w-3.5 h-3.5 shrink-0 opacity-70 group-hover:opacity-100" />
+              {!sidebarCollapsed && <span>搜索</span>}
+            </div>
+            {!sidebarCollapsed && (
+              <kbd className="text-[10px] font-mono opacity-60 bg-stone-200/80 dark:bg-stone-800 px-1 py-0.2 rounded shrink-0">
+                ⌘K
+              </kbd>
+            )}
+          </button>
+
           <button
             onClick={() => goNav('today')}
             className={`w-full flex items-center space-x-2.5 px-2.5 py-2 rounded-md text-xs font-medium transition-colors ${
@@ -530,18 +547,6 @@ export default function App() {
                   </span>
                 </button>
               )}
-
-              <button
-                onClick={() => setIsSearchOpen(true)}
-                className="flex items-center space-x-1.5 px-2.5 py-1 rounded-md text-xs text-stone-500 dark:text-stone-400 hover:text-stone-900 dark:hover:text-stone-100 hover:bg-stone-200/60 dark:hover:bg-stone-800/60 border border-stone-200 dark:border-stone-800 transition cursor-pointer"
-                title="全局搜索 (⌘K / ⌘P)"
-              >
-                <Search className="w-3.5 h-3.5 opacity-70" />
-                <span>搜索</span>
-                <kbd className="text-[10px] font-mono opacity-60 bg-stone-200/60 dark:bg-stone-800 px-1 py-0.2 rounded">
-                  ⌘K
-                </kbd>
-              </button>
             </div>
           </header>
         )}
