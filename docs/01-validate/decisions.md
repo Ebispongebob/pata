@@ -3,34 +3,40 @@
 | ID | 决策 | 理由 / 后果 |
 |---|---|---|
 | D01 | 只有 Today / Tasks / Notes 三个主入口 | 入口围绕使用目的，而不是数据实体数量 |
-| D02 | Memo 不独立设导航 | 作为 Today 的随手记录或 Task 的评论；统一数据 |
-| D03 | Log 是按时间查看信息的方式，不是第四种内容 | 避免“日志”和“Memo”双重维护 |
+| D02 | Activity 不独立设导航 | Task 活动和 Today 独立记录统一称 Activity；各自按拥有者存储，只有 Today / Tasks / Notes 三主入口；旧 Memo 独立存储由 D30 覆盖 |
+| D03 | Log 是按时间查看信息的方式，不是第四种内容 | 避免额外维护与 Activity 重复的日志实体 |
 | D04 | Today 的 DayPlan 与 Task 的 Due 严格分离 | 计划推进 ≠ 必须完成；同任务可多日安排 |
 | D05 | 历史 DayPlan 保留；昨日未完不自动搬到今日 | 复盘真实，今日列表不膨胀 |
 | D06 | 无 Inbox、Projects、Areas | 一个全量任务池 + 可选全局标签已经足够 |
-| D07 | 标签是全局聚合视图 | 同一主题查任务、笔记、Memo；不因进入点改变语义 |
-| D08 | 关联 Task 的 Memo 按其 Task 标签参与过滤 | 标签不用重复填写；任务当前标签变化会影响筛选 |
+| D07 | 标签是全局聚合视图 | 同一主题查 Task、Note、Activity；不因进入点改变语义 |
+| D08 | Task 内 Activity 按其 Task 标签动态参与过滤 | 不重复保存父 Task 标签；自身标签与父 Task 标签取并集，Task 标签变化后自动更新聚合；Today 独立 Activity 仅用自身标签 |
 | D09 | Notes 借鉴 Flomo 单列卡片浏览；打开后独占主内容区 | 不采用文件树 + 列表 + 编辑器三列 |
 | D10 | 编辑器首选 Vditor；Frontmatter 由 Go Core 管理 | 编辑正文与结构化元数据隔离 |
-| D11 | 数据源为本地 Markdown；初期无 SQLite | 对 Agent、Git、任意编辑器透明 |
-| D12 | 外部 Pi Agent 直接读写；MVP 无 CLI/MCP/内置 AI | 先验证痛点，不提前设计接口 |
+| D11 | 数据源为本地 Markdown；初期无 SQLite | Note 仍可直接编辑 Markdown；Task/Today 的 Markdown 是内部持久化协议，推荐通过 App GUI（未来可经 CLI）操作；不需要引入数据库 |
+| D12 | MVP 不实现 CLI/MCP/内置 AI；未来 CLI 与 GUI 共用 App Core | 不以 Pi Agent 直接手改 Task/DayPlan Markdown 为官方编辑方式；CLI 可以依赖运行中的 App；IPC、自动启动、命令细节都留到未来阶段，不纳入阶段 8 |
 | D13 | 周/月复盘是 Note，不是功能模块 | 利用已有记录、由人或外部 Agent 生成 |
 | D14 | macOS MVP；Go + Wails v3 + React/TS | 小型本地应用，工程兼容性仍需 Spike |
 | D15 | 「啪嗒 / Pata」为正式产品名称 | 同名冲突和商标尚未核查 |
 | D16 | `docs/` 仅以实现阶段划分目录 | 每个阶段固定 `idea.md` 和 `proposal.md`，必要资料就近维护 |
 | D17 | Pata 以 macOS 27 HIG 为视觉目标，借鉴 Magpie 原生窗口实现 | 保留 Wails/Go/React；原生交通灯与标题栏优先，Liquid Glass 是可回退增强，禁止整页玻璃化 |
 | D18 | 单 Vault，不支持多 Vault | 一个用户一个本地目录；无切换/工作区概念，应用状态与索引绑定唯一根路径 |
-| D19 | Notes 编辑器自动保存（防抖落盘），冲突时停止自动保存并提示，人工重载解决；Tasks/Memo 保持手动 ⌘S 保存 | 笔记是长文写作场景，丢稿风险高；任务/备忘是短表单，手动保存即可。冲突一律不自动合并、不覆盖外部内容（Local First 取舍）；Notes 编辑器属阶段 4 交付 |
+| D19 | Notes 编辑器自动保存（防抖落盘），冲突时停止并提示；Tasks/Activity 沿用已验收的既有保存交互 | Notes 与业务文件编辑职责分离；不静默合并、不覆盖竞争写入；统一 Go Core 的最新文件补丁写入、单文件原子替换 |
 | D20 | 标签匹配与聚合分组均大小写不敏感（EqualFold / ToLower 分组），聚合显示保留首次出现的原始形式，存储不改写 | 对齐既有 `FindByTag` 语义，保证标签概览计数与点击筛选结果一致；schema 未规定大小写策略，此处定夺（阶段 5 P5-R1 审查项） |
 | D21 | 品牌以白色翻折顶层 + 橙黄色中层 + 粉紫色底层 + 三道黄色光芒的 V2 资源为基线；品牌接入与第二步动画作为独立阶段 6 | [资源与动画方案](../06-branding/proposal.md)；先静态接入，尊重减少动态效果，不新增导航、不改变关窗退出行为，不阻塞 MVP 验收 |
 | D22 | Today / Tasks 快速创建仅提取末尾连续的 `#标签`，标题在前、标签在后；共用解析与全局标签建议 | 用户在 [Today 讨论](chatgpt-conversation://6acde6d4-264c-83e9-95ef-86aca343d135) 中明确确认；中间标签保留原文，新名称随 Task.tags 落盘，无独立 Label 实体；[阶段 3 规则与验收](../03-daily-loop/proposal.md#共用快速创建与末尾标签) |
 | D23 | 用户明确采用类似 ChatGPT 的三栏：左导航 / 中间 Today 或 Tasks / 右任务详情；右栏按需打开，共用详情组件，中间内容保持可见、可操作 | 中间与右栏独立滚动，关闭右栏恢复中间宽度与上下文；窄窗口允许收起导航或覆盖主区域并返回；Notes 仍单列浏览、全主区域编辑；布局须实机验收，见 [阶段 3 方案](../03-daily-loop/proposal.md#共用任务详情与行内操作) |
-| D24 | 移除任务优先级，推进次序由当日计划顺序表达；移出计划只取消所查看日期的安排；详情表单仍手动保存，列表状态切换即时提交 | 新 Task 不写 `priority`，旧字段按未知属性保留；即时动作遇到同任务未保存草稿先处理草稿，失败不假报成功；不删除 Task、Memo、其它日计划或历史事件 |
-| D25 | Task 的 description / 描述使用纯文本，支持换行，不解析 Markdown；Notes 保持 Markdown 编辑 | Task 仍使用现有 `.md` 文件的正文存储，不新增字段或迁移；旧描述中的 Markdown 符号原样保留，避免清洗造成内容丢失 |
-| D26 | 阶段 7 在笔记正文、任务描述、任务评论中统一通过 `[[` 搜索并引用已有 Note，点击打开；任务描述与评论仅识别笔记引用，其余内容保持纯文本 | [笔记引用方案](../07-note-links/proposal.md)；不自动创建不存在的笔记，不新增正文/评论关联按钮，用户实测反馈后补充 Today 今日 / 当日记录（含独立 Memo）的补全、编辑和点击跳转，不扩展到单行字段；旧 Task `note_ids` 保持兼容 |
-| D27 | 被引用来源自动计算，默认折叠、无来源隐藏；按来源 Note / Task 稳定身份去重，同一任务的描述、评论和旧显式关联合并为一条 | 不显示摘要，不按描述/评论分类，不做关系图谱、悬停预览、标题级/块级链接或关系管理页面；不向目标 Note 写入反向数据 |
-| D28 | 统一引用交互，不强制统一正文格式；Note 保存标准 Markdown 相对链接，任务描述与评论保存纯文本引用及可恢复的真实目标绑定 | 不以标题作为唯一标识；改名/移动维护引用，失效时保留原文且不猜测同名目标；必要字段先在阶段 2 schema 定义，索引可从文件重建；阶段 7 待实施，不回溯追加为前五阶段 MVP 验收要求 |
+| D24 | 移除任务优先级，以当日计划顺序表达推进次序；移出计划只取消对应日期安排 | 不删除 Task、Task 的 Activity、其他日期计划或历史状态事件；状态操作保留即时提交体验 |
+| D25 | Task 描述纯文本，允许换行及 `[[笔记]]`，不解析其他 Markdown；Notes 仍是 Markdown 编辑器 | 阶段 8 将 Task `description` 放入 Frontmatter，Body 专用于 Activity；此前正文描述方案由 D31 覆盖 |
+| D26 | Notes、Task 描述、Task/Today 的 Activity 使用已有 `[[` 选择、点击与笔记绑定 | 保持现有 Note 编辑器已修复的 `[[` 补全与跳转；引用已存在的笔记，不自动创建或新增关联管理页面 |
+| D27 | 被引用来源动态计算，按 Note/Task 身份去重 | Task 描述及其 Activity 归为同一 Task 来源；Today 独立 Activity 能引用和跳转 Note，但阶段 8 不增加独立来源类型或第四入口 |
+| D28 | Note 正文使用标准相对 Markdown 链接；Task 描述/Activity 用 `[[名称]]` + 真实 Note ID 绑定 | Task 的描述 `note_refs` 与每条 Activity 局部 `note_refs` 不能混用；绑定失效不猜测同名目标，相关唯一规范见 [Schema](../02-foundation/schema.md) |
 | D29 | 极简任务模型（方案 A）：任务仅有未完成 (`todo`) 和已完成 (`done`) 两态，通过勾选直接切换；标签完全自由，不赋予系统级状态语义；通过 `completed_at` 记录完成时间用于 Today 统计与历史回顾；不再提供 `doing`（进行中）、等待中、已阻塞等内置状态 | 践行 Less is More / Record Once；中间推进状态由当日计划顺序与时间线自然呈现，无须繁琐的状态流转维护；存量 `doing` 状态平滑兼容规整为未完成 |
+| D30 | Task Activity / Today Activity 使用同一 Activity 模型而非独立 Memo 文件 | Task Activity 存所属 Task Body；独立 Today Activity 存 `.pata/plans/YYYY-MM-DD.md` Body，Today 时间线聚合展示，避免失去上下文的幽灵记录 |
+| D31 | Task 的属性和纯文本 `description` 均保存于 Frontmatter，Body 仅存内嵌 Activity | 任务删除自然携带内部 Activity；Notes Markdown 不受影响，`[[笔记引用]]` 继续工作 |
+| D32 | 每条 Activity 采用 `a-` + ULID，HTML Comment 成对边界和 YAML 元数据 | `id`、带时区 `at` 必填；`tags`、局部 `note_refs` 可选；通过 ID 精确增删改，不依赖标题/时间/行号 |
+| D33 | 删除 Task 连同 Activity 删除、清理 DayPlan 中任务 ID；轻量最终一致性 | 单文件原子写入、文件级串行写与最新内容补丁；DayPlan 清理失败可幂等修复，普通悬空引用不令 Vault 整体不可用；不引入 WAL/跨文件事务 |
+| D34 | Task/Today Activity 可选独立标签且延续 `[[Note]]` 引用；异常块严格解析、保守写入 | Task Activity 动态继承 Task 标签；Today Activity 仅用自身标签；损坏文件禁止回写，其他文件继续使用；不自动清除用户原始数据 |
+| D35 | 阶段 8 是存储/业务改造而非新 CLI 功能 | 初期无需要迁移的正式旧数据；允许直接转新模型但不能静默清理旧文件；未来 GUI/CLI 共用运行中的 App Core，CLI 细节延后 |
 
 ## 不轻易改变的设计约束
 
@@ -38,4 +44,4 @@
 - 不把“没有标签”解释为“未整理”。
 - 不把所有技术文档都强制关联 Task。
 - 不把标签关系误解成明确的 Task–Note 关联。
-- 不制造一份额外的工作日志来重复 Memo 和任务状态事件。
+- 不制造一份额外的工作日志来重复 Activity 和任务状态事件。

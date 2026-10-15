@@ -1,6 +1,6 @@
 # Pata · 文档与实施路线
 
-**文档按实施阶段组织，而不是按功能模块组织。** 当前路线包含 **7 个顺序阶段**：前五阶段完成业务 MVP，第六阶段独立完成品牌接入与 Logo 动画，第七阶段完成笔记引用闭环。只有实际新增一个独立交付阶段时，才新增对应的 `docs/NN-name/` 目录。
+**文档按实施阶段组织，而不是按功能模块组织。** 当前路线包含 **8 个顺序阶段**：前五阶段完成业务 MVP，第六阶段负责品牌接入，第七阶段负责笔记引用，第八阶段以一个独立交付阶段完成 Activity 归属式存储重构。只有实际新增一个独立交付阶段时，才新增对应的 `docs/NN-name/` 目录。
 
 | 顺序 | 目录 / 阶段 | 阶段结束应交付什么 | 核心文档 |
 |---|---|---|---|
@@ -10,7 +10,8 @@
 | 4 | [`04-knowledge-loop`](04-knowledge-loop/) · 文档沉淀 | 单列 Notes、长篇 Markdown 编辑、明确的 Task–Note 关联 | [idea](04-knowledge-loop/idea.md) · [proposal](04-knowledge-loop/proposal.md) |
 | 5 | [`05-release`](05-release/) · 整合交付 | 全局标签/搜索、安全性回归、macOS MVP 打包验收 | [idea](05-release/idea.md) · [proposal](05-release/proposal.md) · [验收](05-release/acceptance.md) |
 | 6 | [`06-branding`](06-branding/) · 品牌接入与 Logo 动画 | 三层卡片 V2 静态品牌接入、启动与记录成功动画、菜单栏增强验证 | [idea](06-branding/idea.md) · [proposal](06-branding/proposal.md) |
-| 7 | [`07-note-links`](07-note-links/) · 笔记引用闭环 | 笔记正文 / 任务描述 / 任务评论统一 `[[` 引用、点击跳转、自动被引用来源 | [idea](07-note-links/idea.md) · [proposal](07-note-links/proposal.md) |
+| 7 | [`07-note-links`](07-note-links/) · 笔记引用闭环 | 笔记正文 / 任务描述 / 活动记录统一 `[[` 引用、点击跳转、自动被引用来源 | [idea](07-note-links/idea.md) · [proposal](07-note-links/proposal.md) |
+| 8 | [`08-activity-storage`](08-activity-storage/) · Activity 归属式存储重构 | 统一内嵌 Activity，Task/DayPlan 新格式、删除生命周期、搜索/时间线/链接回归 | [idea](08-activity-storage/idea.md) · [proposal](08-activity-storage/proposal.md) · [Schema](02-foundation/schema.md) |
 
 阶段 1 的 UI 附加设计： [macOS 27 原生体验与 Magpie 源码参考](01-validate/macos-native.md)，其真实 Wails 验证安排在阶段 2。
 
@@ -25,10 +26,11 @@
 
 ## 重要约束
 
-- 三主导航：Today / Tasks / Notes；Memo 不是第四个导航。
-- 标签是 Task、Note、Memo 的全局聚合；无 Projects / Inbox。
+- 三主导航：Today / Tasks / Notes；Activity 不独立设导航。
+- 标签是 Task、Note、Activity 的全局聚合；Task 内 Activity 动态继承 Task 标签；无 Projects / Inbox。
 - Notes 是**单列卡片浏览 → 单主区域编辑**；原型位于 [`01-validate/prototype/index.html`](01-validate/prototype/index.html)。
-- Markdown 是数据源；DayPlan 不等于 Due；记录只有一份。
+- Markdown 是数据源；Task/DayPlan 的 Activity 各自存于所属文件而不复制；DayPlan 不等于 Due；记录只有一份。
+- **最新目标 Schema 以 [02-foundation/schema.md](02-foundation/schema.md) 为准**；阶段 2/3 的旧 Memo 描述属于历史交付记录，在阶段 8 落地前源码仍可能使用旧格式。
 - **MVP 无 CLI、MCP、内置 AI、云同步**；预留代码分层即可，不作具体实现。
 
 ## 当前状态
@@ -38,5 +40,7 @@
 阶段 6 规划与 V2 资源归档已完成；静态品牌接入、应用内动画及可选菜单栏增强尚未实施。
 
 阶段 7 规划已完成，功能待实施：只引用已有笔记，三处统一 `[[` 输入，Note 保存标准 Markdown 相对链接，任务描述与评论保持纯文本；被引用来源默认折叠，按 Note / Task 身份去重，兼容现有 `note_ids`。作为阶段 6 之后的独立交付步骤，不追加为前五阶段 MVP 的验收前提；见 [idea](07-note-links/idea.md) 与 [proposal](07-note-links/proposal.md)。
+
+**阶段 8 设计已确认、待实施**：统一 `a-` Activity；Task Frontmatter 改存纯文本描述、Body 存活动；Today 沿用 `.pata/plans/`，Body 存独立活动。删除 Task 连同 Activity 一起删除并清理 DayPlan 引用；单文件原子写入、幂等修复、异常文件隔离。仅计划存储和业务重构，不实现 CLI。详见 [idea](08-activity-storage/idea.md)、[proposal](08-activity-storage/proposal.md)；Schema 见 [阶段 2 规范](02-foundation/schema.md)。
 
 阶段 3 新增 Today 体验完善方案：末尾 `#标签` 快速创建、类似 ChatGPT 的左导航 / 中间 Today 或 Tasks / 右任务详情三栏、移除任务优先级、明确移出计划语义、紧凑日期及时间线。右栏按需打开，Notes 仍单列浏览与全主区域编辑。文档已整理，新增完成标准尚未验收，见 [idea](03-daily-loop/idea.md) 与 [proposal](03-daily-loop/proposal.md)；不改变原基础能力的已完成记录，也不新增阶段。
