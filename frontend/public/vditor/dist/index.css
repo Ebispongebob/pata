@@ -533,8 +533,8 @@
 .vditor {
   display: flex;
   flex-direction: column;
-  border: 1px solid var(--border-color);
-  border-radius: 3px;
+  border: none;
+  border-radius: 0;
   box-sizing: border-box;
   font-family: "Helvetica Neue", "Luxi Sans", "DejaVu Sans", "Hiragino Sans GB", "Microsoft Yahei", sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", "Segoe UI Symbol", "Android Emoji", "EmojiSymbols";
 }

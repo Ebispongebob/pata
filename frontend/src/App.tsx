@@ -79,6 +79,13 @@ export default function App() {
 
   // Global search overlay state
   const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const [isEditingNote, setIsEditingNote] = useState(false);
+
+  useEffect(() => {
+    if (activeNav !== 'notes') {
+      setIsEditingNote(false);
+    }
+  }, [activeNav]);
 
   // 当前页面登记的离开前确认（任务详情有未保存草稿时返回 false 表示取消离开）
   const leaveGuardRef = useRef<(() => Promise<boolean>) | null>(null);
@@ -493,55 +500,57 @@ export default function App() {
 
       {/* Main Content Area */}
       <main className="flex-1 flex flex-col min-w-0 overflow-hidden rounded-2xl border border-stone-200/70 dark:border-stone-800/70 shadow-xs bg-stone-50 dark:bg-stone-900 mt-2 mr-2 mb-2">
-        {/* Top Header / Draggable Toolbar */}
-        <header className="h-12 border-b border-stone-200 dark:border-stone-800 flex items-center justify-between px-4 drag-region select-none shrink-0">
-          <div className="flex items-center space-x-3">
-            <h1 className="text-sm font-semibold text-stone-800 dark:text-stone-200">
-              {activeNav === 'today' && 'Today — 今日计划与记录'}
-              {activeNav === 'tasks' && 'Tasks — 全量任务池'}
-              {activeNav === 'notes' && 'Notes — 单列笔记'}
-              {activeNav === 'tag' && `#${selectedTag || '标签视图'}`}
-            </h1>
-          </div>
+        {/* Top Header / Draggable Toolbar: 在笔记编辑页时不显示该整行，保持安静专注 */}
+        {!(activeNav === 'notes' && isEditingNote) && (
+          <header className="h-12 border-b border-stone-200 dark:border-stone-800 flex items-center justify-between px-4 drag-region select-none shrink-0">
+            <div className="flex items-center space-x-3">
+              <h1 className="text-sm font-semibold text-stone-800 dark:text-stone-200">
+                {activeNav === 'today' && 'Today — 今日计划与记录'}
+                {activeNav === 'tasks' && 'Tasks — 全量任务池'}
+                {activeNav === 'notes' && 'Notes — 单列笔记'}
+                {activeNav === 'tag' && `#${selectedTag || '标签视图'}`}
+              </h1>
+            </div>
 
-          <div className="flex items-center space-x-2 no-drag-region">
-            {hasHealthIssues && (
+            <div className="flex items-center space-x-2 no-drag-region">
+              {hasHealthIssues && (
+                <button
+                  onClick={() => {
+                    healthTriggerRef.current = document.activeElement as HTMLElement | null;
+                    setShowHealthModal(true);
+                  }}
+                  className="flex items-center space-x-1.5 px-2.5 py-1 rounded-md text-xs font-medium bg-amber-100 dark:bg-amber-950/70 text-amber-900 dark:text-amber-200 border border-amber-300 dark:border-amber-800/80 hover:bg-amber-200/80 dark:hover:bg-amber-900/60 transition cursor-pointer"
+                  title="Vault 健康异常提示"
+                >
+                  <AlertTriangle className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 shrink-0" />
+                  <span>
+                    {parseErrorCount > 0 && `${parseErrorCount} 个文件未识别`}
+                    {parseErrorCount > 0 && danglingRefCount > 0 && ' · '}
+                    {danglingRefCount > 0 && `${danglingRefCount} 个引用悬空`}
+                  </span>
+                </button>
+              )}
+
               <button
-                onClick={() => {
-                  healthTriggerRef.current = document.activeElement as HTMLElement | null;
-                  setShowHealthModal(true);
-                }}
-                className="flex items-center space-x-1.5 px-2.5 py-1 rounded-md text-xs font-medium bg-amber-100 dark:bg-amber-950/70 text-amber-900 dark:text-amber-200 border border-amber-300 dark:border-amber-800/80 hover:bg-amber-200/80 dark:hover:bg-amber-900/60 transition cursor-pointer"
-                title="Vault 健康异常提示"
+                onClick={() => setIsSearchOpen(true)}
+                className="flex items-center space-x-1.5 px-2.5 py-1 rounded-md text-xs text-stone-500 dark:text-stone-400 hover:text-stone-900 dark:hover:text-stone-100 hover:bg-stone-200/60 dark:hover:bg-stone-800/60 border border-stone-200 dark:border-stone-800 transition cursor-pointer"
+                title="全局搜索 (⌘K / ⌘P)"
               >
-                <AlertTriangle className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 shrink-0" />
-                <span>
-                  {parseErrorCount > 0 && `${parseErrorCount} 个文件未识别`}
-                  {parseErrorCount > 0 && danglingRefCount > 0 && ' · '}
-                  {danglingRefCount > 0 && `${danglingRefCount} 个引用悬空`}
-                </span>
+                <Search className="w-3.5 h-3.5 opacity-70" />
+                <span>搜索</span>
+                <kbd className="text-[10px] font-mono opacity-60 bg-stone-200/60 dark:bg-stone-800 px-1 py-0.2 rounded">
+                  ⌘K
+                </kbd>
               </button>
-            )}
-
-            <button
-              onClick={() => setIsSearchOpen(true)}
-              className="flex items-center space-x-1.5 px-2.5 py-1 rounded-md text-xs text-stone-500 dark:text-stone-400 hover:text-stone-900 dark:hover:text-stone-100 hover:bg-stone-200/60 dark:hover:bg-stone-800/60 border border-stone-200 dark:border-stone-800 transition cursor-pointer"
-              title="全局搜索 (⌘K / ⌘P)"
-            >
-              <Search className="w-3.5 h-3.5 opacity-70" />
-              <span>搜索</span>
-              <kbd className="text-[10px] font-mono opacity-60 bg-stone-200/60 dark:bg-stone-800 px-1 py-0.2 rounded">
-                ⌘K
-              </kbd>
-            </button>
-          </div>
-        </header>
+            </div>
+          </header>
+        )}
 
         {/* Content Body */}
         <div
           className={
-            activeNav === 'today' || activeNav === 'tasks'
-              ? 'flex-1 min-h-0 overflow-hidden' // 三栏：中间与右详情各自滚动
+            activeNav === 'today' || activeNav === 'tasks' || (activeNav === 'notes' && isEditingNote)
+              ? 'flex-1 min-h-0 overflow-hidden' // 三栏或编辑页：内部自适应高度
               : 'flex-1 overflow-y-auto p-6'
           }
         >
@@ -583,6 +592,7 @@ export default function App() {
               onClearFocusNote={() => setFocusNoteId(null)}
               returnToTask={noteOrigin ? { label: '返回任务', go: returnToOrigin } : null}
               onOpenTask={handleOpenTask}
+              onEditingChange={setIsEditingNote}
             />
           )}
 
