@@ -151,7 +151,7 @@ function NoteEditor({
   const [backlinks, setBacklinks] = useState<LinkSource[]>([]);
   const [backlinksOpen, setBacklinksOpen] = useState(false);
   // `[[` 笔记候选：node 为正在输入的文本节点
-  const [picker, setPicker] = useState<{ start: number; query: string; index: number; left: number; top: number } | null>(null);
+  const [picker, setPicker] = useState<{ start: number; query: string; index: number; left: number; top?: number; bottom?: number } | null>(null);
   const pickerRef = useRef(picker);
   pickerRef.current = picker;
   const pickerDismissedRef = useRef(-1);
@@ -666,8 +666,9 @@ function NoteEditor({
     const sel = window.getSelection();
     const root = vditorContainerRef.current;
     const node = sel?.anchorNode;
+    const isCode = !!node?.parentElement?.closest('code, [data-type="code-block"], pre:not(.vditor-reset)');
     const m =
-      sel && sel.isCollapsed && root && node && node.nodeType === 3 && root.contains(node) && !node.parentElement?.closest('code, pre')
+      sel && sel.isCollapsed && root && node && node.nodeType === 3 && root.contains(node) && !isCode
         ? matchTrigger((node.textContent ?? '').slice(0, sel.anchorOffset))
         : null;
     if (!sel || !m) {
@@ -676,9 +677,28 @@ function NoteEditor({
       return;
     }
     if (pickerDismissedRef.current === m.start) return;
-    const caret = sel.getRangeAt(0).getBoundingClientRect();
-    const r = caret.height ? caret : node!.parentElement!.getBoundingClientRect();
-    setPicker((p) => ({ ...m, index: p && p.query === m.query ? p.index : 0, left: r.left, top: r.bottom + 4 }));
+    const selRange = sel.getRangeAt(0);
+    let r = selRange.getBoundingClientRect();
+    if (!r.height && !r.width) {
+      if (node!.nodeType === 3 && sel.anchorOffset > 0) {
+        const clone = selRange.cloneRange();
+        clone.setStart(node!, sel.anchorOffset - 1);
+        const cr = clone.getBoundingClientRect();
+        r = { ...cr, left: cr.right };
+      } else if (node!.parentElement) {
+        r = node!.parentElement.getBoundingClientRect();
+      }
+    }
+    const pickerHeight = 240;
+    const spaceBelow = window.innerHeight - r.bottom;
+    const showAbove = spaceBelow < pickerHeight && r.top > pickerHeight;
+    setPicker((p) => ({
+      ...m,
+      index: p && p.query === m.query ? p.index : 0,
+      left: r.left,
+      top: showAbove ? undefined : r.bottom + 4,
+      bottom: showAbove ? window.innerHeight - r.top + 4 : undefined,
+    }));
   };
 
   const pickNote = (n: NoteRef) => {
@@ -687,15 +707,22 @@ function NoteEditor({
     const sel = window.getSelection();
     const node = sel?.anchorNode;
     if (!vd || !st || !sel || !node || node.nodeType !== 3) return;
+    const textBefore = (node.textContent ?? '').slice(0, sel.anchorOffset);
+    const m = matchTrigger(textBefore);
+    const start = m ? m.start : st.start;
+    const end = sel.anchorOffset;
     const range = sel.getRangeAt(0);
-    range.setStart(node, st.start);
-    range.setEnd(node, sel.anchorOffset);
+    range.setStart(node, start);
+    range.setEnd(node, end);
     range.deleteContents();
+    sel.removeAllRanges();
+    sel.addRange(range);
     const self = allNotesRef.current.find((x) => x.id === (currentNoteIdRef.current || noteId));
     const href = escapeLinkPath(self ? relativePath(self.path, n.path) : n.path);
     const esc = (t: string) => t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
     vd.insertValue(`<a href="${esc(href)}">${esc(n.title)}</a>&nbsp;`);
     setPicker(null);
+    vd.focus();
   };
 
   // Vditor 的点击回调需要最新的闭包
@@ -705,10 +732,12 @@ function NoteEditor({
   pickNoteRef.current = pickNote;
   const linkClickRef = useRef<(el: HTMLElement) => void>(() => {});
   linkClickRef.current = (el) => {
+    if (!el) return;
     // 兼容 WYSIWYG <a> 与 IR 模式下的 .vditor-ir__marker--link
     const href = el.getAttribute('href') || (el.textContent ?? '').trim();
     const self = allNotesRef.current.find((x) => x.id === (currentNoteIdRef.current || noteId));
-    const target = self ? resolveHref(self.path, href, allNotesRef.current) : undefined;
+    const fromPath = self?.path ?? '';
+    const target = resolveHref(fromPath, href, allNotesRef.current);
     if (target) void leaveThen(() => onOpenNoteRef.current(target.id));
     else if (/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(href)) window.open(href); // 既有外部链接处理不变
     else if (href && !href.startsWith('#')) setTitleError('笔记不存在或已移动');
@@ -733,8 +762,9 @@ function NoteEditor({
   }, [loadBacklinks]);
 
   useEffect(() => {
-    document.addEventListener('selectionchange', syncPicker);
-    return () => document.removeEventListener('selectionchange', syncPicker);
+    const onSelectionChange = () => syncPickerRef.current();
+    document.addEventListener('selectionchange', onSelectionChange);
+    return () => document.removeEventListener('selectionchange', onSelectionChange);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -1039,6 +1069,7 @@ function NoteEditor({
           index={picker.index}
           left={picker.left}
           top={picker.top}
+          bottom={picker.bottom}
           onPick={pickNote}
           onHover={(i) => setPicker({ ...picker, index: i })}
         />

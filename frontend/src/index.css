@@ -193,6 +193,134 @@ button, input, textarea, select, a, [role="button"], .vditor {
   margin-left: 0 !important;
 }
 
+/* Compact typography and vertical rhythm for Note Markdown Editor */
+.vditor-reset,
+.vditor-ir pre.vditor-reset,
+.vditor-wysiwyg pre.vditor-reset,
+.vditor-editor-wrapper .vditor-reset,
+.vditor-editor-wrapper .vditor-ir pre.vditor-reset,
+.vditor-editor-wrapper .vditor-wysiwyg pre.vditor-reset {
+  font-size: 14px !important;
+  line-height: 1.55 !important;
+  letter-spacing: -0.01em;
+}
+
+/* Paragraphs: compact margin (8px instead of default 16px) */
+.vditor-reset p,
+.vditor-editor-wrapper .vditor-reset p {
+  margin-top: 0 !important;
+  margin-bottom: 8px !important;
+}
+
+/* Headings: compact proportions and tighter spacing */
+.vditor-reset h1,
+.vditor-editor-wrapper .vditor-reset h1 {
+  font-size: 1.35em !important;
+  font-weight: 700 !important;
+  margin-top: 16px !important;
+  margin-bottom: 6px !important;
+  padding-bottom: 3px !important;
+  line-height: 1.3 !important;
+}
+
+.vditor-reset h2,
+.vditor-editor-wrapper .vditor-reset h2 {
+  font-size: 1.2em !important;
+  font-weight: 600 !important;
+  margin-top: 14px !important;
+  margin-bottom: 5px !important;
+  padding-bottom: 2px !important;
+  line-height: 1.3 !important;
+}
+
+.vditor-reset h3,
+.vditor-editor-wrapper .vditor-reset h3 {
+  font-size: 1.1em !important;
+  font-weight: 600 !important;
+  margin-top: 12px !important;
+  margin-bottom: 4px !important;
+  line-height: 1.35 !important;
+}
+
+.vditor-reset h4,
+.vditor-reset h5,
+.vditor-reset h6,
+.vditor-editor-wrapper .vditor-reset h4,
+.vditor-editor-wrapper .vditor-reset h5,
+.vditor-editor-wrapper .vditor-reset h6 {
+  font-size: 1em !important;
+  font-weight: 600 !important;
+  margin-top: 10px !important;
+  margin-bottom: 4px !important;
+  line-height: 1.4 !important;
+}
+
+/* Lists: compact padding and item spacing */
+.vditor-reset ul,
+.vditor-reset ol,
+.vditor-editor-wrapper .vditor-reset ul,
+.vditor-editor-wrapper .vditor-reset ol {
+  padding-left: 1.4em !important;
+  margin-top: 0 !important;
+  margin-bottom: 8px !important;
+}
+
+.vditor-reset li,
+.vditor-editor-wrapper .vditor-reset li {
+  margin-top: 1px !important;
+  margin-bottom: 1px !important;
+}
+
+.vditor-reset li + li,
+.vditor-editor-wrapper .vditor-reset li + li {
+  margin-top: 2px !important;
+}
+
+.vditor-reset li p,
+.vditor-editor-wrapper .vditor-reset li p {
+  margin-top: 0 !important;
+  margin-bottom: 2px !important;
+}
+
+/* Blockquotes */
+.vditor-reset blockquote,
+.vditor-editor-wrapper .vditor-reset blockquote {
+  margin: 0 0 8px 0 !important;
+  padding: 0 0.8em !important;
+}
+
+/* Horizontal rule */
+.vditor-reset hr,
+.vditor-editor-wrapper .vditor-reset hr {
+  margin: 12px 0 !important;
+}
+
+/* Code blocks: compact padding & font */
+.vditor-reset pre,
+.vditor-editor-wrapper .vditor-reset pre {
+  margin-top: 4px !important;
+  margin-bottom: 8px !important;
+  padding: 8px 12px !important;
+  font-size: 12.5px !important;
+  line-height: 1.45 !important;
+  border-radius: 6px !important;
+}
+
+/* Tables: compact padding */
+.vditor-reset table,
+.vditor-editor-wrapper .vditor-reset table {
+  margin-top: 4px !important;
+  margin-bottom: 8px !important;
+}
+
+.vditor-reset table td,
+.vditor-reset table th,
+.vditor-editor-wrapper .vditor-reset table td,
+.vditor-editor-wrapper .vditor-reset table th {
+  padding: 4px 8px !important;
+  font-size: 13px !important;
+}
+
 /* IR mode link styling */
 .vditor-ir__link,
 .vditor-editor-wrapper .vditor-ir__link {

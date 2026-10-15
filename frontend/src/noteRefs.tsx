@@ -66,7 +66,7 @@ export function pickerKey(
     setIndex((index + (e.key === 'ArrowDown' ? 1 : count - 1)) % count);
     return true;
   }
-  if (e.key === 'Enter' && !e.metaKey && !e.ctrlKey && !e.shiftKey) {
+  if ((e.key === 'Enter' || e.key === 'Tab') && !e.metaKey && !e.ctrlKey && !e.shiftKey) {
     e.preventDefault();
     pick();
     return true;
