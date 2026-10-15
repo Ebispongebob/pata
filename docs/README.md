@@ -15,7 +15,7 @@
 
 阶段 1 的 UI 附加设计： [macOS 27 原生体验与 Magpie 源码参考](01-validate/macos-native.md)，其真实 Wails 验证安排在阶段 2。
 
-阶段 6 的品牌资料：[idea](06-branding/idea.md) · [proposal](06-branding/proposal.md) · [实施记录](06-branding/implementation-notes.md) · [V2 静态资源总览](06-branding/resources/pata-branding-refined-v2/previews/overview.png)。V2 静态品牌、构建图标、应用内动画与**静态菜单栏托盘**均已接入并有构建记录；用户选择不做菜单栏帧动画。**macOS 最终实机目视、托盘点击与无障碍验收未完成**。
+阶段 6 的品牌资料：[idea](06-branding/idea.md) · [proposal](06-branding/proposal.md) · [实施记录](06-branding/implementation-notes.md) · [V2 静态资源总览](06-branding/resources/pata-branding-refined-v2/previews/overview.png)。V2 静态品牌、构建图标、应用内动画与**静态菜单栏托盘**均已接入并有构建记录。**阶段 6 代码完成，仅余实机验收**；菜单栏逐帧动画、额外悬停动效已取消，不再列为待办。
 
 ## 每阶段的文档约定
 
@@ -37,9 +37,9 @@
 
 阶段 1 设计已基本完成（待真实用户确认）。阶段 2 已完成：桌面 Spike（P2-001）、存储核心（P2-002，`internal/storage/markdown`）、单 Vault 接入与 Tasks 管理闭环、外部修改感知与冲突提示（P2-003/P2-004）；完成标准已勾选，仅剩用户实机手动走查一次。阶段 3 已完成：Memo 闭环（P3-001，任务详情评论+独立 Memo）、DayPlan 与 Today 计划区块（P3-002，多日安排/due 独立/昨日候选不自动顺延）、今日记录时间线与历史回顾（P3-003，本机时区聚合/完成事件/当前状态注脚）；完成标准已勾选，剩用户实机手动走查。阶段 4 已完成：Notes 服务与单列卡片列表（P4-001）、Vditor 全主区域编辑器与 D19 自动保存（P4-002，含离线包裁剪 23MB→7.5MB 与 cdn dist 层修正）、Task–Note 显式关联（P4-003）；完成标准已勾选，剩用户实机手动走查。阶段 5 代码侧全部完成：全局标签聚合与跨类型搜索后端（P5-001）、侧边栏真实标签与单列标签视图（P5-002）、⌘K/⌘P 全局搜索浮层（P5-003）、GetVaultHealth 错误报告暴露与服务层回归补缺（P5-004）、健康状态 UI/基础无障碍/快捷键与首启审计/macOS 打包验证（P5-005，产出 bin/pata.app 与 bin/pata.dmg）；每批均经独立审查（P5-R1~R5，仅 P5-004 一次通过，余含一次返工）。剩用户实机：真实资料走查、macOS 原生体验回归、MVP 验收清单勾选。
 
-阶段 6 代码侧已接入静态品牌、应用内动画、离线预览与静态菜单栏托盘，并留有打包记录；手动实机验收仍待完成，菜单栏帧动画按用户选择不实施。
+**阶段 6：代码完成，待实机验收。** 已接入静态品牌、应用内动画、离线预览与静态菜单栏托盘，并留有打包记录；不继续开发菜单栏帧动画、额外悬停动画等增强项。
 
-阶段 7 主体代码已实现：Notes / Task 描述 / 任务评论 / Today 记录的 `[[` 选择、跳转与持久绑定，Note 相对链接及按 Note/Task 身份去重的“被引用”；已有部分 Go 回归测试。但**外部移动路径自动维护、返回精确上下文、失效绑定禁止同名接管的前端逻辑及 macOS 实机验收**仍待完成。与阶段 8 的 Activity 内嵌模型衔接时需保留现有引用能力；见 [idea](07-note-links/idea.md) 与 [proposal](07-note-links/proposal.md)。
+**阶段 7：主体完成，只剩一项必修正确性修复及实机验收。** Notes / Task 描述 / 任务评论 / Today 记录的 `[[` 选择、跳转与持久绑定，Note 相对链接及按 Note/Task 身份去重的“被引用”已有代码及部分测试。**必修：已绑定 Note ID 失效时不可退回同名标题匹配**（`noteRefs.tsx:resolveRef`）。返回来源页面/日期是可选优化，不阻塞阶段 8；外部移动跨文件自动维护、批量更新/重试和精确滚动/光标恢复均取消。与阶段 8 Activity 内嵌模型衔接时须保留现有引用能力；见 [idea](07-note-links/idea.md) 与 [proposal](07-note-links/proposal.md)。
 
 **阶段 8 设计已确认、待实施**：统一 `a-` Activity；Task Frontmatter 改存纯文本描述、Body 存活动；Today 沿用 `.pata/plans/`，Body 存独立活动。删除 Task 连同 Activity 一起删除并清理 DayPlan 引用；单文件原子写入、幂等修复、异常文件隔离。仅计划存储和业务重构，不实现 CLI。详见 [idea](08-activity-storage/idea.md)、[proposal](08-activity-storage/proposal.md)；Schema 见 [阶段 2 规范](02-foundation/schema.md)。
 

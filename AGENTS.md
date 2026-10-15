@@ -1,6 +1,6 @@
 # Pata · Agent 项目指引
 
-**项目名称：啪嗒 / Pata。** 前五阶段已完成代码侧交付；阶段 6/7 有规划与部分实现，阶段 8（Activity 归属式存储重构）已完成需求设计、待实施。实际开发状态以 [docs/README.md](docs/README.md) 为准。
+**项目名称：啪嗒 / Pata。** 前五阶段已完成代码侧交付；**阶段 6 代码完成仅待实机验收，阶段 7 主体完成但需修复已绑定笔记 ID 失效后的同名错误回退**；阶段 8（Activity 归属式存储重构）已完成设计、待实施。实际进度以 [docs/README.md](docs/README.md) 为准。
 
 ## 开始阅读
 
@@ -28,3 +28,4 @@
 - Notes 无嵌套三列结构：单列浏览、全主区域编辑。
 - 参照 macOS 27 HIG + Magpie 的窗口实现；尊重系统主题、强调色、辅助功能；Liquid Glass 可选，非 MVP 必须。
 - 核心原则：Less is More / Record Once / Local First。
+- 阶段 6 不再开发菜单栏帧动画或额外悬停动效；阶段 7 不实现外部移动跨文件自动维护、批量链接更新重试或精确光标/滚动恢复。已绑定 `note_refs` ID 失效时不得按同名笔记重新推断（待修复），详情见 [阶段 7 proposal](docs/07-note-links/proposal.md)。
