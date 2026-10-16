@@ -33,7 +33,7 @@ export function SearchOverlay({
   const [query, setQuery] = useState('');
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState<SearchResultItem[]>([]);
-  const [memoTaskMap, setMemoTaskMap] = useState<Record<string, string>>({});
+  const [activityTaskMap, setActivityTaskMap] = useState<Record<string, string>>({});
   const [selectedIndex, setSelectedIndex] = useState<number>(0);
 
   const seqRef = useRef(0);
@@ -60,7 +60,7 @@ export function SearchOverlay({
       ++seqRef.current;
       setQuery('');
       setResults([]);
-      setMemoTaskMap({});
+      setActivityTaskMap({});
       setLoading(false);
       setSelectedIndex(0);
     }
@@ -74,7 +74,7 @@ export function SearchOverlay({
     if (!trimmed) {
       ++seqRef.current;
       setResults([]);
-      setMemoTaskMap({});
+      setActivityTaskMap({});
       setLoading(false);
       setSelectedIndex(0);
       return;
@@ -91,26 +91,26 @@ export function SearchOverlay({
         setResults(items);
         setSelectedIndex(0);
 
-        // Preload memo/activity task_ids for up to 5 displayed records
-        const displayedMemos = items.filter((r) => r.type === 'memo' || (r.type as string) === 'activity').slice(0, 5);
-        if (displayedMemos.length > 0) {
+        // Preload activity task_ids for up to 5 displayed records
+        const displayedActivities = items.filter((r) => r.type === 'activity').slice(0, 5);
+        if (displayedActivities.length > 0) {
           const taskMap: Record<string, string> = {};
           await Promise.all(
-            displayedMemos.map(async (mr) => {
+            displayedActivities.map(async (ar) => {
               try {
-                const memo = await VaultService.GetMemo(mr.id);
-                if (memo && memo.task_id) {
-                  taskMap[mr.id] = memo.task_id;
+                const act = await VaultService.GetActivity(ar.id);
+                if (act && act.task_id) {
+                  taskMap[ar.id] = act.task_id;
                 }
               } catch (err) {
-                console.warn(`Failed to fetch memo details for ${mr.id}:`, err);
+                console.warn(`Failed to fetch activity details for ${ar.id}:`, err);
               }
             })
           );
           if (seq !== seqRef.current) return;
-          setMemoTaskMap(taskMap);
+          setActivityTaskMap(taskMap);
         } else {
-          setMemoTaskMap({});
+          setActivityTaskMap({});
         }
       } catch (err) {
         if (seq !== seqRef.current) return;
@@ -128,22 +128,22 @@ export function SearchOverlay({
     };
   }, [query, isOpen]);
 
-  // Group results by type (Task -> Note -> Memo/Activity -> File)
+  // Group results by type (Task -> Note -> Activity -> File)
   const tasks = useMemo(() => results.filter((r) => r.type === 'task'), [results]);
   const notes = useMemo(() => results.filter((r) => r.type === 'note'), [results]);
-  const memos = useMemo(() => results.filter((r) => r.type === 'memo' || (r.type as string) === 'activity'), [results]);
+  const activities = useMemo(() => results.filter((r) => r.type === 'activity'), [results]);
   const files = useMemo(() => results.filter((r) => (r.type as string) === 'file'), [results]);
 
   // Truncate displayed items to first 5 per type
   const displayedTasks = useMemo(() => tasks.slice(0, 5), [tasks]);
   const displayedNotes = useMemo(() => notes.slice(0, 5), [notes]);
-  const displayedMemos = useMemo(() => memos.slice(0, 5), [memos]);
+  const displayedActivities = useMemo(() => activities.slice(0, 5), [activities]);
   const displayedFiles = useMemo(() => files.slice(0, 5), [files]);
 
   // Flattened displayed items for keyboard navigation index
   const displayedItems = useMemo(
-    () => [...displayedTasks, ...displayedNotes, ...displayedMemos, ...displayedFiles],
-    [displayedTasks, displayedNotes, displayedMemos, displayedFiles]
+    () => [...displayedTasks, ...displayedNotes, ...displayedActivities, ...displayedFiles],
+    [displayedTasks, displayedNotes, displayedActivities, displayedFiles]
   );
 
   // Keep selected index within bounds
@@ -173,8 +173,8 @@ export function SearchOverlay({
       } else if (item.type === 'note') {
         onOpenNote(item.id);
         onClose();
-      } else if (item.type === 'memo' || (item.type as string) === 'activity') {
-        const taskId = memoTaskMap[item.id];
+      } else if (item.type === 'activity') {
+        const taskId = activityTaskMap[item.id];
         if (taskId) {
           onOpenTask(taskId);
           onClose();
@@ -191,7 +191,7 @@ export function SearchOverlay({
         onClose();
       }
     },
-    [memoTaskMap, onOpenTask, onOpenNote, onOpenTodayDate, onClose]
+    [activityTaskMap, onOpenTask, onOpenNote, onOpenTodayDate, onClose]
   );
 
   // Keyboard navigation & a11y focus trap
@@ -408,8 +408,8 @@ export function SearchOverlay({
                 </div>
               )}
 
-              {/* 3. Memos Section */}
-              {displayedMemos.length > 0 && (
+              {/* 3. Activities Section */}
+              {displayedActivities.length > 0 && (
                 <div>
                   <div className="flex items-center justify-between px-3.5 py-1.5 text-[11px] font-semibold text-stone-500 dark:text-stone-400 bg-stone-100/60 dark:bg-stone-800/40">
                     <div className="flex items-center space-x-1.5">
@@ -417,21 +417,21 @@ export function SearchOverlay({
                       <span>记录</span>
                     </div>
                     <span className="font-mono text-[10px] text-stone-400">
-                      {memos.length > 5 ? `显示前 5 条 / 共 ${memos.length} 条` : `共 ${memos.length} 条`}
+                      {activities.length > 5 ? `显示前 5 条 / 共 ${activities.length} 条` : `共 ${activities.length} 条`}
                     </span>
                   </div>
                   <div className="p-1 space-y-0.5">
-                    {displayedMemos.map((memo, k) => {
+                    {displayedActivities.map((act, k) => {
                       const globalIndex = displayedTasks.length + displayedNotes.length + k;
                       const isSelected = selectedIndex === globalIndex;
-                      const taskId = memoTaskMap[memo.id];
+                      const taskId = activityTaskMap[act.id];
                       const hasTaskId = Boolean(taskId);
-                      const hasDate = Boolean(memo.title && /^\d{4}-\d{2}-\d{2}$/.test(memo.title));
+                      const hasDate = Boolean(act.title && /^\d{4}-\d{2}-\d{2}$/.test(act.title));
                       const isClickable = hasTaskId || hasDate;
 
                       return (
                         <div
-                          key={`memo-${memo.id}`}
+                          key={`activity-${act.id}`}
                           role="option"
                           aria-selected={isSelected}
                           tabIndex={-1}
@@ -441,7 +441,7 @@ export function SearchOverlay({
                           onMouseEnter={() => setSelectedIndex(globalIndex)}
                           onClick={() => {
                             if (isClickable) {
-                              handleItemSelect(memo);
+                              handleItemSelect(act);
                             }
                           }}
                           className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-xs transition-colors ${
@@ -456,7 +456,7 @@ export function SearchOverlay({
                             <MessageSquare className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 shrink-0 opacity-80" />
                             <div className="min-w-0 flex-1">
                               <div className="truncate text-stone-800 dark:text-stone-200">
-                                {memo.snippet || '(无内容记录)'}
+                                {act.snippet || '(无内容记录)'}
                               </div>
                               <div className="flex items-center space-x-1.5 mt-0.5">
                                 {hasTaskId ? (
@@ -465,7 +465,7 @@ export function SearchOverlay({
                                   </span>
                                 ) : hasDate ? (
                                   <span className="text-[10px] text-blue-600 dark:text-blue-400 font-mono">
-                                    日计划活动 ({memo.title})
+                                    日计划活动 ({act.title})
                                   </span>
                                 ) : (
                                   <span className="text-[10px] text-stone-400 font-mono">
@@ -508,7 +508,7 @@ export function SearchOverlay({
                   </div>
                   <div className="p-1 space-y-0.5">
                     {displayedFiles.map((file, m) => {
-                      const globalIndex = displayedTasks.length + displayedNotes.length + displayedMemos.length + m;
+                      const globalIndex = displayedTasks.length + displayedNotes.length + displayedActivities.length + m;
                       const isSelected = selectedIndex === globalIndex;
 
                       return (

@@ -87,7 +87,6 @@ func (v *Vault) Scan() error {
 	v.Index.mu.Lock()
 	newIndex.mu.RLock()
 	v.Index.tasks = newIndex.tasks
-	v.Index.memos = newIndex.memos
 	v.Index.notes = newIndex.notes
 	v.Index.dayPlans = newIndex.dayPlans
 	v.Index.files = newIndex.files
@@ -116,17 +115,11 @@ func (v *Vault) ResolveEntityPath(entity Entity) string {
 	v.Index.mu.RUnlock()
 
 	filename := FormatEntityFilename(entity)
-	switch e := entity.(type) {
+	switch entity.(type) {
 	case *Task:
 		return filepath.Join(v.RootPath, "tasks", filename)
 	case *Note:
 		return filepath.Join(v.RootPath, "notes", filename)
-	case *Memo:
-		t := e.CreatedAt
-		if t.IsZero() {
-			t = time.Now()
-		}
-		return filepath.Join(v.RootPath, "memos", t.Format("2006"), t.Format("01"), filename)
 	case *DayPlan:
 		return filepath.Join(v.RootPath, "plans", filename)
 	default:
@@ -164,7 +157,7 @@ func (v *Vault) SaveEntity(entity Entity, baseline *FileBaseline) (*FileBaseline
 }
 
 // DeleteEntity removes an entity file from disk and cleans up its index entry.
-// It preserves associated entities (such as Memos referencing a deleted Task).
+// It preserves associated entities.
 func (v *Vault) DeleteEntity(id string) error {
 	if strings.TrimSpace(id) == "" {
 		return fmt.Errorf("entity ID cannot be empty")
@@ -326,9 +319,8 @@ func (v *Vault) handleFSEvent(event fsnotify.Event) {
 	isTaskDir := strings.HasPrefix(relSlash, "tasks/")
 	isNoteDir := strings.HasPrefix(relSlash, "notes/")
 	isPlanDir := strings.HasPrefix(relSlash, "plans/") || strings.HasPrefix(relSlash, ".pata/plans/")
-	isMemoDir := strings.HasPrefix(relSlash, "memos/")
 
-	if !isTaskDir && !isNoteDir && !isPlanDir && !isMemoDir {
+	if !isTaskDir && !isNoteDir && !isPlanDir {
 		return
 	}
 

@@ -298,7 +298,7 @@ func TestVaultService_StatusTransitions_HistoryPreserved(t *testing.T) {
 	}
 }
 
-func TestVaultService_DeleteTask_IndexAndMemoPreserved(t *testing.T) {
+func TestVaultService_DeleteTask_IndexAndOtherEntitiesPreserved(t *testing.T) {
 	vaultDir := t.TempDir()
 	s := &VaultService{}
 	if _, err := s.openVault(vaultDir); err != nil {
@@ -317,27 +317,23 @@ func TestVaultService_DeleteTask_IndexAndMemoPreserved(t *testing.T) {
 		t.Fatalf("CreateTask failed: %v", err)
 	}
 
-	// Create associated Memo referencing task
-	memo := &markdown.Memo{
-		Type:      markdown.EntityTypeMemo,
-		ID:        "m-associated-01",
-		TaskID:    task.ID,
-		CreatedAt: time.Now(),
-		Body:      "此 Memo 关联到 task，删除 task 时绝对不能被删除",
-	}
-	if _, err := s.vault.SaveEntity(memo, nil); err != nil {
-		t.Fatalf("SaveEntity memo failed: %v", err)
+	note, err := s.CreateNote(CreateNoteInput{
+		Title: "保留的独立笔记",
+		Body:  "删除 task 时绝对不能被影响",
+	})
+	if err != nil {
+		t.Fatalf("CreateNote failed: %v", err)
 	}
 
 	taskPath := s.vault.ResolveEntityPath(task)
-	memoPath := s.vault.ResolveEntityPath(memo)
+	notePath := s.vault.ResolveEntityPath(note)
 
 	// Ensure files exist on disk
 	if _, err := os.Stat(taskPath); err != nil {
 		t.Fatalf("task file not found: %v", err)
 	}
-	if _, err := os.Stat(memoPath); err != nil {
-		t.Fatalf("memo file not found: %v", err)
+	if _, err := os.Stat(notePath); err != nil {
+		t.Fatalf("note file not found: %v", err)
 	}
 
 	// Delete task
@@ -366,21 +362,15 @@ func TestVaultService_DeleteTask_IndexAndMemoPreserved(t *testing.T) {
 		t.Fatalf("expected error when re-deleting task, got nil")
 	}
 
-	// 4. Memo file still exists on disk!
-	if _, err := os.Stat(memoPath); err != nil {
-		t.Fatalf("memo file was deleted or cannot be stated: %v", err)
+	// 4. Note file still exists on disk!
+	if _, err := os.Stat(notePath); err != nil {
+		t.Fatalf("note file was deleted or cannot be stated: %v", err)
 	}
 
-	// 5. Memo is still in index
-	indexedMemo, ok := s.vault.Index.GetMemo("m-associated-01")
-	if !ok || indexedMemo.Body != memo.Body {
-		t.Fatalf("memo lost or corrupted in index after task delete: %+v", indexedMemo)
-	}
-
-	// 6. Dangling references track that task is gone
-	dangling := s.vault.Index.ListDanglingReferences()
-	if len(dangling) != 1 || dangling[0].TargetID != task.ID {
-		t.Fatalf("expected 1 dangling reference pointing to %s, got: %+v", task.ID, dangling)
+	// 5. Note is still in index
+	indexedNote, err := s.GetNote(note.ID)
+	if err != nil || indexedNote.Body != note.Body {
+		t.Fatalf("note lost or corrupted in index after task delete: %+v", indexedNote)
 	}
 }
 
@@ -646,300 +636,6 @@ updated_at: 2026-10-11T12:00:00+08:00
 	}
 }
 
-func TestVaultService_MemoCRUDAndValidation(t *testing.T) {
-	sClosed := &VaultService{}
-	if _, err := sClosed.CreateMemo(CreateMemoInput{Body: "测试"}); err == nil {
-		t.Fatalf("expected error on closed vault for CreateMemo")
-	}
-	if _, err := sClosed.UpdateMemo(UpdateMemoInput{ID: "m-1", Body: "测试"}); err == nil {
-		t.Fatalf("expected error on closed vault for UpdateMemo")
-	}
-	if _, err := sClosed.GetMemo("m-1"); err == nil {
-		t.Fatalf("expected error on closed vault for GetMemo")
-	}
-	if _, err := sClosed.ListMemosByTask("t-1"); err == nil {
-		t.Fatalf("expected error on closed vault for ListMemosByTask")
-	}
-
-	vaultDir := t.TempDir()
-	s := &VaultService{}
-	if _, err := s.openVault(vaultDir); err != nil {
-		t.Fatalf("openVault failed: %v", err)
-	}
-	defer func() {
-		if s.stopWatcher != nil {
-			s.stopWatcher()
-		}
-	}()
-
-	// 1. Empty body error
-	if _, err := s.CreateMemo(CreateMemoInput{Body: "   "}); err == nil {
-		t.Fatalf("expected error for empty memo body")
-	}
-
-	// 2. Non-existent taskID error
-	if _, err := s.CreateMemo(CreateMemoInput{Body: "关联不存在的任务", TaskID: "t-ghost-999"}); err == nil || !strings.Contains(err.Error(), "任务不存在: t-ghost-999") {
-		t.Fatalf("expected '任务不存在: t-ghost-999', got: %v", err)
-	}
-
-	// 3. Standalone Memo without title/tags/task_id must succeed
-	standalone, err := s.CreateMemo(CreateMemoInput{Body: "独立闪念记录"})
-	if err != nil {
-		t.Fatalf("CreateMemo standalone failed: %v", err)
-	}
-	if !strings.HasPrefix(standalone.ID, "m-") {
-		t.Fatalf("expected memo ID prefix 'm-', got %s", standalone.ID)
-	}
-	if standalone.TaskID != "" {
-		t.Fatalf("expected empty TaskID, got %s", standalone.TaskID)
-	}
-	if len(standalone.Tags) != 0 {
-		t.Fatalf("expected empty Tags, got %v", standalone.Tags)
-	}
-	if standalone.CreatedAt.IsZero() {
-		t.Fatalf("expected non-zero CreatedAt")
-	}
-
-	// 4. Verify disk persistence of standalone Memo in memos/YYYY/MM/
-	memoPath := s.vault.ResolveEntityPath(standalone)
-	expectedSubdir := filepath.Join("memos", standalone.CreatedAt.Format("2006"), standalone.CreatedAt.Format("01"))
-	if !strings.Contains(memoPath, expectedSubdir) {
-		t.Fatalf("expected path to contain %s, got %s", expectedSubdir, memoPath)
-	}
-
-	data, err := os.ReadFile(memoPath)
-	if err != nil {
-		t.Fatalf("failed to read memo file from disk: %v", err)
-	}
-	parsed, err := markdown.ParseMarkdown(memoPath, data)
-	if err != nil {
-		t.Fatalf("ParseMarkdown failed: %v", err)
-	}
-	parsedMemo, ok := parsed.(*markdown.Memo)
-	if !ok {
-		t.Fatalf("parsed entity is not Memo: %T", parsed)
-	}
-	if strings.TrimSpace(parsedMemo.Body) != "独立闪念记录" {
-		t.Fatalf("parsed body mismatch: %s", parsedMemo.Body)
-	}
-
-	// 5. Read back via GetMemo
-	fetched, err := s.GetMemo(standalone.ID)
-	if err != nil || fetched.ID != standalone.ID || fetched.Body != standalone.Body {
-		t.Fatalf("GetMemo failed: %v, fetched=%+v", err, fetched)
-	}
-
-	// 6. Associate Memo with an existing Task
-	task, err := s.CreateTask(CreateTaskInput{Title: "宿主任务"})
-	if err != nil {
-		t.Fatalf("CreateTask failed: %v", err)
-	}
-
-	taskMemo, err := s.CreateMemo(CreateMemoInput{
-		Body:   "任务评论第1条",
-		TaskID: task.ID,
-		Tags:   []string{"#反馈", "开发"},
-	})
-	if err != nil {
-		t.Fatalf("CreateMemo with TaskID failed: %v", err)
-	}
-	if taskMemo.TaskID != task.ID {
-		t.Fatalf("expected TaskID=%s, got %s", task.ID, taskMemo.TaskID)
-	}
-	if len(taskMemo.Tags) != 2 || taskMemo.Tags[0] != "反馈" || taskMemo.Tags[1] != "开发" {
-		t.Fatalf("tags not cleaned properly: %v", taskMemo.Tags)
-	}
-
-	memosForTask, err := s.ListMemosByTask(task.ID)
-	if err != nil || len(memosForTask) != 1 || memosForTask[0].ID != taskMemo.ID {
-		t.Fatalf("ListMemosByTask failed: %v, got %+v", err, memosForTask)
-	}
-}
-
-func TestVaultService_UpdateMemo_PreserveCreatedAtAndBaselineConflict(t *testing.T) {
-	vaultDir := t.TempDir()
-	s := &VaultService{}
-	if _, err := s.openVault(vaultDir); err != nil {
-		t.Fatalf("openVault failed: %v", err)
-	}
-	defer func() {
-		if s.stopWatcher != nil {
-			s.stopWatcher()
-		}
-	}()
-
-	created, err := s.CreateMemo(CreateMemoInput{
-		Body: "原始评论正文",
-		Tags: []string{"v1"},
-	})
-	if err != nil {
-		t.Fatalf("CreateMemo failed: %v", err)
-	}
-	origCreatedAt := created.CreatedAt
-
-	// Update Memo
-	updated, err := s.UpdateMemo(UpdateMemoInput{
-		ID:   created.ID,
-		Body: "修改后的评论正文",
-		Tags: []string{"v2", "已修复"},
-	})
-	if err != nil {
-		t.Fatalf("UpdateMemo failed: %v", err)
-	}
-
-	// Invariant: CreatedAt must NOT be modified
-	if !updated.CreatedAt.Equal(origCreatedAt) {
-		t.Fatalf("UpdateMemo modified created_at: orig=%s, new=%s", origCreatedAt, updated.CreatedAt)
-	}
-	if updated.Body != "修改后的评论正文" {
-		t.Fatalf("body not updated: %s", updated.Body)
-	}
-	if len(updated.Tags) != 2 || updated.Tags[0] != "v2" {
-		t.Fatalf("tags not updated: %v", updated.Tags)
-	}
-
-	// Verify persistence
-	memoPath := s.vault.ResolveEntityPath(updated)
-	diskData, err := os.ReadFile(memoPath)
-	if err != nil {
-		t.Fatalf("read disk memo failed: %v", err)
-	}
-	if !strings.Contains(string(diskData), "修改后的评论正文") {
-		t.Fatalf("disk file does not contain updated body: %s", string(diskData))
-	}
-
-	// External collision test: tamper with disk file
-	tamperedContent := strings.Replace(string(diskData), "修改后的评论正文", "外部冲突编辑", 1)
-	if err := os.WriteFile(memoPath, []byte(tamperedContent), 0644); err != nil {
-		t.Fatalf("write tampered file failed: %v", err)
-	}
-
-	// Attempt UpdateMemo without rescan -> baseline conflict must be rejected
-	_, err = s.UpdateMemo(UpdateMemoInput{
-		ID:   created.ID,
-		Body: "再次尝试编辑将发生冲突",
-	})
-	if err == nil || !strings.Contains(err.Error(), "conflict") {
-		t.Fatalf("expected conflict error on external edit, got: %v", err)
-	}
-}
-
-func TestVaultService_ListMemosByTask_Ordering(t *testing.T) {
-	vaultDir := t.TempDir()
-	s := &VaultService{}
-	if _, err := s.openVault(vaultDir); err != nil {
-		t.Fatalf("openVault failed: %v", err)
-	}
-	defer func() {
-		if s.stopWatcher != nil {
-			s.stopWatcher()
-		}
-	}()
-
-	task, err := s.CreateTask(CreateTaskInput{Title: "排序测试任务"})
-	if err != nil {
-		t.Fatalf("CreateTask failed: %v", err)
-	}
-
-	m1, err := s.CreateMemo(CreateMemoInput{Body: "第1条", TaskID: task.ID})
-	if err != nil {
-		t.Fatalf("CreateMemo m1 failed: %v", err)
-	}
-	time.Sleep(20 * time.Millisecond)
-
-	m2, err := s.CreateMemo(CreateMemoInput{Body: "第2条", TaskID: task.ID})
-	if err != nil {
-		t.Fatalf("CreateMemo m2 failed: %v", err)
-	}
-	time.Sleep(20 * time.Millisecond)
-
-	m3, err := s.CreateMemo(CreateMemoInput{Body: "第3条", TaskID: task.ID})
-	if err != nil {
-		t.Fatalf("CreateMemo m3 failed: %v", err)
-	}
-
-	list, err := s.ListMemosByTask(task.ID)
-	if err != nil {
-		t.Fatalf("ListMemosByTask failed: %v", err)
-	}
-	if len(list) != 3 {
-		t.Fatalf("expected 3 memos, got %d", len(list))
-	}
-	if list[0].ID != m1.ID || list[1].ID != m2.ID || list[2].ID != m3.ID {
-		t.Fatalf("expected order [m1, m2, m3], got [%s, %s, %s]", list[0].ID, list[1].ID, list[2].ID)
-	}
-}
-
-func TestVaultService_UpdateMemo_UnknownFieldsPreserved(t *testing.T) {
-	vaultDir := t.TempDir()
-	memoDir := filepath.Join(vaultDir, "memos", "2026", "10")
-	if err := os.MkdirAll(memoDir, 0755); err != nil {
-		t.Fatalf("MkdirAll failed: %v", err)
-	}
-
-	rawFile := filepath.Join(memoDir, "custom_memo_m-ext-01.md")
-	rawContent := `---
-type: memo
-id: m-ext-01
-created_at: 2026-10-11T10:00:00+08:00
-custom_agent_id: agent-xyz
-extra_meta:
-  source: webhook
-  verified: true
----
-
-初始 Memo 正文。
-`
-	if err := os.WriteFile(rawFile, []byte(rawContent), 0644); err != nil {
-		t.Fatalf("WriteFile failed: %v", err)
-	}
-
-	s := &VaultService{}
-	if _, err := s.openVault(vaultDir); err != nil {
-		t.Fatalf("openVault failed: %v", err)
-	}
-	defer func() {
-		if s.stopWatcher != nil {
-			s.stopWatcher()
-		}
-	}()
-
-	memo, err := s.GetMemo("m-ext-01")
-	if err != nil {
-		t.Fatalf("GetMemo failed: %v", err)
-	}
-
-	// Update memo through service
-	updated, err := s.UpdateMemo(UpdateMemoInput{
-		ID:   memo.ID,
-		Body: "经 UpdateMemo 更新后的正文内容。",
-		Tags: []string{"重要"},
-	})
-	if err != nil {
-		t.Fatalf("UpdateMemo failed: %v", err)
-	}
-	if updated.Body != "经 UpdateMemo 更新后的正文内容。" {
-		t.Fatalf("body not updated: %s", updated.Body)
-	}
-
-	// Read back markdown file directly from disk
-	diskBytes, err := os.ReadFile(rawFile)
-	if err != nil {
-		t.Fatalf("ReadFile failed: %v", err)
-	}
-	diskStr := string(diskBytes)
-
-	// Check that unknown YAML fields are preserved!
-	if !strings.Contains(diskStr, "custom_agent_id: agent-xyz") {
-		t.Fatalf("unknown field custom_agent_id lost! Disk content:\n%s", diskStr)
-	}
-	if !strings.Contains(diskStr, "extra_meta:") || !strings.Contains(diskStr, "source: webhook") {
-		t.Fatalf("unknown nested field extra_meta lost! Disk content:\n%s", diskStr)
-	}
-	if !strings.Contains(diskStr, "经 UpdateMemo 更新后的正文内容。") {
-		t.Fatalf("updated body not in disk file! Disk content:\n%s", diskStr)
-	}
-}
 
 func TestVaultService_DayPlanCRUDAndValidation(t *testing.T) {
 	sClosed := &VaultService{}
@@ -1145,7 +841,7 @@ func TestVaultService_DayTimeline_IndependenceAndAcceptanceCriteria(t *testing.T
 
 	todayStr := time.Now().In(time.Local).Format("2006-01-02")
 
-	// 1. 带 task_id 的 Memo 在 ListMemosByTask 与 GetDayTimeline 返回同一 ID (同一源文件)
+	// 1. 带 task_id 的 Activity 在 ListActivitiesByTask 与 GetDayTimeline 返回同一 ID
 	due := "2026-10-31"
 	task, err := s.CreateTask(CreateTaskInput{
 		Title: "待关联任务",
@@ -1155,19 +851,19 @@ func TestVaultService_DayTimeline_IndependenceAndAcceptanceCriteria(t *testing.T
 		t.Fatalf("CreateTask failed: %v", err)
 	}
 
-	memoAssoc, err := s.CreateMemo(CreateMemoInput{
-		Body:   "这是关联评论",
+	actAssoc, err := s.CreateActivity(CreateActivityInput{
 		TaskID: task.ID,
+		Body:   "这是关联评论",
 		Tags:   []string{"tag1"},
 	})
 	if err != nil {
-		t.Fatalf("CreateMemo assoc failed: %v", err)
+		t.Fatalf("CreateActivity assoc failed: %v", err)
 	}
 
-	// Check ListMemosByTask
-	taskMemos := s.vault.Index.ListMemosByTask(task.ID)
-	if len(taskMemos) != 1 || taskMemos[0].ID != memoAssoc.ID {
-		t.Fatalf("ListMemosByTask mismatch: expected ID %s, got %+v", memoAssoc.ID, taskMemos)
+	// Check ListActivitiesByTask
+	taskActs, err := s.ListActivitiesByTask(task.ID)
+	if err != nil || len(taskActs) != 1 || taskActs[0].ID != actAssoc.ID {
+		t.Fatalf("ListActivitiesByTask mismatch: expected ID %s, got %+v", actAssoc.ID, taskActs)
 	}
 
 	// Check GetDayTimeline
@@ -1177,30 +873,31 @@ func TestVaultService_DayTimeline_IndependenceAndAcceptanceCriteria(t *testing.T
 	}
 	var foundAssoc *TimelineItem
 	for i := range timelineToday {
-		if timelineToday[i].Kind == "memo" && timelineToday[i].Memo != nil && timelineToday[i].Memo.ID == memoAssoc.ID {
+		if timelineToday[i].Activity != nil && timelineToday[i].Activity.ID == actAssoc.ID {
 			foundAssoc = &timelineToday[i]
 			break
 		}
 	}
 	if foundAssoc == nil {
-		t.Fatalf("associated memo not found in today's timeline")
+		t.Fatalf("associated activity not found in today's timeline")
 	}
 	if foundAssoc.TaskID != task.ID || foundAssoc.TaskTitle != task.Title {
-		t.Fatalf("associated memo TaskID/TaskTitle mismatch: %+v", foundAssoc)
+		t.Fatalf("associated activity TaskID/TaskTitle mismatch: %+v", foundAssoc)
 	}
-	if foundAssoc.Memo.ID != taskMemos[0].ID {
-		t.Fatalf("memo ID mismatch between Task details and Timeline: %s vs %s", foundAssoc.Memo.ID, taskMemos[0].ID)
+	if foundAssoc.Activity.ID != taskActs[0].ID {
+		t.Fatalf("activity ID mismatch between Task details and Timeline: %s vs %s", foundAssoc.Activity.ID, taskActs[0].ID)
 	}
 
-	// 2. 无标题/标签/任务的独立 Memo 可保存且出现在当日时间线
-	memoIndep, err := s.CreateMemo(CreateMemoInput{
+	// 2. 独立 Activity 可保存且出现在当日时间线
+	actIndep, err := s.CreateActivity(CreateActivityInput{
+		Date: todayStr,
 		Body: "纯独立便签正文，无标题无标签无任务",
 	})
 	if err != nil {
-		t.Fatalf("CreateMemo independent failed: %v", err)
+		t.Fatalf("CreateActivity independent failed: %v", err)
 	}
-	if memoIndep.TaskID != "" || len(memoIndep.Tags) != 0 {
-		t.Fatalf("unexpected fields in independent memo: %+v", memoIndep)
+	if len(actIndep.Tags) != 0 {
+		t.Fatalf("unexpected tags in independent activity: %+v", actIndep)
 	}
 
 	timelineToday2, err := s.GetDayTimeline(todayStr)
@@ -1209,19 +906,19 @@ func TestVaultService_DayTimeline_IndependenceAndAcceptanceCriteria(t *testing.T
 	}
 	var foundIndep *TimelineItem
 	for i := range timelineToday2 {
-		if timelineToday2[i].Kind == "memo" && timelineToday2[i].Memo != nil && timelineToday2[i].Memo.ID == memoIndep.ID {
+		if timelineToday2[i].Activity != nil && timelineToday2[i].Activity.ID == actIndep.ID {
 			foundIndep = &timelineToday2[i]
 			break
 		}
 	}
 	if foundIndep == nil {
-		t.Fatalf("independent memo not found in today's timeline")
+		t.Fatalf("independent activity not found in today's timeline")
 	}
 	if foundIndep.TaskID != "" || foundIndep.TaskTitle != "" {
-		t.Fatalf("independent memo should have empty task fields, got: %+v", foundIndep)
+		t.Fatalf("independent activity should have empty task fields, got: %+v", foundIndep)
 	}
 
-	// 3. 任务完成(无 Memo)当日时间线出现 completion 项
+	// 3. 任务完成当日时间线出现 completion 项
 	// 完成 -> 重开 -> 再完成，两个完成日各有事件
 	date1 := "2026-10-15"
 	date2 := "2026-10-16"
@@ -1388,24 +1085,26 @@ func TestVaultService_GetDayTimeline_TimezoneBucketing(t *testing.T) {
 		t.Fatalf("parse t2 failed: %v", err)
 	}
 
-	memo1 := &markdown.Memo{
-		Type:      markdown.EntityTypeMemo,
-		ID:        "m-bucket-day1",
-		CreatedAt: t1,
-		Body:      "第 1 天深夜 23:30 便签",
+	dp1 := &markdown.DayPlan{
+		Type: markdown.EntityTypeDayPlan,
+		Date: day1Str,
+		Activities: []markdown.Activity{
+			{ID: "a-bucket-day1", At: t1, Body: "第 1 天深夜 23:30 活动"},
+		},
 	}
-	if _, err := s.vault.SaveEntity(memo1, nil); err != nil {
-		t.Fatalf("SaveEntity memo1 failed: %v", err)
+	if _, err := s.vault.SaveEntity(dp1, nil); err != nil {
+		t.Fatalf("SaveEntity dp1 failed: %v", err)
 	}
 
-	memo2 := &markdown.Memo{
-		Type:      markdown.EntityTypeMemo,
-		ID:        "m-bucket-day2",
-		CreatedAt: t2,
-		Body:      "第 2 天凌晨 00:10 便签",
+	dp2 := &markdown.DayPlan{
+		Type: markdown.EntityTypeDayPlan,
+		Date: day2Str,
+		Activities: []markdown.Activity{
+			{ID: "a-bucket-day2", At: t2, Body: "第 2 天凌晨 00:10 活动"},
+		},
 	}
-	if _, err := s.vault.SaveEntity(memo2, nil); err != nil {
-		t.Fatalf("SaveEntity memo2 failed: %v", err)
+	if _, err := s.vault.SaveEntity(dp2, nil); err != nil {
+		t.Fatalf("SaveEntity dp2 failed: %v", err)
 	}
 
 	// Query day 1
@@ -1413,8 +1112,8 @@ func TestVaultService_GetDayTimeline_TimezoneBucketing(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetDayTimeline day1 failed: %v", err)
 	}
-	if len(tl1) != 1 || tl1[0].Memo == nil || tl1[0].Memo.ID != "m-bucket-day1" {
-		t.Fatalf("Day 1 timeline mismatch: expected [m-bucket-day1], got %+v", tl1)
+	if len(tl1) != 1 || tl1[0].Activity == nil || tl1[0].Activity.ID != "a-bucket-day1" {
+		t.Fatalf("Day 1 timeline mismatch: expected [a-bucket-day1], got %+v", tl1)
 	}
 
 	// Query day 2
@@ -1422,8 +1121,8 @@ func TestVaultService_GetDayTimeline_TimezoneBucketing(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetDayTimeline day2 failed: %v", err)
 	}
-	if len(tl2) != 1 || tl2[0].Memo == nil || tl2[0].Memo.ID != "m-bucket-day2" {
-		t.Fatalf("Day 2 timeline mismatch: expected [m-bucket-day2], got %+v", tl2)
+	if len(tl2) != 1 || tl2[0].Activity == nil || tl2[0].Activity.ID != "a-bucket-day2" {
+		t.Fatalf("Day 2 timeline mismatch: expected [a-bucket-day2], got %+v", tl2)
 	}
 }
 
@@ -2027,33 +1726,34 @@ func TestVaultService_TagOverviewAndSearch(t *testing.T) {
 		t.Fatalf("CreateNote failed: %v", err)
 	}
 
-	// Memo 1 is associated with Task 1; has NO own tags
-	memo1, err := s.CreateMemo(CreateMemoInput{
+	// Activity 1 is associated with Task 1; has NO own tags
+	act1, err := s.CreateActivity(CreateActivityInput{
 		TaskID: task1.ID,
 		Tags:   []string{},
 		Body:   "针对统一资源接入的跟进进展",
 	})
 	if err != nil {
-		t.Fatalf("CreateMemo 1 failed: %v", err)
+		t.Fatalf("CreateActivity 1 failed: %v", err)
 	}
 
-	// Memo 2 is associated with Task 2; has own tags ["Flink", "调优"]
-	memo2, err := s.CreateMemo(CreateMemoInput{
+	// Activity 2 is associated with Task 2; has own tags ["Flink", "调优"]
+	act2, err := s.CreateActivity(CreateActivityInput{
 		TaskID: task2.ID,
 		Tags:   []string{"Flink", "调优"},
 		Body:   "Flink 并行度调优记录",
 	})
 	if err != nil {
-		t.Fatalf("CreateMemo 2 failed: %v", err)
+		t.Fatalf("CreateActivity 2 failed: %v", err)
 	}
 
-	// Memo 3 is an independent memo with tag ["随笔"]
-	_, err = s.CreateMemo(CreateMemoInput{
+	// Activity 3 is an independent activity in DayPlan with tag ["随笔"]
+	_, err = s.CreateActivity(CreateActivityInput{
+		Date: "2026-10-16",
 		Tags: []string{"随笔"},
 		Body: "独立随想记录",
 	})
 	if err != nil {
-		t.Fatalf("CreateMemo 3 failed: %v", err)
+		t.Fatalf("CreateActivity 3 failed: %v", err)
 	}
 
 	// 4. Test GetTagOverview
@@ -2067,21 +1767,21 @@ func TestVaultService_TagOverviewAndSearch(t *testing.T) {
 		overviewMap[it.Tag] = it
 	}
 
-	// Verify "架构设计": TaskCount=1, NoteCount=1, MemoCount=0 (memo1 has no own tags!), Total=2
+	// Verify "架构设计": TaskCount=1, NoteCount=1, ActivityCount=0 (act1 has no own tags!), Total=2
 	arch, ok := overviewMap["架构设计"]
-	if !ok || arch.TaskCount != 1 || arch.NoteCount != 1 || arch.MemoCount != 0 || arch.Total != 2 {
+	if !ok || arch.TaskCount != 1 || arch.NoteCount != 1 || arch.ActivityCount != 0 || arch.Total != 2 {
 		t.Fatalf("unexpected stats for '架构设计': %+v", arch)
 	}
 
-	// Verify "Flink": TaskCount=1, NoteCount=0, MemoCount=1 (memo2 own tag), Total=2
+	// Verify "Flink": TaskCount=1, NoteCount=0, ActivityCount=1 (act2 own tag), Total=2
 	flink, ok := overviewMap["Flink"]
-	if !ok || flink.TaskCount != 1 || flink.NoteCount != 0 || flink.MemoCount != 1 || flink.Total != 2 {
+	if !ok || flink.TaskCount != 1 || flink.NoteCount != 0 || flink.ActivityCount != 1 || flink.Total != 2 {
 		t.Fatalf("unexpected stats for 'Flink': %+v", flink)
 	}
 
-	// Verify "调优": TaskCount=0, NoteCount=0, MemoCount=1, Total=1
+	// Verify "调优": TaskCount=0, NoteCount=0, ActivityCount=1, Total=1
 	tune, ok := overviewMap["调优"]
-	if !ok || tune.TaskCount != 0 || tune.NoteCount != 0 || tune.MemoCount != 1 || tune.Total != 1 {
+	if !ok || tune.TaskCount != 0 || tune.NoteCount != 0 || tune.ActivityCount != 1 || tune.Total != 1 {
 		t.Fatalf("unexpected stats for '调优': %+v", tune)
 	}
 
@@ -2096,7 +1796,7 @@ func TestVaultService_TagOverviewAndSearch(t *testing.T) {
 		t.Fatalf("expected empty refs for whitespace tag, got %v, err: %v", wsRefs, err)
 	}
 
-	// ListByTag("架构设计"): should match Task 1, Note 1, and Memo 1 (INHERITED from task 1!)
+	// ListByTag("架构设计"): should match Task 1, Note 1, and Activity 1 (INHERITED from task 1!)
 	archRefs, err := s.ListByTag("架构设计")
 	if err != nil {
 		t.Fatalf("ListByTag('架构设计') failed: %v", err)
@@ -2105,7 +1805,7 @@ func TestVaultService_TagOverviewAndSearch(t *testing.T) {
 		t.Fatalf("expected 3 refs for tag '架构设计', got %d: %+v", len(archRefs), archRefs)
 	}
 
-	var foundTask1, foundNote1, foundMemo1Inherited bool
+	var foundTask1, foundNote1, foundAct1Inherited bool
 	for _, r := range archRefs {
 		if r.Type == markdown.EntityTypeTask && r.ID == task1.ID && !r.Inherited {
 			foundTask1 = true
@@ -2113,22 +1813,22 @@ func TestVaultService_TagOverviewAndSearch(t *testing.T) {
 		if r.Type == markdown.EntityTypeNote && r.ID == note1.ID && !r.Inherited {
 			foundNote1 = true
 		}
-		if r.Type == markdown.EntityTypeMemo && r.ID == memo1.ID && r.Inherited {
-			foundMemo1Inherited = true
+		if r.Type == markdown.EntityTypeActivity && r.ID == act1.ID && r.Inherited {
+			foundAct1Inherited = true
 		}
 	}
-	if !foundTask1 || !foundNote1 || !foundMemo1Inherited {
-		t.Fatalf("expected Task 1, Note 1, and Inherited Memo 1 for '架构设计': foundTask=%v, foundNote=%v, foundMemoInherited=%v; refs: %+v",
-			foundTask1, foundNote1, foundMemo1Inherited, archRefs)
+	if !foundTask1 || !foundNote1 || !foundAct1Inherited {
+		t.Fatalf("expected Task 1, Note 1, and Inherited Activity 1 for '架构设计': foundTask=%v, foundNote=%v, foundActInherited=%v; refs: %+v",
+			foundTask1, foundNote1, foundAct1Inherited, archRefs)
 	}
 
-	// ListByTag("调优"): matches Memo 2 without inheritance
+	// ListByTag("调优"): matches Activity 2 without inheritance
 	tuneRefs, err := s.ListByTag("调优")
 	if err != nil {
 		t.Fatalf("ListByTag('调优') failed: %v", err)
 	}
-	if len(tuneRefs) != 1 || tuneRefs[0].ID != memo2.ID || tuneRefs[0].Inherited {
-		t.Fatalf("expected non-inherited memo2 for '调优', got %+v", tuneRefs)
+	if len(tuneRefs) != 1 || tuneRefs[0].ID != act2.ID || tuneRefs[0].Inherited {
+		t.Fatalf("expected non-inherited act2 for '调优', got %+v", tuneRefs)
 	}
 
 	// 6. Test SearchAll
@@ -2140,7 +1840,7 @@ func TestVaultService_TagOverviewAndSearch(t *testing.T) {
 		t.Fatalf("expected empty search results for whitespace query, got %+v, err: %v", res, err)
 	}
 
-	// Search "统一资源接入": matches Task 1 (Title) and Memo 1 (Body)
+	// Search "统一资源接入": matches Task 1 (Title) and Activity 1 (Body)
 	search1, err := s.SearchAll("统一资源接入")
 	if err != nil {
 		t.Fatalf("SearchAll failed: %v", err)
@@ -2151,26 +1851,26 @@ func TestVaultService_TagOverviewAndSearch(t *testing.T) {
 	if search1[0].Type != markdown.EntityTypeTask || search1[0].ID != task1.ID {
 		t.Fatalf("expected first match to be Task 1, got %+v", search1[0])
 	}
-	if search1[1].Type != markdown.EntityTypeMemo || search1[1].ID != memo1.ID {
-		t.Fatalf("expected second match to be Memo 1, got %+v", search1[1])
+	if search1[1].Type != markdown.EntityTypeActivity || search1[1].ID != act1.ID {
+		t.Fatalf("expected second match to be Activity 1, got %+v", search1[1])
 	}
 
 	// Search "架构设计": matches Task 1 (Tag) and Note 1 (Title & Tag).
-	// Crucial rule: Memo 1 does NOT inherit parent task tags in SearchAll!
+	// Crucial rule: Activity 1 does NOT inherit parent task tags in SearchAll!
 	searchArch, err := s.SearchAll("架构设计")
 	if err != nil {
 		t.Fatalf("SearchAll failed: %v", err)
 	}
 	if len(searchArch) != 2 {
-		t.Fatalf("expected 2 matches for '架构设计' (Task 1 & Note 1; Memo 1 must NOT match), got %d: %+v", len(searchArch), searchArch)
+		t.Fatalf("expected 2 matches for '架构设计' (Task 1 & Note 1; Activity 1 must NOT match), got %d: %+v", len(searchArch), searchArch)
 	}
 	for _, r := range searchArch {
-		if r.Type == markdown.EntityTypeMemo {
-			t.Fatalf("Memo must NOT inherit parent task tags in SearchAll! Found memo: %+v", r)
+		if r.Type == markdown.EntityTypeActivity {
+			t.Fatalf("Activity must NOT inherit parent task tags in SearchAll! Found activity: %+v", r)
 		}
 	}
 
-	// Search case-insensitivity: "flink" matches Task 2 and Memo 2
+	// Search case-insensitivity: "flink" matches Task 2 and Activity 2
 	searchFlink, err := s.SearchAll("flink")
 	if err != nil {
 		t.Fatalf("SearchAll failed: %v", err)
@@ -2266,22 +1966,20 @@ Body text
 		t.Fatalf("expected non-empty reason for parse error")
 	}
 
-	// 2. Introduce dangling reference: memo pointing to non-existent task
-	memosDir := filepath.Join(vaultDir, "memos")
-	if err := os.MkdirAll(memosDir, 0755); err != nil {
+	// 2. Introduce dangling reference: DayPlan pointing to non-existent task
+	plansDir := filepath.Join(vaultDir, "plans")
+	if err := os.MkdirAll(plansDir, 0755); err != nil {
 		t.Fatalf("MkdirAll failed: %v", err)
 	}
-	danglingMemoFile := filepath.Join(memosDir, "2026-10-12.md")
-	danglingMemoContent := `---
-type: memo
-id: m-dangling-1
-task_id: t-nonexistent-999
-created_at: 2026-10-12T10:00:00+08:00
+	danglingPlanFile := filepath.Join(plansDir, "2026-10-12.md")
+	danglingPlanContent := `---
+type: day_plan
+date: 2026-10-12
+task_ids:
+  - t-nonexistent-999
 ---
-
-关联缺失任务的记录
 `
-	if err := os.WriteFile(danglingMemoFile, []byte(danglingMemoContent), 0644); err != nil {
+	if err := os.WriteFile(danglingPlanFile, []byte(danglingPlanContent), 0644); err != nil {
 		t.Fatalf("WriteFile failed: %v", err)
 	}
 

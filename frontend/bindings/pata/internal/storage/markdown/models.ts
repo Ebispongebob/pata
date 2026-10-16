@@ -14,6 +14,7 @@ export class Activity {
     "tags"?: string[];
     "note_refs"?: { [_ in string]?: string };
     "body": string;
+    "task_id"?: string;
 
     /** Creates a new Activity instance. */
     constructor($$source: Partial<Activity> = {}) {
@@ -188,7 +189,6 @@ export enum EntityType {
     $zero = "",
 
     EntityTypeTask = "task",
-    EntityTypeMemo = "memo",
     EntityTypeNote = "note",
     EntityTypeDayPlan = "day_plan",
     EntityTypeActivity = "activity",
@@ -287,57 +287,6 @@ export class LinkSource {
     static createFrom($$source: any = {}): LinkSource {
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         return new LinkSource($$parsedSource as Partial<LinkSource>);
-    }
-}
-
-/**
- * Memo represents a short memo or task comment.
- */
-export class Memo {
-    "type": EntityType;
-    "id": string;
-    "task_id"?: string;
-    "created_at": string;
-    "tags"?: string[];
-
-    /**
-     * 正文 [[名称]] -> Note ID
-     */
-    "note_refs"?: { [_ in string]?: string };
-    "body": string;
-
-    /** Creates a new Memo instance. */
-    constructor($$source: Partial<Memo> = {}) {
-        if (!("type" in $$source)) {
-            this["type"] = EntityType.$zero;
-        }
-        if (!("id" in $$source)) {
-            this["id"] = "";
-        }
-        if (!("created_at" in $$source)) {
-            this["created_at"] = "0001-01-01T00:00:00.000Z";
-        }
-        if (!("body" in $$source)) {
-            this["body"] = "";
-        }
-
-        Object.assign(this, $$source);
-    }
-
-    /**
-     * Creates a new Memo instance from a string or object.
-     */
-    static createFrom($$source: any = {}): Memo {
-        const $$createField4_0 = $$createType0;
-        const $$createField5_0 = $$createType1;
-        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
-        if ("tags" in $$parsedSource) {
-            $$parsedSource["tags"] = $$createField4_0($$parsedSource["tags"]);
-        }
-        if ("note_refs" in $$parsedSource) {
-            $$parsedSource["note_refs"] = $$createField5_0($$parsedSource["note_refs"]);
-        }
-        return new Memo($$parsedSource as Partial<Memo>);
     }
 }
 
@@ -530,13 +479,13 @@ export enum StatusEventAction {
 };
 
 /**
- * TagOverviewItem represents a tag aggregated across tasks, notes, and memos.
+ * TagOverviewItem represents a tag aggregated across tasks, notes, and activities.
  */
 export class TagOverviewItem {
     "tag": string;
     "task_count": number;
     "note_count": number;
-    "memo_count": number;
+    "activity_count": number;
     "total": number;
 
     /** Creates a new TagOverviewItem instance. */
@@ -550,8 +499,8 @@ export class TagOverviewItem {
         if (!("note_count" in $$source)) {
             this["note_count"] = 0;
         }
-        if (!("memo_count" in $$source)) {
-            this["memo_count"] = 0;
+        if (!("activity_count" in $$source)) {
+            this["activity_count"] = 0;
         }
         if (!("total" in $$source)) {
             this["total"] = 0;

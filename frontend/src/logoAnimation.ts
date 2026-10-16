@@ -4,7 +4,7 @@
  *
  * Rules:
  * 1. Launch: Played once when main UI is first ready; no replay on nav / vault switch / list refresh.
- * 2. Success: Played on TodayView quick memo and TasksView comment save success.
+ * 2. Success: Played on TodayView quick activity and TasksView activity save success.
  * 3. Concurrent triggers merge (restarts cleanly without stacking).
  * 4. Ended via animationend or safety timeout, returning to static baseline.
  * 5. Paused/cleared on window hide or component unmount.

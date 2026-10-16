@@ -9,7 +9,6 @@ export {
     EntityType,
     FileResource,
     LinkSource,
-    Memo,
     Note,
     NoteRef,
     ParseError,

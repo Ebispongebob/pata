@@ -28,21 +28,11 @@ export function CreateActivity(input: $models.CreateActivityInput): $Cancellable
 }
 
 /**
- * CreateMemo creates a new Memo, writes it safely as Markdown, and updates the index.
- * Deprecated: new code should use CreateActivity.
- */
-export function CreateMemo(input: $models.CreateMemoInput): $CancellablePromise<markdown$0.Memo | null> {
-    return $Call.ByID(1514226879, input).then(($result: any) => {
-        return $$createType3($result);
-    });
-}
-
-/**
  * CreateNote creates a new Note, writes it safely as Markdown, and updates the index.
  */
 export function CreateNote(input: $models.CreateNoteInput): $CancellablePromise<markdown$0.Note | null> {
     return $Call.ByID(2924369193, input).then(($result: any) => {
-        return $$createType5($result);
+        return $$createType3($result);
     });
 }
 
@@ -51,7 +41,7 @@ export function CreateNote(input: $models.CreateNoteInput): $CancellablePromise<
  */
 export function CreateTask(input: $models.CreateTaskInput): $CancellablePromise<markdown$0.Task | null> {
     return $Call.ByID(3901450400, input).then(($result: any) => {
-        return $$createType7($result);
+        return $$createType5($result);
     });
 }
 
@@ -84,25 +74,16 @@ export function GetActivity(id: string): $CancellablePromise<markdown$0.Activity
  */
 export function GetDayPlan(date: string): $CancellablePromise<markdown$0.DayPlan | null> {
     return $Call.ByID(2499050296, date).then(($result: any) => {
-        return $$createType9($result);
+        return $$createType7($result);
     });
 }
 
 /**
- * GetDayTimeline returns daily timeline items (activities, memos, and task completion events) for a given date YYYY-MM-DD in local timezone.
+ * GetDayTimeline returns daily timeline items (activities and task completion events) for a given date YYYY-MM-DD in local timezone.
  */
 export function GetDayTimeline(date: string): $CancellablePromise<$models.TimelineItem[]> {
     return $Call.ByID(2161441604, date).then(($result: any) => {
-        return $$createType11($result);
-    });
-}
-
-/**
- * GetMemo returns a memo by its ID (checking legacy memos and converted activities).
- */
-export function GetMemo(id: string): $CancellablePromise<markdown$0.Memo | null> {
-    return $Call.ByID(780043581, id).then(($result: any) => {
-        return $$createType3($result);
+        return $$createType9($result);
     });
 }
 
@@ -111,7 +92,7 @@ export function GetMemo(id: string): $CancellablePromise<markdown$0.Memo | null>
  */
 export function GetNote(id: string): $CancellablePromise<markdown$0.Note | null> {
     return $Call.ByID(3086395091, id).then(($result: any) => {
-        return $$createType5($result);
+        return $$createType3($result);
     });
 }
 
@@ -120,16 +101,16 @@ export function GetNote(id: string): $CancellablePromise<markdown$0.Note | null>
  */
 export function GetNoteBacklinks(noteID: string): $CancellablePromise<markdown$0.LinkSource[]> {
     return $Call.ByID(3336179693, noteID).then(($result: any) => {
-        return $$createType13($result);
+        return $$createType11($result);
     });
 }
 
 /**
- * GetTagOverview returns aggregated counts of all unique tags across tasks, notes, and memos.
+ * GetTagOverview returns aggregated counts of all unique tags across tasks, notes, and activities.
  */
 export function GetTagOverview(): $CancellablePromise<markdown$0.TagOverviewItem[]> {
     return $Call.ByID(3863596086).then(($result: any) => {
-        return $$createType15($result);
+        return $$createType13($result);
     });
 }
 
@@ -138,7 +119,7 @@ export function GetTagOverview(): $CancellablePromise<markdown$0.TagOverviewItem
  */
 export function GetTask(id: string): $CancellablePromise<markdown$0.Task | null> {
     return $Call.ByID(1057197746, id).then(($result: any) => {
-        return $$createType7($result);
+        return $$createType5($result);
     });
 }
 
@@ -147,7 +128,7 @@ export function GetTask(id: string): $CancellablePromise<markdown$0.Task | null>
  */
 export function GetVaultHealth(): $CancellablePromise<$models.VaultHealth | null> {
     return $Call.ByID(1563926335).then(($result: any) => {
-        return $$createType17($result);
+        return $$createType15($result);
     });
 }
 
@@ -156,7 +137,7 @@ export function GetVaultHealth(): $CancellablePromise<$models.VaultHealth | null
  */
 export function GetVaultStatus(): $CancellablePromise<$models.VaultStatus> {
     return $Call.ByID(540011935).then(($result: any) => {
-        return $$createType18($result);
+        return $$createType16($result);
     });
 }
 
@@ -165,7 +146,7 @@ export function GetVaultStatus(): $CancellablePromise<$models.VaultStatus> {
  */
 export function ImportFile(sourcePath: string): $CancellablePromise<markdown$0.FileResource | null> {
     return $Call.ByID(3021514830, sourcePath).then(($result: any) => {
-        return $$createType20($result);
+        return $$createType18($result);
     });
 }
 
@@ -174,7 +155,7 @@ export function ImportFile(sourcePath: string): $CancellablePromise<markdown$0.F
  */
 export function ImportFileData(name: string, base64Data: string): $CancellablePromise<markdown$0.FileResource | null> {
     return $Call.ByID(3430794990, name, base64Data).then(($result: any) => {
-        return $$createType20($result);
+        return $$createType18($result);
     });
 }
 
@@ -183,17 +164,17 @@ export function ImportFileData(name: string, base64Data: string): $CancellablePr
  */
 export function ListActivitiesByTask(taskID: string): $CancellablePromise<markdown$0.Activity[]> {
     return $Call.ByID(3610475444, taskID).then(($result: any) => {
-        return $$createType21($result);
+        return $$createType19($result);
     });
 }
 
 /**
  * ListByTag returns all entities matching the specified tag.
- * For Memos, tag matching checks memo.Tags ∪ parentTask.Tags.
+ * For Activities, tag matching checks act.Tags ∪ parentTask.Tags (for task activities).
  */
 export function ListByTag(tag: string): $CancellablePromise<markdown$0.EntityRef[]> {
     return $Call.ByID(1184398980, tag).then(($result: any) => {
-        return $$createType23($result);
+        return $$createType21($result);
     });
 }
 
@@ -202,16 +183,7 @@ export function ListByTag(tag: string): $CancellablePromise<markdown$0.EntityRef
  */
 export function ListFiles(): $CancellablePromise<markdown$0.FileResource[]> {
     return $Call.ByID(1556008584).then(($result: any) => {
-        return $$createType24($result);
-    });
-}
-
-/**
- * ListMemosByTask returns all memos associated with taskID, including legacy memos and converted activities.
- */
-export function ListMemosByTask(taskID: string): $CancellablePromise<(markdown$0.Memo | null)[]> {
-    return $Call.ByID(2666858332, taskID).then(($result: any) => {
-        return $$createType25($result);
+        return $$createType22($result);
     });
 }
 
@@ -220,7 +192,7 @@ export function ListMemosByTask(taskID: string): $CancellablePromise<(markdown$0
  */
 export function ListNoteRefs(): $CancellablePromise<markdown$0.NoteRef[]> {
     return $Call.ByID(1984130979).then(($result: any) => {
-        return $$createType27($result);
+        return $$createType24($result);
     });
 }
 
@@ -229,7 +201,7 @@ export function ListNoteRefs(): $CancellablePromise<markdown$0.NoteRef[]> {
  */
 export function ListNotes(): $CancellablePromise<(markdown$0.Note | null)[]> {
     return $Call.ByID(957394914).then(($result: any) => {
-        return $$createType28($result);
+        return $$createType25($result);
     });
 }
 
@@ -238,7 +210,7 @@ export function ListNotes(): $CancellablePromise<(markdown$0.Note | null)[]> {
  */
 export function ListTasks(): $CancellablePromise<(markdown$0.Task | null)[]> {
     return $Call.ByID(1611157941).then(($result: any) => {
-        return $$createType29($result);
+        return $$createType26($result);
     });
 }
 
@@ -275,17 +247,17 @@ export function RevealInFinder(filePath: string): $CancellablePromise<void> {
  */
 export function SaveDayPlan(date: string, taskIDs: string[]): $CancellablePromise<markdown$0.DayPlan | null> {
     return $Call.ByID(1580712949, date, taskIDs).then(($result: any) => {
-        return $$createType9($result);
+        return $$createType7($result);
     });
 }
 
 /**
- * SearchAll performs case-insensitive substring search across tasks, notes, and memos.
+ * SearchAll performs case-insensitive substring search across tasks, notes, activities, and files.
  * Empty or whitespace-only queries return an empty list without error.
  */
 export function SearchAll(query: string): $CancellablePromise<markdown$0.SearchResultItem[]> {
     return $Call.ByID(2447503468, query).then(($result: any) => {
-        return $$createType31($result);
+        return $$createType28($result);
     });
 }
 
@@ -295,7 +267,7 @@ export function SearchAll(query: string): $CancellablePromise<markdown$0.SearchR
  */
 export function SelectVaultDirectory(): $CancellablePromise<$models.VaultStatus> {
     return $Call.ByID(2534227418).then(($result: any) => {
-        return $$createType18($result);
+        return $$createType16($result);
     });
 }
 
@@ -304,7 +276,7 @@ export function SelectVaultDirectory(): $CancellablePromise<$models.VaultStatus>
  */
 export function SetTaskStatus(id: string, status: markdown$0.TaskStatus): $CancellablePromise<markdown$0.Task | null> {
     return $Call.ByID(1569318832, id, status).then(($result: any) => {
-        return $$createType7($result);
+        return $$createType5($result);
     });
 }
 
@@ -318,20 +290,11 @@ export function UpdateActivity(input: $models.UpdateActivityInput): $Cancellable
 }
 
 /**
- * UpdateMemo updates an existing Memo or Activity.
- */
-export function UpdateMemo(input: $models.UpdateMemoInput): $CancellablePromise<markdown$0.Memo | null> {
-    return $Call.ByID(971500362, input).then(($result: any) => {
-        return $$createType3($result);
-    });
-}
-
-/**
  * UpdateNote updates an existing Note, safely writes changes to Markdown, and preserves unknown frontmatter.
  */
 export function UpdateNote(input: $models.UpdateNoteInput): $CancellablePromise<markdown$0.Note | null> {
     return $Call.ByID(3482000924, input).then(($result: any) => {
-        return $$createType5($result);
+        return $$createType3($result);
     });
 }
 
@@ -340,40 +303,37 @@ export function UpdateNote(input: $models.UpdateNoteInput): $CancellablePromise<
  */
 export function UpdateTask(input: $models.UpdateTaskInput): $CancellablePromise<markdown$0.Task | null> {
     return $Call.ByID(12384053, input).then(($result: any) => {
-        return $$createType7($result);
+        return $$createType5($result);
     });
 }
 
 // Private type creation functions
 const $$createType0 = markdown$0.Activity.createFrom;
 const $$createType1 = $Create.Nullable($$createType0);
-const $$createType2 = markdown$0.Memo.createFrom;
+const $$createType2 = markdown$0.Note.createFrom;
 const $$createType3 = $Create.Nullable($$createType2);
-const $$createType4 = markdown$0.Note.createFrom;
+const $$createType4 = markdown$0.Task.createFrom;
 const $$createType5 = $Create.Nullable($$createType4);
-const $$createType6 = markdown$0.Task.createFrom;
+const $$createType6 = markdown$0.DayPlan.createFrom;
 const $$createType7 = $Create.Nullable($$createType6);
-const $$createType8 = markdown$0.DayPlan.createFrom;
-const $$createType9 = $Create.Nullable($$createType8);
-const $$createType10 = $models.TimelineItem.createFrom;
+const $$createType8 = $models.TimelineItem.createFrom;
+const $$createType9 = $Create.Array($$createType8);
+const $$createType10 = markdown$0.LinkSource.createFrom;
 const $$createType11 = $Create.Array($$createType10);
-const $$createType12 = markdown$0.LinkSource.createFrom;
+const $$createType12 = markdown$0.TagOverviewItem.createFrom;
 const $$createType13 = $Create.Array($$createType12);
-const $$createType14 = markdown$0.TagOverviewItem.createFrom;
-const $$createType15 = $Create.Array($$createType14);
-const $$createType16 = $models.VaultHealth.createFrom;
-const $$createType17 = $Create.Nullable($$createType16);
-const $$createType18 = $models.VaultStatus.createFrom;
-const $$createType19 = markdown$0.FileResource.createFrom;
-const $$createType20 = $Create.Nullable($$createType19);
-const $$createType21 = $Create.Array($$createType0);
-const $$createType22 = markdown$0.EntityRef.createFrom;
-const $$createType23 = $Create.Array($$createType22);
-const $$createType24 = $Create.Array($$createType19);
+const $$createType14 = $models.VaultHealth.createFrom;
+const $$createType15 = $Create.Nullable($$createType14);
+const $$createType16 = $models.VaultStatus.createFrom;
+const $$createType17 = markdown$0.FileResource.createFrom;
+const $$createType18 = $Create.Nullable($$createType17);
+const $$createType19 = $Create.Array($$createType0);
+const $$createType20 = markdown$0.EntityRef.createFrom;
+const $$createType21 = $Create.Array($$createType20);
+const $$createType22 = $Create.Array($$createType17);
+const $$createType23 = markdown$0.NoteRef.createFrom;
+const $$createType24 = $Create.Array($$createType23);
 const $$createType25 = $Create.Array($$createType3);
-const $$createType26 = markdown$0.NoteRef.createFrom;
-const $$createType27 = $Create.Array($$createType26);
-const $$createType28 = $Create.Array($$createType5);
-const $$createType29 = $Create.Array($$createType7);
-const $$createType30 = markdown$0.SearchResultItem.createFrom;
-const $$createType31 = $Create.Array($$createType30);
+const $$createType26 = $Create.Array($$createType5);
+const $$createType27 = markdown$0.SearchResultItem.createFrom;
+const $$createType28 = $Create.Array($$createType27);

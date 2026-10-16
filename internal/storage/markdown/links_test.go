@@ -28,14 +28,12 @@ func TestBacklinksDedupAndRoundtrip(t *testing.T) {
 	write("notes/b.md", fm("note", "n-b", "title: B\n")+
 		"[x](./a.md) [y](./a.md#h)\n```\n[no](./sub/a.md)\n```\n`[no](./sub/a.md)` ![img](./a.md) [u](https://x/a.md)\n")
 	write("notes/sub/c d.md", fm("note", "n-c", "title: C\n")+"[up](../a.md)\n[self](./c%20d.md)\n")
-	// Task：描述绑定 + 评论 + 旧 note_ids 合并成一条
-	write("tasks/t1.md", fm("task", "t-1", "title: T1\nstatus: todo\ndue: null\nnote_ids: [n-a]\nnote_refs:\n  Doris 部署: n-a\n")+"见 [[Doris 部署]] 与 \\[[Doris 部署]]\n")
-	write("memos/m1.md", fm("memo", "m-1", "task_id: t-1\nnote_refs:\n  Doris 部署: n-a\n")+"[[Doris 部署]]\n")
+	// Task：描述绑定 + 活动 + 旧 note_ids 合并成一条
+	write("tasks/t1.md", fm("task", "t-1", "title: T1\ndescription: \"见 [[Doris 部署]] 与 \\\\[[Doris 部署]]\"\nstatus: todo\ndue: null\nnote_ids: [n-a]\nnote_refs:\n  Doris 部署: n-a\n")+
+		"<!-- pata:activity\nid: a-1\nat: 2026-01-01T00:00:00+08:00\nnote_refs:\n  Doris 部署: n-a\n-->\n[[Doris 部署]]\n<!-- /pata:activity -->\n")
 	// 绑定到 A2 的任务：不能算到 A；未绑定同名(歧义)的任务：不解析
-	write("tasks/t2.md", fm("task", "t-2", "title: T2\nstatus: todo\ndue: null\nnote_refs:\n  Doris 部署: n-a2\n")+"[[Doris 部署]]\n")
-	write("tasks/t3.md", fm("task", "t-3", "title: T3\nstatus: todo\ndue: null\n")+"[[Doris 部署]]\n")
-	// 父任务已删除的评论：不产生来源
-	write("memos/m2.md", fm("memo", "m-2", "task_id: t-gone\nnote_refs:\n  Doris 部署: n-a\n")+"[[Doris 部署]]\n")
+	write("tasks/t2.md", fm("task", "t-2", "title: T2\ndescription: \"[[Doris 部署]]\"\nstatus: todo\ndue: null\nnote_refs:\n  Doris 部署: n-a2\n"))
+	write("tasks/t3.md", fm("task", "t-3", "title: T3\ndescription: \"[[Doris 部署]]\"\nstatus: todo\ndue: null\n"))
 
 	v, err := NewVault(root)
 	if err != nil {

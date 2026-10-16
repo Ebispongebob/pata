@@ -212,18 +212,6 @@ func ParseMarkdown(filePath string, content []byte) (Entity, error) {
 		}
 		entity = &task
 
-	case EntityTypeMemo:
-		var memo Memo
-		if err := yaml.Unmarshal(yamlBytes, &memo); err != nil {
-			return nil, &ParseError{
-				Path:   filePath,
-				Reason: "failed to decode memo frontmatter",
-				Err:    err,
-			}
-		}
-		memo.Body = string(bodyBytes)
-		entity = &memo
-
 	case EntityTypeNote:
 		var note Note
 		if err := yaml.Unmarshal(yamlBytes, &note); err != nil {
@@ -304,8 +292,6 @@ func SerializeMarkdown(entity Entity) ([]byte, error) {
 			return nil, fmt.Errorf("failed to format task activities: %w", actErr)
 		}
 		e.Body = actBody
-		err = enc.Encode(e)
-	case *Memo:
 		err = enc.Encode(e)
 	case *Note:
 		err = enc.Encode(e)

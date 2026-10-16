@@ -8,12 +8,10 @@ export {
 
 export {
     CreateActivityInput,
-    CreateMemoInput,
     CreateNoteInput,
     CreateTaskInput,
     TimelineItem,
     UpdateActivityInput,
-    UpdateMemoInput,
     UpdateNoteInput,
     UpdateTaskInput,
     VaultHealth,

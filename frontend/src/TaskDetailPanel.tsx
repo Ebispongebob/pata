@@ -15,7 +15,7 @@ import {
   ArrowUpRight,
 } from 'lucide-react';
 import * as VaultService from '../bindings/pata/vaultservice';
-import { Task, TaskStatus, Memo } from '../bindings/pata/internal/storage/markdown/models';
+import { Task, TaskStatus, Activity } from '../bindings/pata/internal/storage/markdown/models';
 import { UpdateTaskInput, CreateActivityInput } from '../bindings/pata/models';
 import { playLogoSuccess } from './logoAnimation';
 import { dedupeTags } from './quickCreate';
@@ -66,7 +66,7 @@ function formatDueDisplay(dueStr: string): { text: string; isOverdue: boolean; i
   }
 }
 
-function formatMemoTimestamp(isoString: string): string {
+function formatActivityTimestamp(isoString: string): string {
   if (!isoString) return '';
   try {
     const d = new Date(isoString);
@@ -159,13 +159,13 @@ export const TaskDetailPanel = forwardRef<TaskDetailHandle, TaskDetailPanelProps
   const [deleting, setDeleting] = useState(false);
   const [leavePrompt, setLeavePrompt] = useState<((r: boolean) => void) | null>(null);
 
-  // Activities (Memos)
-  const [taskMemos, setTaskMemos] = useState<Memo[]>([]);
-  const [memoListError, setMemoListError] = useState<string | null>(null);
-  const [newMemoBody, setNewMemoBody] = useState('');
-  const [newMemoRefs, setNewMemoRefs] = useState<NoteRefMap>({});
-  const [submittingMemo, setSubmittingMemo] = useState(false);
-  const [submitMemoError, setSubmitMemoError] = useState<string | null>(null);
+  // Activities
+  const [taskActivities, setTaskActivities] = useState<Activity[]>([]);
+  const [activityListError, setActivityListError] = useState<string | null>(null);
+  const [newActivityBody, setNewActivityBody] = useState('');
+  const [newActivityRefs, setNewActivityRefs] = useState<NoteRefMap>({});
+  const [submittingActivity, setSubmittingActivity] = useState(false);
+  const [submitActivityError, setSubmitActivityError] = useState<string | null>(null);
 
   const noteRefs = useNoteRefs();
 
@@ -225,14 +225,14 @@ export const TaskDetailPanel = forwardRef<TaskDetailHandle, TaskDetailPanelProps
     latestRefsRef.current = t.note_refs ?? {};
   }, []);
 
-  const loadMemos = useCallback(async () => {
-    setMemoListError(null);
+  const loadActivities = useCallback(async () => {
+    setActivityListError(null);
     try {
-      const result = await VaultService.ListMemosByTask(taskId);
-      setTaskMemos((result ?? []).filter((m): m is Memo => m !== null));
+      const result = await VaultService.ListActivitiesByTask(taskId);
+      setTaskActivities((result ?? []).filter((m): m is Activity => m !== null));
     } catch (err: any) {
-      console.error('Failed to list memos for task:', err);
-      setMemoListError(err?.message || String(err));
+      console.error('Failed to list activities for task:', err);
+      setActivityListError(err?.message || String(err));
     }
   }, [taskId]);
 
@@ -245,12 +245,12 @@ export const TaskDetailPanel = forwardRef<TaskDetailHandle, TaskDetailPanelProps
       if (!t) throw new Error('任务不存在');
       applyTask(t);
       setLoadError(null);
-      await loadMemos();
+      await loadActivities();
     } catch (err: any) {
       setDetailError(`重新加载失败: ${err?.message || err}`);
       setLoadError((prev) => prev ?? (err?.message || String(err)));
     }
-  }, [taskId, applyTask, loadMemos]);
+  }, [taskId, applyTask, loadActivities]);
 
   useEffect(() => {
     void reload();
@@ -296,12 +296,12 @@ export const TaskDetailPanel = forwardRef<TaskDetailHandle, TaskDetailPanelProps
     const unsubscribe = Events.On('vault:changed', (ev) => {
       const data = ev.data as { entity_id?: string } | undefined;
       if (data?.entity_id === taskId) setExternalModified(true);
-      void loadMemos();
+      void loadActivities();
     });
     return () => {
       unsubscribe();
     };
-  }, [taskId, loadMemos]);
+  }, [taskId, loadActivities]);
 
   // Clear debounce timer on unmount
   useEffect(() => {
@@ -391,11 +391,11 @@ export const TaskDetailPanel = forwardRef<TaskDetailHandle, TaskDetailPanelProps
       const ok = await saveTask();
       if (!ok) return false;
     }
-    if (newMemoBody.trim() !== '') {
+    if (newActivityBody.trim() !== '') {
       return new Promise<boolean>((resolve) => setLeavePrompt(() => resolve));
     }
     return true;
-  }, [formDirty, saveTask, newMemoBody]);
+  }, [formDirty, saveTask, newActivityBody]);
 
   useImperativeHandle(ref, () => ({ confirmLeave, reload }), [confirmLeave, reload]);
 
@@ -403,7 +403,7 @@ export const TaskDetailPanel = forwardRef<TaskDetailHandle, TaskDetailPanelProps
     const resolve = leavePrompt;
     if (!resolve) return;
     if (choice === 'save') {
-      const ok = await handleAddMemo();
+      const ok = await handleAddActivity();
       setLeavePrompt(null);
       resolve(ok);
       return;
@@ -490,27 +490,27 @@ export const TaskDetailPanel = forwardRef<TaskDetailHandle, TaskDetailPanelProps
     setIsEditingBody(false);
   };
 
-  const handleAddMemo = async (e?: React.FormEvent): Promise<boolean> => {
+  const handleAddActivity = async (e?: React.FormEvent): Promise<boolean> => {
     if (e) e.preventDefault();
-    const body = newMemoBody.trim();
+    const body = newActivityBody.trim();
     if (!body) return true;
-    setSubmittingMemo(true);
-    setSubmitMemoError(null);
+    setSubmittingActivity(true);
+    setSubmitActivityError(null);
     try {
-      const input: CreateActivityInput = { body, task_id: taskId, note_refs: pruneRefs(body, newMemoRefs) };
+      const input: CreateActivityInput = { body, task_id: taskId, note_refs: pruneRefs(body, newActivityRefs) };
       await VaultService.CreateActivity(input);
       playLogoSuccess();
-      setNewMemoBody('');
-      setNewMemoRefs({});
-      await loadMemos();
+      setNewActivityBody('');
+      setNewActivityRefs({});
+      await loadActivities();
       onChanged();
       return true;
     } catch (err: any) {
-      console.error('Failed to create memo:', err);
-      setSubmitMemoError(err?.message || String(err));
+      console.error('Failed to create activity:', err);
+      setSubmitActivityError(err?.message || String(err));
       return false;
     } finally {
-      setSubmittingMemo(false);
+      setSubmittingActivity(false);
     }
   };
 
@@ -954,37 +954,37 @@ export const TaskDetailPanel = forwardRef<TaskDetailHandle, TaskDetailPanelProps
             活动
           </div>
 
-          {memoListError && (
+          {activityListError && (
             <div className="p-2.5 rounded-lg border border-rose-200 dark:border-rose-900/60 bg-rose-50/80 dark:bg-rose-950/40 text-rose-800 dark:text-rose-200 text-xs flex items-center space-x-2">
               <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
-              <span>加载活动列表失败: {memoListError}</span>
+              <span>加载活动列表失败: {activityListError}</span>
             </div>
           )}
 
-          {taskMemos.length === 0 ? (
+          {taskActivities.length === 0 ? (
             <div className="py-4 text-center text-xs text-stone-400 dark:text-stone-500">
               暂无活动记录
             </div>
           ) : (
             <div className="space-y-3.5">
-              {taskMemos.map((memo) => (
-                <div key={memo.id} className="space-y-1">
+              {taskActivities.map((act) => (
+                <div key={act.id} className="space-y-1">
                   <div
                     className="text-[11px] font-mono text-stone-400 dark:text-stone-500"
-                    title={memo.created_at ? memo.created_at.replace('T', ' ').slice(0, 19) : ''}
+                    title={act.at ? act.at.replace('T', ' ').slice(0, 19) : ''}
                   >
-                    {formatMemoTimestamp(memo.created_at)}
+                    {formatActivityTimestamp(act.at)}
                   </div>
                   <NoteRefText
-                    text={memo.body}
-                    refs={memo.note_refs ?? undefined}
+                    text={act.body}
+                    refs={act.note_refs ?? undefined}
                     notes={noteRefs}
                     onOpenNote={(id) => onOpenNote?.(id, taskId)}
                     className="text-xs text-stone-800 dark:text-stone-200 leading-relaxed font-sans whitespace-pre-wrap break-words"
                   />
-                  {memo.tags && memo.tags.length > 0 && (
+                  {act.tags && act.tags.length > 0 && (
                     <div className="flex flex-wrap gap-1 pt-0.5">
-                      {memo.tags.map((tag) => (
+                      {act.tags.map((tag) => (
                         <span
                           key={tag}
                           className="inline-flex items-center text-[10px] text-stone-400 font-mono"
@@ -1003,44 +1003,44 @@ export const TaskDetailPanel = forwardRef<TaskDetailHandle, TaskDetailPanelProps
 
       {/* 3. Docked Activity Input Bar */}
       <div className="shrink-0 p-4 border-t border-stone-200/80 dark:border-stone-800/80 bg-stone-50/70 dark:bg-stone-900/70 backdrop-blur-md">
-        <form onSubmit={handleAddMemo} className="space-y-2">
+        <form onSubmit={handleAddActivity} className="space-y-2">
           <div className="rounded-xl border border-stone-200 dark:border-stone-800 bg-white dark:bg-stone-950 p-2.5 focus-within:border-stone-300 dark:focus-within:border-stone-700 transition shadow-2xs">
             <NoteRefTextarea
-              value={newMemoBody}
-              onChange={setNewMemoBody}
-              refs={newMemoRefs}
-              onRefsChange={setNewMemoRefs}
+              value={newActivityBody}
+              onChange={setNewActivityBody}
+              refs={newActivityRefs}
+              onRefsChange={setNewActivityRefs}
               notes={noteRefs}
               onKeyDown={(e) => {
-                if ((e.metaKey || e.ctrlKey) && e.key === 'Enter' && !submittingMemo && newMemoBody.trim()) {
+                if ((e.metaKey || e.ctrlKey) && e.key === 'Enter' && !submittingActivity && newActivityBody.trim()) {
                   e.preventDefault();
-                  void handleAddMemo();
+                  void handleAddActivity();
                 }
               }}
               placeholder="记录进展… (输入 [[ 引用笔记)"
               rows={2}
-              disabled={submittingMemo}
+              disabled={submittingActivity}
               className="w-full text-xs text-stone-900 dark:text-stone-100 placeholder-stone-400 bg-transparent resize-none border-0 outline-none focus:outline-none focus:ring-0 leading-relaxed"
             />
             <div className="flex items-center justify-between pt-1">
               <span className="text-[10px] text-stone-400 select-none">⌘ Enter 发送</span>
               <button
                 type="submit"
-                disabled={submittingMemo || !newMemoBody.trim()}
+                disabled={submittingActivity || !newActivityBody.trim()}
                 className="p-1 rounded-md text-stone-400 hover:text-emerald-700 dark:hover:text-emerald-400 hover:bg-stone-100 dark:hover:bg-stone-800 disabled:opacity-30 disabled:hover:text-stone-400 disabled:hover:bg-transparent transition"
                 title="发送 (⌘+Enter)"
               >
-                <ArrowUpRight className={`w-4 h-4 ${submittingMemo ? 'animate-spin' : ''}`} />
+                <ArrowUpRight className={`w-4 h-4 ${submittingActivity ? 'animate-spin' : ''}`} />
               </button>
             </div>
           </div>
 
-          {submitMemoError && (
+          {submitActivityError && (
             <div className="p-2 rounded-lg border border-rose-200 dark:border-rose-900/60 bg-rose-50/80 dark:bg-rose-950/40 text-rose-800 dark:text-rose-200 text-xs flex items-start space-x-2">
               <AlertCircle className="w-3.5 h-3.5 text-rose-600 shrink-0 mt-0.5" />
               <div className="space-y-0.5">
                 <div className="font-semibold text-[11px]">添加记录失败</div>
-                <div className="font-mono text-[10px] break-all">{submitMemoError}</div>
+                <div className="font-mono text-[10px] break-all">{submitActivityError}</div>
               </div>
             </div>
           )}
@@ -1168,7 +1168,7 @@ export const TaskDetailPanel = forwardRef<TaskDetailHandle, TaskDetailPanelProps
         </div>
       )}
 
-      {/* Unsaved Memo Draft Leave Prompt */}
+      {/* Unsaved Activity Draft Leave Prompt */}
       {leavePrompt && (
         <div className="pata-fade fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs p-4">
           <div className="w-full max-w-sm rounded-xl border border-stone-200 dark:border-stone-800 bg-white dark:bg-stone-900 p-5 shadow-xl space-y-4">
@@ -1197,7 +1197,7 @@ export const TaskDetailPanel = forwardRef<TaskDetailHandle, TaskDetailPanelProps
               <button
                 type="button"
                 onClick={() => void finishLeavePrompt('save')}
-                disabled={submittingMemo}
+                disabled={submittingActivity}
                 className="px-3 py-1.5 rounded-md bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-medium transition disabled:opacity-50"
               >
                 发送

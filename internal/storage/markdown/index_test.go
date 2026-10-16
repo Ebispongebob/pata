@@ -29,10 +29,10 @@ func TestScanExamplesVault(t *testing.T) {
 		t.Fatalf("t-demo-002 not found or wrong title: %+v", task2)
 	}
 
-	// Verify memo
-	memo1, ok := idx.GetMemo("m-demo-001")
-	if !ok || memo1.TaskID != "t-demo-001" {
-		t.Fatalf("m-demo-001 not found or wrong task_id: %+v", memo1)
+	// Verify activity
+	act1, loc1, ok := idx.GetActivity("a-demo-001")
+	if !ok || loc1.OwnerID != "t-demo-001" {
+		t.Fatalf("a-demo-001 not found or wrong owner_id: %+v, %+v", act1, loc1)
 	}
 
 	// Verify day plan
@@ -43,27 +43,27 @@ func TestScanExamplesVault(t *testing.T) {
 
 	// Verify tag index and inheritance:
 	// "架构设计" is on t-demo-001 and n-demo-001.
-	// m-demo-001 has no own tags, but references t-demo-001!
-	// Therefore FindByTag("架构设计") should match Task t-demo-001, Note n-demo-001, AND Memo m-demo-001 (inherited)!
+	// a-demo-001 has no own tags, but belongs to t-demo-001!
+	// Therefore FindByTag("架构设计") should match Task t-demo-001, Note n-demo-001, AND Activity a-demo-001 (inherited)!
 	tagRefs := idx.FindByTag("架构设计")
 	if len(tagRefs) != 3 {
-		t.Fatalf("expected 3 entities for tag '架构设计' (Task, Note, inherited Memo), got %d: %+v", len(tagRefs), tagRefs)
+		t.Fatalf("expected 3 entities for tag '架构设计' (Task, Note, inherited Activity), got %d: %+v", len(tagRefs), tagRefs)
 	}
 
-	hasInheritedMemo := false
+	hasInheritedActivity := false
 	for _, ref := range tagRefs {
-		if ref.Type == EntityTypeMemo && ref.ID == "m-demo-001" && ref.Inherited {
-			hasInheritedMemo = true
+		if ref.Type == EntityTypeActivity && ref.ID == "a-demo-001" && ref.Inherited {
+			hasInheritedActivity = true
 		}
 	}
-	if !hasInheritedMemo {
-		t.Fatalf("expected memo m-demo-001 to inherit tag '架构设计' from parent task")
+	if !hasInheritedActivity {
+		t.Fatalf("expected activity a-demo-001 to inherit tag '架构设计' from parent task")
 	}
 
-	// Tag "Doris" is on m-demo-002 only
+	// Tag "Doris" is on a-demo-002 only
 	dorisRefs := idx.FindByTag("Doris")
-	if len(dorisRefs) != 1 || dorisRefs[0].ID != "m-demo-002" {
-		t.Fatalf("expected m-demo-002 for tag 'Doris', got %+v", dorisRefs)
+	if len(dorisRefs) != 1 || dorisRefs[0].ID != "a-demo-002" {
+		t.Fatalf("expected a-demo-002 for tag 'Doris', got %+v", dorisRefs)
 	}
 }
 
@@ -86,14 +86,6 @@ func TestListTasksSortedByUpdatedAt(t *testing.T) {
 func TestDanglingReferences(t *testing.T) {
 	idx := NewMemoryIndex()
 
-	// Memo referencing non-existent task
-	memo := &Memo{
-		Type:   EntityTypeMemo,
-		ID:     "m-orphan-1",
-		TaskID: "t-missing-999",
-	}
-	idx.PutEntity("/vault/memos/m-orphan-1.md", memo, FileBaseline{})
-
 	// Task referencing non-existent note
 	task := &Task{
 		Type:    EntityTypeTask,
@@ -109,89 +101,17 @@ func TestDanglingReferences(t *testing.T) {
 		Date:    "2026-10-11",
 		TaskIDs: []string{"t-missing-999"},
 	}
-	idx.PutEntity("/vault/.pata/plans/2026-10-11.md", plan, FileBaseline{})
+	idx.PutEntity("/vault/plans/2026-10-11.md", plan, FileBaseline{})
 
 	dangling := idx.ListDanglingReferences()
-	if len(dangling) != 3 {
-		t.Fatalf("expected 3 dangling references, got %d: %+v", len(dangling), dangling)
+	if len(dangling) != 2 {
+		t.Fatalf("expected 2 dangling references, got %d: %+v", len(dangling), dangling)
 	}
 
 	// Verify explainable degradation details
 	t.Logf("Dangling references correctly isolated:\n")
 	for _, d := range dangling {
 		t.Logf("  - %s\n", d.String())
-	}
-}
-
-func TestListMemosByTask(t *testing.T) {
-	idx := NewMemoryIndex()
-
-	t1 := time.Date(2026, 10, 11, 10, 0, 0, 0, time.UTC)
-	t2 := time.Date(2026, 10, 11, 11, 0, 0, 0, time.UTC)
-	t3 := time.Date(2026, 10, 11, 12, 0, 0, 0, time.UTC)
-
-	memo1 := &Memo{
-		Type:      EntityTypeMemo,
-		ID:        "m-001",
-		TaskID:    "t-target",
-		CreatedAt: t2,
-		Body:      "第二条评论",
-	}
-	memo2 := &Memo{
-		Type:      EntityTypeMemo,
-		ID:        "m-002",
-		TaskID:    "t-target",
-		CreatedAt: t1,
-		Body:      "第一条评论",
-	}
-	memo3 := &Memo{
-		Type:      EntityTypeMemo,
-		ID:        "m-003",
-		TaskID:    "t-target",
-		CreatedAt: t3,
-		Body:      "第三条评论",
-	}
-	memoOther := &Memo{
-		Type:      EntityTypeMemo,
-		ID:        "m-004",
-		TaskID:    "t-other",
-		CreatedAt: t1,
-		Body:      "其他任务的评论",
-	}
-	memoStandAlone := &Memo{
-		Type:      EntityTypeMemo,
-		ID:        "m-005",
-		TaskID:    "",
-		CreatedAt: t1,
-		Body:      "独立 Memo",
-	}
-
-	idx.PutEntity("/vault/memos/2026/10/m-001.md", memo1, FileBaseline{})
-	idx.PutEntity("/vault/memos/2026/10/m-002.md", memo2, FileBaseline{})
-	idx.PutEntity("/vault/memos/2026/10/m-003.md", memo3, FileBaseline{})
-	idx.PutEntity("/vault/memos/2026/10/m-004.md", memoOther, FileBaseline{})
-	idx.PutEntity("/vault/memos/2026/10/m-005.md", memoStandAlone, FileBaseline{})
-
-	// 1. Filter and sorting check (must be sorted by CreatedAt ascending: m-002, m-001, m-003)
-	memos := idx.ListMemosByTask("t-target")
-	if len(memos) != 3 {
-		t.Fatalf("expected 3 memos for t-target, got %d", len(memos))
-	}
-	if memos[0].ID != "m-002" || memos[1].ID != "m-001" || memos[2].ID != "m-003" {
-		t.Fatalf("expected order [m-002, m-001, m-003], got [%s, %s, %s]", memos[0].ID, memos[1].ID, memos[2].ID)
-	}
-
-	// 2. Clone check (mutation of returned memo shouldn't affect index)
-	memos[0].Body = "篡改的正文"
-	m2, _ := idx.GetMemo("m-002")
-	if m2.Body != "第一条评论" {
-		t.Fatalf("index entity was mutated through returned clone")
-	}
-
-	// 3. Query non-existent task returns empty slice, not nil
-	empty := idx.ListMemosByTask("t-not-found")
-	if empty == nil || len(empty) != 0 {
-		t.Fatalf("expected non-nil empty slice for non-existent task, got %v", empty)
 	}
 }
 
@@ -301,37 +221,43 @@ func TestTagOverview(t *testing.T) {
 		Title: "Note 2",
 		Tags:  []string{"Flink"},
 	}
-	// Memo 1 (task comment): parent t-001 has "架构设计", but Memo 1 has NO own tags!
+	// Activity 1 (task comment): parent t-001 has "架构设计", but Activity 1 has NO own tags!
 	// Must NOT count toward "架构设计" in TagOverview!
-	memo1 := &Memo{
-		Type:   EntityTypeMemo,
-		ID:     "m-001",
-		TaskID: "t-001",
-		Tags:   []string{},
-		Body:   "Comment on task 1",
+	task1.Activities = []Activity{
+		{
+			ID:   "a-001",
+			At:   time.Now(),
+			Tags: []string{},
+			Body: "Comment on task 1",
+		},
 	}
-	// Memo 2 (independent memo): own tags ["Flink", "Doris"]
-	memo2 := &Memo{
-		Type: EntityTypeMemo,
-		ID:   "m-002",
-		Tags: []string{"Flink", "Doris"},
-		Body: "Memo 2 body",
+	// DayPlan Activity: own tags ["Flink", "Doris"]
+	plan := &DayPlan{
+		Type: EntityTypeDayPlan,
+		Date: "2026-10-11",
+		Activities: []Activity{
+			{
+				ID:   "a-002",
+				At:   time.Now(),
+				Tags: []string{"Flink", "Doris"},
+				Body: "Activity 2 body",
+			},
+		},
 	}
 
 	idx.PutEntity("/vault/tasks/t-001.md", task1, FileBaseline{})
 	idx.PutEntity("/vault/tasks/t-002.md", task2, FileBaseline{})
 	idx.PutEntity("/vault/notes/n-001.md", note1, FileBaseline{})
 	idx.PutEntity("/vault/notes/n-002.md", note2, FileBaseline{})
-	idx.PutEntity("/vault/memos/m-001.md", memo1, FileBaseline{})
-	idx.PutEntity("/vault/memos/m-002.md", memo2, FileBaseline{})
+	idx.PutEntity("/vault/plans/2026-10-11.md", plan, FileBaseline{})
 
 	overview := idx.TagOverview()
 
 	// Expected tags in alphabetical order:
-	// "Doris": Memo: 1 -> Total 1
-	// "Flink": Note: 1, Memo: 1 -> Total 2
+	// "Doris": Activity: 1 -> Total 1
+	// "Flink": Note: 1, Activity: 1 -> Total 2
 	// "GoCore": Task: 1, Note: 1 ("gocore" merged case-insensitively, displayTag preserves first appearance "GoCore") -> Total 2
-	// "架构设计": Task: 2, Note: 1, Memo: 0 (memo1 doesn't inherit in overview) -> Total 3
+	// "架构设计": Task: 2, Note: 1, Activity: 0 (a-001 doesn't inherit in overview) -> Total 3
 	if len(overview) != 4 {
 		t.Fatalf("expected 4 aggregated tags (GoCore/gocore merged), got %d: %+v", len(overview), overview)
 	}
@@ -341,27 +267,27 @@ func TestTagOverview(t *testing.T) {
 		tagMap[it.Tag] = it
 	}
 
-	// Verify "架构设计": TaskCount=2 (deduped within t-002), NoteCount=1, MemoCount=0, Total=3
+	// Verify "架构设计": TaskCount=2 (deduped within t-002), NoteCount=1, ActivityCount=0, Total=3
 	arch, ok := tagMap["架构设计"]
-	if !ok || arch.TaskCount != 2 || arch.NoteCount != 1 || arch.MemoCount != 0 || arch.Total != 3 {
+	if !ok || arch.TaskCount != 2 || arch.NoteCount != 1 || arch.ActivityCount != 0 || arch.Total != 3 {
 		t.Fatalf("unexpected stats for '架构设计': %+v", arch)
 	}
 
-	// Verify "Flink": TaskCount=0, NoteCount=1, MemoCount=1, Total=2
+	// Verify "Flink": TaskCount=0, NoteCount=1, ActivityCount=1, Total=2
 	flink, ok := tagMap["Flink"]
-	if !ok || flink.TaskCount != 0 || flink.NoteCount != 1 || flink.MemoCount != 1 || flink.Total != 2 {
+	if !ok || flink.TaskCount != 0 || flink.NoteCount != 1 || flink.ActivityCount != 1 || flink.Total != 2 {
 		t.Fatalf("unexpected stats for 'Flink': %+v", flink)
 	}
 
-	// Verify "Doris": TaskCount=0, NoteCount=0, MemoCount=1, Total=1
+	// Verify "Doris": TaskCount=0, NoteCount=0, ActivityCount=1, Total=1
 	doris, ok := tagMap["Doris"]
-	if !ok || doris.TaskCount != 0 || doris.NoteCount != 0 || doris.MemoCount != 1 || doris.Total != 1 {
+	if !ok || doris.TaskCount != 0 || doris.NoteCount != 0 || doris.ActivityCount != 1 || doris.Total != 1 {
 		t.Fatalf("unexpected stats for 'Doris': %+v", doris)
 	}
 
 	// Verify "GoCore": merged case-insensitively from Task 1 (" GoCore ") and Note 1 ("gocore")
 	gocoreMerged, ok := tagMap["GoCore"]
-	if !ok || gocoreMerged.TaskCount != 1 || gocoreMerged.NoteCount != 1 || gocoreMerged.MemoCount != 0 || gocoreMerged.Total != 2 {
+	if !ok || gocoreMerged.TaskCount != 1 || gocoreMerged.NoteCount != 1 || gocoreMerged.ActivityCount != 0 || gocoreMerged.Total != 2 {
 		t.Fatalf("unexpected stats for 'GoCore' (expected merged with 'gocore'): %+v", gocoreMerged)
 	}
 
@@ -420,30 +346,34 @@ func TestSearchAll(t *testing.T) {
 		Tags:      []string{"规范细节"},
 		UpdatedAt: t1,
 	}
-	// Memo 1: task comment for task2. Has NO own tag, body does NOT contain "规范细节" (parent task2 matches in body, but memos do not inherit parent task matches).
-	// Memo 1 must NOT match!
-	memo1 := &Memo{
-		Type:      EntityTypeMemo,
-		ID:        "m-001",
-		TaskID:    "t-002",
-		Body:      "日常打卡",
-		Tags:      []string{},
-		CreatedAt: t1,
+	// Activity 1: task activity on task2. Has NO own tag, body does NOT contain "规范细节" (parent task2 matches in body, but activities do not inherit parent task matches).
+	// Activity a-001 must NOT match!
+	task2.Activities = []Activity{
+		{
+			ID:   "a-001",
+			Body: "日常打卡",
+			Tags: []string{},
+			At:   t1,
+		},
 	}
-	// Memo 2: matches in body ("这是关于规范细节的评论")
-	memo2 := &Memo{
-		Type:      EntityTypeMemo,
-		ID:        "m-002",
-		Body:      "这是关于规范细节的评论\n第二行内容",
-		Tags:      []string{},
-		CreatedAt: t2,
+	// DayPlan Activity: matches in body ("这是关于规范细节的评论")
+	searchPlan := &DayPlan{
+		Type: EntityTypeDayPlan,
+		Date: "2026-10-11",
+		Activities: []Activity{
+			{
+				ID:   "a-002",
+				Body: "这是关于规范细节的评论\n第二行内容",
+				Tags: []string{},
+				At:   t2,
+			},
+		},
 	}
 
 	idx.PutEntity("/vault/tasks/t-001.md", task1, FileBaseline{})
 	idx.PutEntity("/vault/tasks/t-002.md", task2, FileBaseline{})
 	idx.PutEntity("/vault/notes/n-001.md", note1, FileBaseline{})
-	idx.PutEntity("/vault/memos/m-001.md", memo1, FileBaseline{})
-	idx.PutEntity("/vault/memos/m-002.md", memo2, FileBaseline{})
+	idx.PutEntity("/vault/plans/2026-10-11.md", searchPlan, FileBaseline{})
 
 	// 1. Empty and whitespace queries return empty slice
 	if res := idx.SearchAll(""); len(res) != 0 {
@@ -458,8 +388,8 @@ func TestSearchAll(t *testing.T) {
 	// - Task 1 (Body: "接入协议与规范细节")
 	// - Task 2 (Body: "规范细节补充")
 	// - Note 1 (Tag: "规范细节")
-	// - Memo 2 (Body: "这是关于规范细节的评论")
-	// Memo 1 must NOT be matched!
+	// - Activity a-002 (Body: "这是关于规范细节的评论")
+	// Activity a-001 must NOT be matched!
 	res := idx.SearchAll("规范细节")
 	if len(res) != 4 {
 		t.Fatalf("expected 4 results, got %d: %+v", len(res), res)
@@ -467,7 +397,7 @@ func TestSearchAll(t *testing.T) {
 
 	// Stable grouping: Tasks first (t-002 UpdatedAt t2, then t-001 UpdatedAt t1),
 	// Notes second (n-001),
-	// Memos third (m-002).
+	// Activities third (a-002).
 	if res[0].Type != EntityTypeTask || res[0].ID != "t-002" {
 		t.Fatalf("expected res[0] to be Task t-002, got %+v", res[0])
 	}
@@ -477,8 +407,8 @@ func TestSearchAll(t *testing.T) {
 	if res[2].Type != EntityTypeNote || res[2].ID != "n-001" {
 		t.Fatalf("expected res[2] to be Note n-001, got %+v", res[2])
 	}
-	if res[3].Type != EntityTypeMemo || res[3].ID != "m-002" {
-		t.Fatalf("expected res[3] to be Memo m-002, got %+v", res[3])
+	if res[3].Type != EntityTypeActivity || res[3].ID != "a-002" {
+		t.Fatalf("expected res[3] to be Activity a-002, got %+v", res[3])
 	}
 
 	// Check snippet extraction:
@@ -490,9 +420,9 @@ func TestSearchAll(t *testing.T) {
 	if res[2].Snippet != "笔记正文内容" {
 		t.Fatalf("unexpected snippet for n-001: %q", res[2].Snippet)
 	}
-	// m-002 body matched line: "这是关于规范细节的评论"
+	// a-002 body matched line: "这是关于规范细节的评论"
 	if res[3].Snippet != "这是关于规范细节的评论" {
-		t.Fatalf("unexpected snippet for m-002: %q", res[3].Snippet)
+		t.Fatalf("unexpected snippet for a-002: %q", res[3].Snippet)
 	}
 
 	// 3. Case-insensitivity check (e.g. search lowercase / uppercase)
@@ -517,7 +447,7 @@ func TestSearchAll(t *testing.T) {
 		t.Fatalf("expected case-insensitive match for 'flink' on t-003")
 	}
 
-	// 4. Memo does NOT inherit parent task tags when query only matches parent task tags:
+	// 4. Activity does NOT inherit parent task tags when query only matches parent task tags:
 	taskParent := &Task{
 		Type:      EntityTypeTask,
 		ID:        "t-tag-parent",
@@ -525,25 +455,24 @@ func TestSearchAll(t *testing.T) {
 		Body:      "父任务普通正文",
 		Tags:      []string{"父任务独有标签"},
 		UpdatedAt: t1,
-	}
-	memoChild := &Memo{
-		Type:      EntityTypeMemo,
-		ID:        "m-tag-child",
-		TaskID:    "t-tag-parent",
-		Body:      "子评论自有内容不含该词",
-		Tags:      []string{},
-		CreatedAt: t1,
+		Activities: []Activity{
+			{
+				ID:   "a-tag-child",
+				Body: "子活动自有内容不含该词",
+				Tags: []string{},
+				At:   t1,
+			},
+		},
 	}
 	idx.PutEntity("/vault/tasks/t-tag-parent.md", taskParent, FileBaseline{})
-	idx.PutEntity("/vault/memos/m-tag-child.md", memoChild, FileBaseline{})
 
 	parentTagRes := idx.SearchAll("父任务独有标签")
 	if len(parentTagRes) != 1 || parentTagRes[0].ID != "t-tag-parent" {
 		t.Fatalf("expected only parent task to match '父任务独有标签', got %+v", parentTagRes)
 	}
 	for _, r := range parentTagRes {
-		if r.ID == "m-tag-child" {
-			t.Fatalf("SearchAll must NOT return memo when only parent task tags hit query")
+		if r.ID == "a-tag-child" {
+			t.Fatalf("SearchAll must NOT return activity when only parent task tags hit query")
 		}
 	}
 }

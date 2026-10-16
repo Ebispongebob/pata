@@ -59,41 +59,6 @@ export class CreateActivityInput {
 }
 
 /**
- * CreateMemoInput defines parameters for creating a new Memo (deprecated: maps to Activity).
- */
-export class CreateMemoInput {
-    "body": string;
-    "task_id"?: string;
-    "tags"?: string[];
-    "note_refs"?: { [_ in string]?: string };
-
-    /** Creates a new CreateMemoInput instance. */
-    constructor($$source: Partial<CreateMemoInput> = {}) {
-        if (!("body" in $$source)) {
-            this["body"] = "";
-        }
-
-        Object.assign(this, $$source);
-    }
-
-    /**
-     * Creates a new CreateMemoInput instance from a string or object.
-     */
-    static createFrom($$source: any = {}): CreateMemoInput {
-        const $$createField2_0 = $$createType0;
-        const $$createField3_0 = $$createType1;
-        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
-        if ("tags" in $$parsedSource) {
-            $$parsedSource["tags"] = $$createField2_0($$parsedSource["tags"]);
-        }
-        if ("note_refs" in $$parsedSource) {
-            $$parsedSource["note_refs"] = $$createField3_0($$parsedSource["note_refs"]);
-        }
-        return new CreateMemoInput($$parsedSource as Partial<CreateMemoInput>);
-    }
-}
-
-/**
  * CreateNoteInput defines parameters for creating a new Note.
  */
 export class CreateNoteInput {
@@ -171,16 +136,15 @@ export class CreateTaskInput {
 }
 
 /**
- * TimelineItem represents an aggregated item in the day timeline (activity, memo or completion).
+ * TimelineItem represents an aggregated item in the day timeline (activity or completion).
  */
 export class TimelineItem {
     /**
-     * "activity" | "memo" | "completion" | "reopen"
+     * "activity" | "completion" | "reopen"
      */
     "kind": string;
     "time": string;
     "activity"?: markdown$0.Activity | null;
-    "memo"?: markdown$0.Memo | null;
     "task_id"?: string;
     "task_title"?: string;
 
@@ -201,13 +165,9 @@ export class TimelineItem {
      */
     static createFrom($$source: any = {}): TimelineItem {
         const $$createField2_0 = $$createType3;
-        const $$createField3_0 = $$createType5;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("activity" in $$parsedSource) {
             $$parsedSource["activity"] = $$createField2_0($$parsedSource["activity"]);
-        }
-        if ("memo" in $$parsedSource) {
-            $$parsedSource["memo"] = $$createField3_0($$parsedSource["memo"]);
         }
         return new TimelineItem($$parsedSource as Partial<TimelineItem>);
     }
@@ -248,48 +208,6 @@ export class UpdateActivityInput {
             $$parsedSource["note_refs"] = $$createField3_0($$parsedSource["note_refs"]);
         }
         return new UpdateActivityInput($$parsedSource as Partial<UpdateActivityInput>);
-    }
-}
-
-/**
- * UpdateMemoInput defines parameters for updating an existing Memo (deprecated: maps to Activity).
- */
-export class UpdateMemoInput {
-    "id": string;
-    "body": string;
-    "tags"?: string[];
-
-    /**
-     * nil keeps existing
-     */
-    "note_refs"?: { [_ in string]?: string };
-
-    /** Creates a new UpdateMemoInput instance. */
-    constructor($$source: Partial<UpdateMemoInput> = {}) {
-        if (!("id" in $$source)) {
-            this["id"] = "";
-        }
-        if (!("body" in $$source)) {
-            this["body"] = "";
-        }
-
-        Object.assign(this, $$source);
-    }
-
-    /**
-     * Creates a new UpdateMemoInput instance from a string or object.
-     */
-    static createFrom($$source: any = {}): UpdateMemoInput {
-        const $$createField2_0 = $$createType0;
-        const $$createField3_0 = $$createType1;
-        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
-        if ("tags" in $$parsedSource) {
-            $$parsedSource["tags"] = $$createField2_0($$parsedSource["tags"]);
-        }
-        if ("note_refs" in $$parsedSource) {
-            $$parsedSource["note_refs"] = $$createField3_0($$parsedSource["note_refs"]);
-        }
-        return new UpdateMemoInput($$parsedSource as Partial<UpdateMemoInput>);
     }
 }
 
@@ -411,8 +329,8 @@ export class VaultHealth {
      * Creates a new VaultHealth instance from a string or object.
      */
     static createFrom($$source: any = {}): VaultHealth {
-        const $$createField0_0 = $$createType7;
-        const $$createField1_0 = $$createType9;
+        const $$createField0_0 = $$createType5;
+        const $$createField1_0 = $$createType7;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("parse_errors" in $$parsedSource) {
             $$parsedSource["parse_errors"] = $$createField0_0($$parsedSource["parse_errors"]);
@@ -466,9 +384,7 @@ const $$createType0 = $Create.Array($Create.Any);
 const $$createType1 = $Create.Map($Create.Any, $Create.Any);
 const $$createType2 = markdown$0.Activity.createFrom;
 const $$createType3 = $Create.Nullable($$createType2);
-const $$createType4 = markdown$0.Memo.createFrom;
-const $$createType5 = $Create.Nullable($$createType4);
-const $$createType6 = markdown$0.ParseError.createFrom;
+const $$createType4 = markdown$0.ParseError.createFrom;
+const $$createType5 = $Create.Array($$createType4);
+const $$createType6 = markdown$0.DanglingRef.createFrom;
 const $$createType7 = $Create.Array($$createType6);
-const $$createType8 = markdown$0.DanglingRef.createFrom;
-const $$createType9 = $Create.Array($$createType8);

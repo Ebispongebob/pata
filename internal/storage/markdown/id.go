@@ -42,8 +42,6 @@ func GenerateEntityID(entityType EntityType) string {
 	switch entityType {
 	case EntityTypeTask:
 		return fmt.Sprintf("t-%s", u)
-	case EntityTypeMemo:
-		return fmt.Sprintf("m-%s", u)
 	case EntityTypeNote:
 		return fmt.Sprintf("n-%s", u)
 	case EntityTypeActivity:
@@ -101,8 +99,6 @@ func FormatEntityFilename(entity Entity) string {
 	case *Note:
 		slug := SanitizeSlug(e.Title)
 		return fmt.Sprintf("%s_%s.md", slug, e.ID)
-	case *Memo:
-		return fmt.Sprintf("%s.md", e.ID)
 	case *DayPlan:
 		return fmt.Sprintf("%s.md", e.Date)
 	default:
