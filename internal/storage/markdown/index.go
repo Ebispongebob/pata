@@ -44,10 +44,11 @@ type ActivityLocation struct {
 // MemoryIndex maintains an in-memory rebuildable index of all vault entities.
 type MemoryIndex struct {
 	mu           sync.RWMutex
+	vaultRoot    string
 	tasks        map[string]*Task
-	memos        map[string]*Memo
 	notes        map[string]*Note
 	dayPlans     map[string]*DayPlan // key: date YYYY-MM-DD
+	files        map[string]FileResource // key: relative slash path, e.g. "files/doc.pdf"
 	fileToID     map[string]string   // absPath -> entity ID
 	idToFile     map[string]string   // entity ID -> absPath
 	activityLocs map[string]ActivityLocation // activityID -> location
@@ -67,9 +68,9 @@ type pendingMove struct {
 func NewMemoryIndex() *MemoryIndex {
 	return &MemoryIndex{
 		tasks:        make(map[string]*Task),
-		memos:        make(map[string]*Memo),
 		notes:        make(map[string]*Note),
 		dayPlans:     make(map[string]*DayPlan),
+		files:        make(map[string]FileResource),
 		fileToID:     make(map[string]string),
 		idToFile:     make(map[string]string),
 		activityLocs: make(map[string]ActivityLocation),
@@ -83,10 +84,11 @@ func NewMemoryIndex() *MemoryIndex {
 func (idx *MemoryIndex) Clear() {
 	idx.mu.Lock()
 	defer idx.mu.Unlock()
+	idx.vaultRoot = ""
 	idx.tasks = make(map[string]*Task)
-	idx.memos = make(map[string]*Memo)
 	idx.notes = make(map[string]*Note)
 	idx.dayPlans = make(map[string]*DayPlan)
+	idx.files = make(map[string]FileResource)
 	idx.fileToID = make(map[string]string)
 	idx.idToFile = make(map[string]string)
 	idx.activityLocs = make(map[string]ActivityLocation)
@@ -94,6 +96,50 @@ func (idx *MemoryIndex) Clear() {
 	idx.pendingMoves = make(map[string]pendingMove)
 	idx.danglingRefs = nil
 	idx.parseErrors = nil
+}
+
+// ListFiles returns clones of all file resources sorted by Name then Path.
+func (idx *MemoryIndex) ListFiles() []FileResource {
+	idx.mu.RLock()
+	defer idx.mu.RUnlock()
+	res := make([]FileResource, 0, len(idx.files))
+	for _, f := range idx.files {
+		res = append(res, f)
+	}
+	sort.Slice(res, func(i, j int) bool {
+		if res[i].Name != res[j].Name {
+			return res[i].Name < res[j].Name
+		}
+		return res[i].Path < res[j].Path
+	})
+	return res
+}
+
+// GetFile returns a file resource by its vault-relative path.
+func (idx *MemoryIndex) GetFile(relPath string) (FileResource, bool) {
+	idx.mu.RLock()
+	defer idx.mu.RUnlock()
+	f, ok := idx.files[filepath.ToSlash(relPath)]
+	return f, ok
+}
+
+// PutFile inserts or updates a file resource in the index.
+func (idx *MemoryIndex) PutFile(f FileResource) {
+	idx.mu.Lock()
+	defer idx.mu.Unlock()
+	if idx.files == nil {
+		idx.files = make(map[string]FileResource)
+	}
+	idx.files[filepath.ToSlash(f.Path)] = f
+}
+
+// RemoveFileResource removes a file resource by its vault-relative path.
+func (idx *MemoryIndex) RemoveFileResource(relPath string) {
+	idx.mu.Lock()
+	defer idx.mu.Unlock()
+	if idx.files != nil {
+		delete(idx.files, filepath.ToSlash(relPath))
+	}
 }
 
 // GetActivity returns a clone of the activity by ID and its location.
@@ -136,6 +182,7 @@ func (idx *MemoryIndex) ListActivitiesByTask(taskID string) []Activity {
 	res := make([]Activity, len(t.Activities))
 	for i, a := range t.Activities {
 		res[i] = a.Clone()
+		res[i].TaskID = taskID
 	}
 	sort.Slice(res, func(i, j int) bool {
 		if res[i].At.Equal(res[j].At) {
@@ -188,39 +235,6 @@ func (idx *MemoryIndex) ListTasks() []*Task {
 	idx.mu.RUnlock()
 	sort.Slice(tasks, func(i, j int) bool { return tasks[i].UpdatedAt.After(tasks[j].UpdatedAt) })
 	return tasks
-}
-
-// GetMemo returns a clone of the memo by ID.
-func (idx *MemoryIndex) GetMemo(id string) (*Memo, bool) {
-	idx.mu.RLock()
-	defer idx.mu.RUnlock()
-	m, ok := idx.memos[id]
-	if !ok {
-		return nil, false
-	}
-	return m.Clone().(*Memo), true
-}
-
-// ListMemosByTask returns clones of all memos belonging to taskID sorted by CreatedAt ascending.
-func (idx *MemoryIndex) ListMemosByTask(taskID string) []*Memo {
-	idx.mu.RLock()
-	var memos []*Memo
-	for _, m := range idx.memos {
-		if m.TaskID == taskID {
-			memos = append(memos, m.Clone().(*Memo))
-		}
-	}
-	idx.mu.RUnlock()
-	sort.Slice(memos, func(i, j int) bool {
-		if memos[i].CreatedAt.Equal(memos[j].CreatedAt) {
-			return memos[i].ID < memos[j].ID
-		}
-		return memos[i].CreatedAt.Before(memos[j].CreatedAt)
-	})
-	if memos == nil {
-		return []*Memo{}
-	}
-	return memos
 }
 
 // GetNote returns a clone of the note by ID.
@@ -300,7 +314,7 @@ func (idx *MemoryIndex) ListParseErrors() []ParseError {
 }
 
 // FindByTag searches entities containing the tag.
-// For Memos, tag matching checks `memo.Tags ∪ parentTask.Tags`.
+// For Activities, tag matching checks `act.Tags ∪ parentTask.Tags` (for task activities).
 func (idx *MemoryIndex) FindByTag(tag string) []EntityRef {
 	idx.mu.RLock()
 	defer idx.mu.RUnlock()
@@ -329,33 +343,6 @@ func (idx *MemoryIndex) FindByTag(tag string) []EntityRef {
 				Title: n.Title,
 				Path:  idx.idToFile[id],
 			})
-		}
-	}
-
-	// Search Memos
-	for id, m := range idx.memos {
-		ownMatch := hasTag(m.Tags, targetTag)
-		if ownMatch {
-			results = append(results, EntityRef{
-				Type: EntityTypeMemo,
-				ID:   id,
-				Path: idx.idToFile[id],
-			})
-			continue
-		}
-
-		// Inherited tags from parent task
-		if m.TaskID != "" {
-			if parent, exists := idx.tasks[m.TaskID]; exists {
-				if hasTag(parent.Tags, targetTag) {
-					results = append(results, EntityRef{
-						Type:      EntityTypeMemo,
-						ID:        id,
-						Path:      idx.idToFile[id],
-						Inherited: true,
-					})
-				}
-			}
 		}
 	}
 
@@ -407,13 +394,13 @@ func hasTag(tags []string, target string) bool {
 	return false
 }
 
-// TagOverviewItem represents a tag aggregated across tasks, notes, and memos.
+// TagOverviewItem represents a tag aggregated across tasks, notes, and activities.
 type TagOverviewItem struct {
-	Tag       string `json:"tag"`
-	TaskCount int    `json:"task_count"`
-	NoteCount int    `json:"note_count"`
-	MemoCount int    `json:"memo_count"`
-	Total     int    `json:"total"`
+	Tag           string `json:"tag"`
+	TaskCount     int    `json:"task_count"`
+	NoteCount     int    `json:"note_count"`
+	ActivityCount int    `json:"activity_count"`
+	Total         int    `json:"total"`
 }
 
 // SearchResultItem represents a matched entity in cross-type search.
@@ -425,7 +412,7 @@ type SearchResultItem struct {
 	Path    string     `json:"path"`
 }
 
-// TagOverview aggregates own tags across tasks, notes, and memos without hierarchy.
+// TagOverview aggregates own tags across tasks, notes, and activities without hierarchy.
 // Tag grouping is case-insensitive (aligned with FindByTag EqualFold semantics) using
 // strings.ToLower(TrimSpace(tag)) as the grouping key, while preserving the raw trimmed
 // string of its first appearance as the display Tag.
@@ -434,10 +421,10 @@ func (idx *MemoryIndex) TagOverview() []TagOverviewItem {
 	defer idx.mu.RUnlock()
 
 	type stats struct {
-		displayTag string
-		taskCount  int
-		noteCount  int
-		memoCount  int
+		displayTag    string
+		taskCount     int
+		noteCount     int
+		activityCount int
 	}
 
 	tagMap := make(map[string]*stats)
@@ -498,28 +485,6 @@ func (idx *MemoryIndex) TagOverview() []TagOverviewItem {
 		}
 	}
 
-	memoIDs := make([]string, 0, len(idx.memos))
-	for id := range idx.memos {
-		memoIDs = append(memoIDs, id)
-	}
-	sort.Strings(memoIDs)
-	for _, id := range memoIDs {
-		m := idx.memos[id]
-		seen := make(map[string]bool)
-		for _, raw := range m.Tags {
-			tag := strings.TrimSpace(raw)
-			if tag == "" {
-				continue
-			}
-			lowerKey := strings.ToLower(tag)
-			if seen[lowerKey] {
-				continue
-			}
-			seen[lowerKey] = true
-			getStats(tag).memoCount++
-		}
-	}
-
 	// Task activities own tags
 	for _, id := range taskIDs {
 		t := idx.tasks[id]
@@ -535,7 +500,7 @@ func (idx *MemoryIndex) TagOverview() []TagOverviewItem {
 					continue
 				}
 				seen[lowerKey] = true
-				getStats(tag).memoCount++
+				getStats(tag).activityCount++
 			}
 		}
 	}
@@ -560,7 +525,7 @@ func (idx *MemoryIndex) TagOverview() []TagOverviewItem {
 					continue
 				}
 				seen[lowerKey] = true
-				getStats(tag).memoCount++
+				getStats(tag).activityCount++
 			}
 		}
 	}
@@ -568,11 +533,11 @@ func (idx *MemoryIndex) TagOverview() []TagOverviewItem {
 	results := make([]TagOverviewItem, 0, len(tagMap))
 	for _, s := range tagMap {
 		results = append(results, TagOverviewItem{
-			Tag:       s.displayTag,
-			TaskCount: s.taskCount,
-			NoteCount: s.noteCount,
-			MemoCount: s.memoCount,
-			Total:     s.taskCount + s.noteCount + s.memoCount,
+			Tag:           s.displayTag,
+			TaskCount:     s.taskCount,
+			NoteCount:     s.noteCount,
+			ActivityCount: s.activityCount,
+			Total:         s.taskCount + s.noteCount + s.activityCount,
 		})
 	}
 
@@ -583,9 +548,9 @@ func (idx *MemoryIndex) TagOverview() []TagOverviewItem {
 	return results
 }
 
-// SearchAll performs case-insensitive substring search across tasks, notes, and memos.
+// SearchAll performs case-insensitive substring search across tasks, notes, activities, and files.
 // Empty or whitespace-only queries return an empty slice.
-// Does not inherit parent task tags for memos. Results have stable ordering grouped by type.
+// Results have stable ordering grouped by type (Task -> Note -> Activity -> File).
 func (idx *MemoryIndex) SearchAll(query string) []SearchResultItem {
 	trimmed := strings.TrimSpace(query)
 	if trimmed == "" {
@@ -599,7 +564,6 @@ func (idx *MemoryIndex) SearchAll(query string) []SearchResultItem {
 
 	var taskResults []SearchResultItem
 	var noteResults []SearchResultItem
-	var memoResults []SearchResultItem
 	var actResults []SearchResultItem
 
 	// 1. Tasks: match title, description, body, or tags
@@ -646,26 +610,7 @@ func (idx *MemoryIndex) SearchAll(query string) []SearchResultItem {
 		return ni.UpdatedAt.After(nj.UpdatedAt)
 	})
 
-	// 3. Memos: match body or own tags only (no inheritance)
-	for id, m := range idx.memos {
-		if matchCaseInsensitive(m.Body, lowerQ) || matchTagsCaseInsensitive(m.Tags, lowerQ) {
-			memoResults = append(memoResults, SearchResultItem{
-				Type:    EntityTypeMemo,
-				ID:      id,
-				Snippet: extractSnippet(m.Body, lowerQ),
-				Path:    idx.idToFile[id],
-			})
-		}
-	}
-	sort.Slice(memoResults, func(i, j int) bool {
-		mi, mj := idx.memos[memoResults[i].ID], idx.memos[memoResults[j].ID]
-		if mi.CreatedAt.Equal(mj.CreatedAt) {
-			return memoResults[i].ID < memoResults[j].ID
-		}
-		return mi.CreatedAt.After(mj.CreatedAt)
-	})
-
-	// 4. Activities: match body or own tags
+	// 3. Activities: match body or own tags
 	type actItemWithTime struct {
 		item SearchResultItem
 		at   time.Time
@@ -713,12 +658,36 @@ func (idx *MemoryIndex) SearchAll(query string) []SearchResultItem {
 		actResults = append(actResults, a.item)
 	}
 
-	total := len(taskResults) + len(noteResults) + len(memoResults) + len(actResults)
+	// 4. Files: match name or path
+	var fileResults []SearchResultItem
+	for _, f := range idx.files {
+		if matchCaseInsensitive(f.Name, lowerQ) || matchCaseInsensitive(f.Path, lowerQ) {
+			absPath := ""
+			if idx.vaultRoot != "" {
+				absPath = filepath.Join(idx.vaultRoot, filepath.FromSlash(f.Path))
+			}
+			fileResults = append(fileResults, SearchResultItem{
+				Type:    EntityTypeFile,
+				ID:      f.Path,
+				Title:   f.Name,
+				Snippet: f.Path,
+				Path:    absPath,
+			})
+		}
+	}
+	sort.Slice(fileResults, func(i, j int) bool {
+		if fileResults[i].Title != fileResults[j].Title {
+			return fileResults[i].Title < fileResults[j].Title
+		}
+		return fileResults[i].Path < fileResults[j].Path
+	})
+
+	total := len(taskResults) + len(noteResults) + len(actResults) + len(fileResults)
 	results := make([]SearchResultItem, 0, total)
 	results = append(results, taskResults...)
 	results = append(results, noteResults...)
-	results = append(results, memoResults...)
 	results = append(results, actResults...)
+	results = append(results, fileResults...)
 
 	return results
 }
@@ -801,7 +770,6 @@ func (idx *MemoryIndex) RemoveFileWithPromotion(absPath string) (deletedID, prom
 		if idx.idToFile[id] == absPath {
 			delete(idx.idToFile, id)
 			delete(idx.tasks, id)
-			delete(idx.memos, id)
 			delete(idx.notes, id)
 			delete(idx.dayPlans, id)
 		}
@@ -823,8 +791,6 @@ func (idx *MemoryIndex) RemoveFileWithPromotion(absPath string) (deletedID, prom
 					for _, act := range e.Activities {
 						idx.activityLocs[act.ID] = ActivityLocation{OwnerType: EntityTypeTask, OwnerID: id, Path: pm.path}
 					}
-				case *Memo:
-					idx.memos[id] = e.Clone().(*Memo)
 				case *Note:
 					idx.notes[id] = e.Clone().(*Note)
 				case *DayPlan:
@@ -867,7 +833,6 @@ func (idx *MemoryIndex) PutEntity(absPath string, entity Entity, baseline FileBa
 	if oldID, exists := idx.fileToID[absPath]; exists && oldID != entity.GetID() {
 		delete(idx.idToFile, oldID)
 		delete(idx.tasks, oldID)
-		delete(idx.memos, oldID)
 		delete(idx.notes, oldID)
 		delete(idx.dayPlans, oldID)
 	}
@@ -931,8 +896,6 @@ func (idx *MemoryIndex) PutEntity(absPath string, entity Entity, baseline FileBa
 				}
 			}
 		}
-	case *Memo:
-		idx.memos[id] = e.Clone().(*Memo)
 	case *Note:
 		idx.notes[id] = e.Clone().(*Note)
 	case *DayPlan:
@@ -960,23 +923,7 @@ func (idx *MemoryIndex) PutEntity(absPath string, entity Entity, baseline FileBa
 func (idx *MemoryIndex) recomputeDanglingRefsLocked() {
 	var dangling []DanglingRef
 
-	// 1. Memos referencing non-existent tasks
-	for id, m := range idx.memos {
-		if m.TaskID != "" {
-			if _, exists := idx.tasks[m.TaskID]; !exists {
-				dangling = append(dangling, DanglingRef{
-					SourceType: EntityTypeMemo,
-					SourceID:   id,
-					SourcePath: idx.idToFile[id],
-					TargetType: EntityTypeTask,
-					TargetID:   m.TaskID,
-					Reason:     fmt.Sprintf("parent task '%s' not found", m.TaskID),
-				})
-			}
-		}
-	}
-
-	// 2. Tasks referencing non-existent notes
+	// 1. Tasks referencing non-existent notes
 	for id, t := range idx.tasks {
 		for _, noteID := range t.NoteIDs {
 			if _, exists := idx.notes[noteID]; !exists {
@@ -1020,28 +967,70 @@ func ScanVault(vaultRoot string) (*MemoryIndex, error) {
 	}
 
 	idx := NewMemoryIndex()
+	idx.vaultRoot = absRoot
 	var parseErrs []ParseError
 
 	err = filepath.Walk(absRoot, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}
+		if path == absRoot {
+			return nil
+		}
+		rel, relErr := filepath.Rel(absRoot, path)
+		if relErr != nil {
+			return nil
+		}
+		relSlash := filepath.ToSlash(rel)
+		base := filepath.Base(path)
+
 		if info.IsDir() {
 			// Skip .git or temporary directories
-			base := filepath.Base(path)
 			if base == ".git" {
+				return filepath.SkipDir
+			}
+			// Only allow business root directories
+			if !strings.Contains(relSlash, "/") {
+				if base != "tasks" && base != "notes" && base != "plans" && base != "files" && base != ".pata" {
+					return filepath.SkipDir
+				}
+			} else if strings.HasPrefix(relSlash, ".pata/") && relSlash != ".pata/plans" {
 				return filepath.SkipDir
 			}
 			return nil
 		}
 
-		// Only process .md files (including .pata/plans/*.md)
-		if filepath.Ext(path) != ".md" {
+		// Ignore temporary swap/atomic files or hidden files
+		if strings.HasPrefix(base, ".pata_tmp_") || strings.HasSuffix(base, ".tmp") || base == ".DS_Store" {
 			return nil
 		}
 
-		// Ignore temporary swap/atomic files
-		if strings.HasPrefix(filepath.Base(path), ".pata_tmp_") {
+		// Files directory: index as FileResource without frontmatter
+		if strings.HasPrefix(relSlash, "files/") {
+			if strings.HasPrefix(base, ".") {
+				return nil
+			}
+			idx.files[relSlash] = FileResource{
+				Path:    relSlash,
+				Name:    base,
+				Ext:     filepath.Ext(base),
+				Size:    info.Size(),
+				ModTime: info.ModTime(),
+			}
+			return nil
+		}
+
+		// Business entity directories must contain .md files
+		isTaskDir := strings.HasPrefix(relSlash, "tasks/")
+		isNoteDir := strings.HasPrefix(relSlash, "notes/")
+		isPlanDir := strings.HasPrefix(relSlash, "plans/") || strings.HasPrefix(relSlash, ".pata/plans/")
+
+		if !isTaskDir && !isNoteDir && !isPlanDir {
+			// Files in root (e.g. README.md) or other folders are not indexed
+			return nil
+		}
+
+		if filepath.Ext(path) != ".md" {
 			return nil
 		}
 
@@ -1061,6 +1050,30 @@ func ScanVault(vaultRoot string) (*MemoryIndex, error) {
 				Path:   path,
 				Reason: "failed to parse markdown entity",
 				Err:    parseErr,
+			})
+			return nil
+		}
+
+		// Ensure entity matches its folder boundary
+		if isTaskDir && entity.GetType() != EntityTypeTask {
+			parseErrs = append(parseErrs, ParseError{
+				Path:   path,
+				Reason: fmt.Sprintf("file in tasks/ has invalid entity type '%s'", entity.GetType()),
+				Err:    fmt.Errorf("expected type task, got %s", entity.GetType()),
+			})
+			return nil
+		} else if isNoteDir && entity.GetType() != EntityTypeNote {
+			parseErrs = append(parseErrs, ParseError{
+				Path:   path,
+				Reason: fmt.Sprintf("file in notes/ has invalid entity type '%s'", entity.GetType()),
+				Err:    fmt.Errorf("expected type note, got %s", entity.GetType()),
+			})
+			return nil
+		} else if isPlanDir && entity.GetType() != EntityTypeDayPlan {
+			parseErrs = append(parseErrs, ParseError{
+				Path:   path,
+				Reason: fmt.Sprintf("file in plans/ has invalid entity type '%s'", entity.GetType()),
+				Err:    fmt.Errorf("expected type day_plan, got %s", entity.GetType()),
 			})
 			return nil
 		}
@@ -1121,8 +1134,6 @@ func ScanVault(vaultRoot string) (*MemoryIndex, error) {
 					idx.activityLocs[act.ID] = ActivityLocation{OwnerType: EntityTypeTask, OwnerID: id, Path: path}
 				}
 			}
-		case *Memo:
-			idx.memos[id] = e
 		case *Note:
 			idx.notes[id] = e
 		case *DayPlan:

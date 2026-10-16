@@ -11,7 +11,7 @@ import {
   ExternalLink,
 } from 'lucide-react';
 import * as VaultService from '../bindings/pata/vaultservice';
-import { EntityRef, Memo } from '../bindings/pata/internal/storage/markdown/models';
+import { EntityRef, Activity } from '../bindings/pata/internal/storage/markdown/models';
 
 interface TagViewProps {
   selectedTag: string | null;
@@ -19,7 +19,7 @@ interface TagViewProps {
   onOpenNote: (noteId: string) => void;
 }
 
-function formatMemoTime(isoString?: string): string {
+function formatActivityTime(isoString?: string): string {
   if (!isoString) return '';
   try {
     const d = new Date(isoString);
@@ -35,7 +35,7 @@ export function TagView({ selectedTag, onOpenTask, onOpenNote }: TagViewProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [items, setItems] = useState<EntityRef[]>([]);
-  const [memos, setMemos] = useState<Record<string, Memo>>({});
+  const [activities, setActivities] = useState<Record<string, Activity>>({});
   const seqRef = useRef(0);
 
   const loadTagData = useCallback(async (tag: string | null) => {
@@ -43,7 +43,7 @@ export function TagView({ selectedTag, onOpenTask, onOpenNote }: TagViewProps) {
 
     if (!tag || !tag.trim()) {
       setItems([]);
-      setMemos({});
+      setActivities({});
       return;
     }
 
@@ -56,26 +56,26 @@ export function TagView({ selectedTag, onOpenTask, onOpenNote }: TagViewProps) {
       const refs = (rawRefs || []).filter((r): r is EntityRef => r !== null);
       setItems(refs);
 
-      // Fetch memo/activity content in parallel
-      const memoRefs = refs.filter((r) => r.type === 'memo' || (r.type as string) === 'activity');
-      if (memoRefs.length > 0) {
-        const fetchedMemos: Record<string, Memo> = {};
+      // Fetch activity content in parallel
+      const activityRefs = refs.filter((r) => r.type === 'activity');
+      if (activityRefs.length > 0) {
+        const fetchedActivities: Record<string, Activity> = {};
         await Promise.all(
-          memoRefs.map(async (mr) => {
+          activityRefs.map(async (ar) => {
             try {
-              const memo = await VaultService.GetMemo(mr.id);
-              if (memo) {
-                fetchedMemos[mr.id] = memo;
+              const act = await VaultService.GetActivity(ar.id);
+              if (act) {
+                fetchedActivities[ar.id] = act;
               }
             } catch (err) {
-              console.warn(`Failed to fetch memo details for ${mr.id}:`, err);
+              console.warn(`Failed to fetch activity details for ${ar.id}:`, err);
             }
           })
         );
         if (seq !== seqRef.current) return;
-        setMemos(fetchedMemos);
+        setActivities(fetchedActivities);
       } else {
-        setMemos({});
+        setActivities({});
       }
     } catch (err: any) {
       if (seq !== seqRef.current) return;
@@ -106,10 +106,10 @@ export function TagView({ selectedTag, onOpenTask, onOpenNote }: TagViewProps) {
     };
   }, [selectedTag, loadTagData]);
 
-  // Group items by type: Task -> Note -> Memo (ui.md §05 order)
+  // Group items by type: Task -> Note -> Activity (ui.md §05 order)
   const taskItems = useMemo(() => items.filter((it) => it.type === 'task'), [items]);
   const noteItems = useMemo(() => items.filter((it) => it.type === 'note'), [items]);
-  const memoItems = useMemo(() => items.filter((it) => it.type === 'memo' || (it.type as string) === 'activity'), [items]);
+  const activityItems = useMemo(() => items.filter((it) => it.type === 'activity'), [items]);
 
   if (!selectedTag) {
     return (
@@ -148,7 +148,7 @@ export function TagView({ selectedTag, onOpenTask, onOpenNote }: TagViewProps) {
             <span>{selectedTag}</span>
           </div>
           <span className="text-xs text-stone-400">
-            共 {items.length} 项（任务 {taskItems.length} · 笔记 {noteItems.length} · 记录 {memoItems.length}）
+            共 {items.length} 项（任务 {taskItems.length} · 笔记 {noteItems.length} · 记录 {activityItems.length}）
           </span>
         </div>
       </div>
@@ -231,43 +231,43 @@ export function TagView({ selectedTag, onOpenTask, onOpenNote }: TagViewProps) {
             )}
           </section>
 
-          {/* Section 3: Memos */}
+          {/* Section 3: Activities */}
           <section className="space-y-2">
             <div className="flex items-center space-x-2 text-xs font-semibold text-stone-500 uppercase tracking-wider px-1">
               <MessageSquare className="w-3.5 h-3.5" />
-              <span>记录 · {memoItems.length}</span>
+              <span>记录 · {activityItems.length}</span>
             </div>
-            {memoItems.length === 0 ? (
+            {activityItems.length === 0 ? (
               <div className="text-xs text-stone-400 py-3 px-4 rounded-lg border border-dashed border-stone-200 dark:border-stone-800 text-center">
                 无相关记录
               </div>
             ) : (
               <div className="space-y-2">
-                {memoItems.map((memoRef) => {
-                  const memoData = memos[memoRef.id];
-                  const memoText = memoData?.body?.trim() || '（无正文内容）';
+                {activityItems.map((actRef) => {
+                  const actData = activities[actRef.id];
+                  const actText = actData?.body?.trim() || '（无正文内容）';
 
                   return (
                     <div
-                      key={memoRef.id}
+                      key={actRef.id}
                       className="p-3.5 rounded-lg border border-stone-200/80 dark:border-stone-800 bg-white dark:bg-stone-900/90 space-y-2"
                     >
                       <div className="flex items-center justify-between text-xs">
                         <div className="flex items-center space-x-2">
                           <MessageSquare className="w-3.5 h-3.5 text-stone-400 shrink-0" />
                           <span className="text-[11px] text-stone-400 font-mono">
-                            {formatMemoTime(memoData?.created_at)}
+                            {formatActivityTime(actData?.at)}
                           </span>
-                          {memoRef.inherited && (
+                          {actRef.inherited && (
                             <span className="inline-flex items-center text-[10px] px-1.5 py-0.5 rounded bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-400 border border-amber-200/60 dark:border-amber-800/60 font-medium">
                               经父任务
                             </span>
                           )}
                         </div>
 
-                        {memoData?.task_id && (
+                        {actData?.task_id && (
                           <button
-                            onClick={() => onOpenTask(memoData.task_id!)}
+                            onClick={() => onOpenTask(actData.task_id!)}
                             className="text-[11px] text-stone-500 hover:text-emerald-700 dark:hover:text-emerald-400 flex items-center space-x-1 transition min-h-[32px] px-1 cursor-pointer"
                             title="前往对应任务"
                           >
@@ -278,7 +278,7 @@ export function TagView({ selectedTag, onOpenTask, onOpenNote }: TagViewProps) {
                       </div>
 
                       <p className="text-xs text-stone-700 dark:text-stone-300 leading-relaxed whitespace-pre-wrap line-clamp-3">
-                        {memoText}
+                        {actText}
                       </p>
                     </div>
                   );

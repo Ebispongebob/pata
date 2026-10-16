@@ -45,6 +45,6 @@
 
 **阶段 8：代码完成，待实机验收。** 统一内嵌 `a-` Activity；Task Frontmatter 存纯文本描述、Body 存活动；DayPlan 根目录 `plans/`（兼读兼容旧 `.pata/plans/`），Body 存独立活动。删除 Task 连同 Activity 一起删除并幂等级联清理 DayPlan 引用；单文件原子写入、解析错误异常文件隔离；Today 时间线、全局标签聚合与跨实体搜索全部适配 Activity，Go 与前端测试 100% 通过。详见 [idea](08-activity-storage/idea.md)、[proposal](08-activity-storage/proposal.md)。
 
-**阶段 9 设计已确认、待实施**：Vault 专属且仅管理约定目录；通过 Activity/Note 拖入文件、复制到 `files/` 并插入标准链接，已有 `[[` 同时搜索 Note 和 File；全局搜索支持按文件名直接找回资源。文件可被多处引用、没有引用也继续保留。无 Files 页面、自动清理、inode 追踪或文件内容全文索引；详见 [idea](09-vault-files/idea.md)、[proposal](09-vault-files/proposal.md)。
+**阶段 9：代码完成，待实机验收。** Vault 专属且仅管理约定目录；通过 Activity/Note 拖入文件、复制到 `files/` 并插入标准链接，已有 `[[` 同时搜索 Note 和 File；全局搜索支持按文件名直接找回资源。文件可被多处引用、没有引用也继续保留。无 Files 页面、自动清理、inode 追踪或文件内容全文索引；Go 与前端单元测试、构建全部 100% 通过。详见 [idea](09-vault-files/idea.md)、[proposal](09-vault-files/proposal.md)。
 
 阶段 3 新增 Today 体验完善方案：末尾 `#标签` 快速创建、类似 ChatGPT 的左导航 / 中间 Today 或 Tasks / 右任务详情三栏、移除任务优先级、明确移出计划语义、紧凑日期及时间线。右栏按需打开，Notes 仍单列浏览与全主区域编辑。文档已整理，新增完成标准尚未验收，见 [idea](03-daily-loop/idea.md) 与 [proposal](03-daily-loop/proposal.md)；不改变原基础能力的已完成记录，也不新增阶段。

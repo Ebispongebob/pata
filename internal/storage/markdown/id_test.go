@@ -23,9 +23,9 @@ func TestGenerateULID(t *testing.T) {
 		t.Fatalf("expected prefix 't-', got %s", taskID)
 	}
 
-	memoID := GenerateEntityID(EntityTypeMemo)
-	if !strings.HasPrefix(memoID, "m-") {
-		t.Fatalf("expected prefix 'm-', got %s", memoID)
+	actID := GenerateEntityID(EntityTypeActivity)
+	if !strings.HasPrefix(actID, "a-") {
+		t.Fatalf("expected prefix 'a-', got %s", actID)
 	}
 
 	noteID := GenerateEntityID(EntityTypeNote)

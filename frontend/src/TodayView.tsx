@@ -138,13 +138,13 @@ export function TodayView({
   // 任务已创建但加入计划失败：保留 ID，重试只写计划，不再创建任务
   const [pendingPlan, setPendingPlan] = useState<{ id: string; title: string; date: string; error: string } | null>(null);
 
-  // Quick memo + inline edit
+  // Quick activity + inline edit
   const noteRefs = useNoteRefs();
-  const [quickMemoBody, setQuickMemoBody] = useState('');
-  const [quickMemoRefs, setQuickMemoRefs] = useState<NoteRefMap>({});
-  const [creatingMemo, setCreatingMemo] = useState(false);
-  const [memoError, setMemoError] = useState<string | null>(null);
-  const [editingMemoId, setEditingMemoId] = useState<string | null>(null);
+  const [quickActivityBody, setQuickActivityBody] = useState('');
+  const [quickActivityRefs, setQuickActivityRefs] = useState<NoteRefMap>({});
+  const [creatingActivity, setCreatingActivity] = useState(false);
+  const [activityError, setActivityError] = useState<string | null>(null);
+  const [editingActivityId, setEditingActivityId] = useState<string | null>(null);
   const [editBody, setEditBody] = useState('');
   const [editRefs, setEditRefs] = useState<NoteRefMap>({});
   const [editSaving, setEditSaving] = useState(false);
@@ -204,8 +204,8 @@ export function TodayView({
   useEffect(() => {
     setNoticeMsg(null);
     setSaveError(null);
-    setMemoError(null);
-    setEditingMemoId(null);
+    setActivityError(null);
+    setEditingActivityId(null);
   }, [selectedDate]);
 
   useEffect(() => {
@@ -360,84 +360,84 @@ export function TodayView({
   };
 
   // ---- Activity ----
-  const handleCreateQuickMemo = async () => {
-    const body = quickMemoBody.trim();
+  const handleCreateQuickActivity = async () => {
+    const body = quickActivityBody.trim();
     if (!body) return true;
-    setCreatingMemo(true);
-    setMemoError(null);
+    setCreatingActivity(true);
+    setActivityError(null);
     try {
       const input: CreateActivityInput = {
         date: selectedDate,
         body,
         tags: [],
-        note_refs: pruneRefs(body, quickMemoRefs),
+        note_refs: pruneRefs(body, quickActivityRefs),
       };
       await VaultService.CreateActivity(input);
       playLogoSuccess();
-      setQuickMemoBody('');
-      setQuickMemoRefs({});
+      setQuickActivityBody('');
+      setQuickActivityRefs({});
       await loadData();
       return true;
     } catch (err: any) {
       console.error('Failed to create activity:', err);
-      setMemoError(err?.message || String(err));
+      setActivityError(err?.message || String(err));
       return false;
     } finally {
-      setCreatingMemo(false);
+      setCreatingActivity(false);
     }
   };
 
-  const handleSaveMemoEdit = async (id: string, tags: string[]) => {
+  const handleSaveActivityEdit = async (id: string, tags: string[]) => {
     setEditSaving(true);
-    setMemoError(null);
+    setActivityError(null);
     try {
       await VaultService.UpdateActivity({ id, body: editBody, tags, note_refs: pruneRefs(editBody, editRefs) });
-      setEditingMemoId(null);
+      setEditingActivityId(null);
       await loadData();
       return true;
     } catch (err: any) {
-      setMemoError(err?.message || String(err));
+      setActivityError(err?.message || String(err));
       return false;
     } finally {
       setEditSaving(false);
     }
   };
 
-  const editingMemo = timelineItems.find((item) => item.memo?.id === editingMemoId)?.memo;
-  const editDirty = !!editingMemoId && (!editingMemo || editBody !== editingMemo.body ||
-    !sameRefs(pruneRefs(editBody, editRefs), pruneRefs(editingMemo.body, editingMemo.note_refs ?? {})));
+  const editingActivity = timelineItems.find((item) => item.activity?.id === editingActivityId)?.activity;
+  const editDirty = !!editingActivityId && (!editingActivity || editBody !== editingActivity.body ||
+    !sameRefs(pruneRefs(editBody, editRefs), pruneRefs(editingActivity.body, editingActivity.note_refs ?? {})));
 
   // 全局导航和笔记跳转共用草稿确认；保存失败时不离开 Today。
   useEffect(() => {
     leaveGuardRef.current = async () => {
-      if (creatingMemo || editSaving || leavePrompt) return false;
-      if ((quickMemoBody.trim() || editDirty) && !(await new Promise<boolean>((resolve) => setLeavePrompt(() => resolve)))) return false;
+      if (creatingActivity || editSaving || leavePrompt) return false;
+      if ((quickActivityBody.trim() || editDirty) && !(await new Promise<boolean>((resolve) => setLeavePrompt(() => resolve)))) return false;
       return (await panelRef.current?.confirmLeave()) ?? true;
     };
     return () => { leaveGuardRef.current = null; };
-  }, [leaveGuardRef, quickMemoBody, editDirty, creatingMemo, editSaving, leavePrompt]);
+  }, [leaveGuardRef, quickActivityBody, editDirty, creatingActivity, editSaving, leavePrompt]);
 
   const finishLeavePrompt = async (choice: 'save' | 'discard' | 'cancel') => {
     const resolve = leavePrompt;
     if (!resolve) return;
     if (choice === 'save') {
       // 编辑中的记录可能被外部删除；不能误报已保存或改成另一条记录。
-      if (editDirty && !editingMemo) {
-        setMemoError('编辑中的记录已不可用，请保留草稿并重新加载');
+      if (editDirty && !editingActivity) {
+        setActivityError('编辑中的记录已不可用，请保留草稿并重新加载');
         setLeavePrompt(null);
         resolve(false);
         return;
       }
-      const ok = (!editDirty || await handleSaveMemoEdit(editingMemoId!, editingMemo?.tags ?? [])) &&
-        (!quickMemoBody.trim() || await handleCreateQuickMemo());
+      const ok = (!editDirty || await handleSaveActivityEdit(editingActivityId!, editingActivity?.tags ?? [])) &&
+        (!quickActivityBody.trim() || await handleCreateQuickActivity());
       setLeavePrompt(null);
       resolve(ok);
       return;
     }
     if (choice === 'discard') {
-      setQuickMemoBody('');
-      setQuickMemoRefs({});
-      setEditingMemoId(null);
+      setQuickActivityBody('');
+      setQuickActivityRefs({});
+      setEditingActivityId(null);
     }
     setLeavePrompt(null);
     resolve(choice === 'discard');
@@ -798,38 +798,38 @@ export function TodayView({
             <div className="space-y-1.5">
               <div className="quick-entry-group flex items-center gap-2 px-1.5 rounded-lg border border-stone-200 dark:border-stone-800 bg-white dark:bg-stone-950">
                 <NoteRefTextarea
-                  value={quickMemoBody}
-                  onChange={setQuickMemoBody}
-                  refs={quickMemoRefs}
-                  onRefsChange={setQuickMemoRefs}
+                  value={quickActivityBody}
+                  onChange={setQuickActivityBody}
+                  refs={quickActivityRefs}
+                  onRefsChange={setQuickActivityRefs}
                   notes={noteRefs}
                   aria-label="今日记录"
                   onKeyDown={(e) => {
                     if ((e.metaKey || e.ctrlKey) && e.key === 'Enter' && !e.nativeEvent.isComposing && e.keyCode !== 229) {
                       e.preventDefault();
-                      void handleCreateQuickMemo();
+                      void handleCreateQuickActivity();
                     }
                   }}
                   placeholder="记录一句话（输入 [[ 引用笔记，⌘+Enter 发送）…"
                   rows={1}
-                  disabled={creatingMemo}
+                  disabled={creatingActivity}
                   className="flex-1 min-w-0 px-1.5 py-2 text-xs bg-transparent text-stone-900 dark:text-stone-100 placeholder-stone-400 resize-none max-h-32 leading-4"
                 />
                 <button
                   type="button"
-                  onClick={() => void handleCreateQuickMemo()}
-                  disabled={creatingMemo || !quickMemoBody.trim()}
+                  onClick={() => void handleCreateQuickActivity()}
+                  disabled={creatingActivity || !quickActivityBody.trim()}
                   className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-medium transition disabled:opacity-40 shrink-0"
                   title="发送 (⌘+Enter)"
                 >
                   <Send className="w-3.5 h-3.5" />
-                  <span>{creatingMemo ? '发送中' : '发送'}</span>
+                  <span>{creatingActivity ? '发送中' : '发送'}</span>
                 </button>
               </div>
               {!isToday && <div className="text-[11px] text-stone-400 px-1">记录将记入 {selectedDate} 的日计划</div>}
-              {memoError && (
-                <Banner tone="rose" onClose={() => setMemoError(null)}>
-                  记录保存失败: {memoError}
+              {activityError && (
+                <Banner tone="rose" onClose={() => setActivityError(null)}>
+                  记录保存失败: {activityError}
                 </Banner>
               )}
             </div>
@@ -863,14 +863,14 @@ export function TodayView({
                     );
                   }
 
-                  const memo = item.memo;
-                  const editing = !!memo && editingMemoId === memo.id;
+                  const act = item.activity;
+                  const editing = !!act && editingActivityId === act.id;
                   return (
-                    <li key={`memo-${memo?.id ?? idx}-${item.time}`} className="group flex items-start gap-3 py-2 text-xs">
+                    <li key={`activity-${act?.id ?? idx}-${item.time}`} className="group flex items-start gap-3 py-2 text-xs">
                       <span className="w-10 shrink-0 font-mono text-[11px] text-stone-400 pt-px">{time}</span>
                       <FileText className="w-3.5 h-3.5 text-stone-400 shrink-0 mt-0.5" />
                       <div className="min-w-0 flex-1 space-y-1">
-                        {editing && memo ? (
+                        {editing && act ? (
                           <div className="space-y-1.5">
                             <NoteRefTextarea
                               value={editBody}
@@ -882,10 +882,10 @@ export function TodayView({
                               disabled={editSaving}
                               onKeyDown={(e) => {
                                 if (e.nativeEvent.isComposing || e.keyCode === 229) return;
-                                if (e.key === 'Escape') setEditingMemoId(null);
+                                if (e.key === 'Escape') setEditingActivityId(null);
                                 if ((e.metaKey || e.ctrlKey) && e.key === 'Enter' && editBody.trim()) {
                                   e.preventDefault();
-                                  void handleSaveMemoEdit(memo.id, memo.tags ?? []);
+                                  void handleSaveActivityEdit(act.id, act.tags ?? []);
                                 }
                               }}
                               autoFocus
@@ -895,7 +895,7 @@ export function TodayView({
                             <div className="flex gap-2">
                               <button
                                 type="button"
-                                onClick={() => void handleSaveMemoEdit(memo.id, memo.tags ?? [])}
+                                onClick={() => void handleSaveActivityEdit(act.id, act.tags ?? [])}
                                 disabled={editSaving || !editBody.trim()}
                                 className="px-2.5 py-1 rounded-md bg-emerald-700 hover:bg-emerald-800 text-white font-medium disabled:opacity-40"
                               >
@@ -903,7 +903,7 @@ export function TodayView({
                               </button>
                               <button
                                 type="button"
-                                onClick={() => setEditingMemoId(null)}
+                                onClick={() => setEditingActivityId(null)}
                                 className="px-2.5 py-1 rounded-md text-stone-600 dark:text-stone-300 hover:bg-stone-100 dark:hover:bg-stone-800"
                               >
                                 取消
@@ -912,14 +912,14 @@ export function TodayView({
                           </div>
                         ) : (
                           <NoteRefText
-                            text={memo?.body ?? ''}
-                            refs={memo?.note_refs ?? undefined}
+                            text={act?.body ?? ''}
+                            refs={act?.note_refs ?? undefined}
                             notes={noteRefs}
                             onOpenNote={onOpenNote}
                             className="text-stone-800 dark:text-stone-200 leading-relaxed"
                           />
                         )}
-                        {(item.task_id || (memo?.tags ?? []).length > 0) && !editing && (
+                        {(item.task_id || (act?.tags ?? []).length > 0) && !editing && (
                           <div className="flex flex-wrap items-center gap-2 text-[11px] text-stone-400">
                             {item.task_id &&
                               (exists ? (
@@ -932,19 +932,19 @@ export function TodayView({
                                   <span className="ml-1 text-rose-500/80">(任务已删除)</span>
                                 </span>
                               ))}
-                            {(memo?.tags ?? []).map((tag) => (
+                            {(act?.tags ?? []).map((tag) => (
                               <span key={tag}>#{tag}</span>
                             ))}
                           </div>
                         )}
                       </div>
-                      {memo && !editing && (
+                      {act && !editing && (
                         <button
                           type="button"
                           onClick={() => {
-                            setEditingMemoId(memo.id);
-                            setEditBody(memo.body);
-                            setEditRefs(memo.note_refs ?? {});
+                            setEditingActivityId(act.id);
+                            setEditBody(act.body);
+                            setEditRefs(act.note_refs ?? {});
                           }}
                           className={iconBtn + ' opacity-0 group-hover:opacity-100 focus:opacity-100'}
                           title="编辑记录"
@@ -967,9 +967,9 @@ export function TodayView({
             <h3 className="text-sm font-semibold text-stone-900 dark:text-stone-100">有未保存的记录</h3>
             <p className="text-xs text-stone-500">离开前是否保存今日记录及编辑中的草稿？</p>
             <div className="flex justify-end gap-2 text-xs">
-              <button type="button" autoFocus disabled={creatingMemo || editSaving} onClick={() => void finishLeavePrompt('cancel')} className="px-3 py-1.5 rounded text-stone-600 dark:text-stone-300">取消</button>
-              <button type="button" disabled={creatingMemo || editSaving} onClick={() => void finishLeavePrompt('discard')} className="px-3 py-1.5 rounded text-rose-600">放弃</button>
-              <button type="button" disabled={creatingMemo || editSaving} onClick={() => void finishLeavePrompt('save')} className="px-3 py-1.5 rounded bg-emerald-700 text-white disabled:opacity-40">保存并离开</button>
+              <button type="button" autoFocus disabled={creatingActivity || editSaving} onClick={() => void finishLeavePrompt('cancel')} className="px-3 py-1.5 rounded text-stone-600 dark:text-stone-300">取消</button>
+              <button type="button" disabled={creatingActivity || editSaving} onClick={() => void finishLeavePrompt('discard')} className="px-3 py-1.5 rounded text-rose-600">放弃</button>
+              <button type="button" disabled={creatingActivity || editSaving} onClick={() => void finishLeavePrompt('save')} className="px-3 py-1.5 rounded bg-emerald-700 text-white disabled:opacity-40">保存并离开</button>
             </div>
           </div>
         </div>

@@ -198,12 +198,6 @@ func (idx *MemoryIndex) Backlinks(targetID, root string) []LinkSource {
 			}
 		}
 	}
-	for _, m := range idx.memos {
-		// 父任务已删除的评论不产生可打开的来源
-		if t, ok := idx.tasks[m.TaskID]; ok && idx.textRefsHitLocked(m.Body, m.NoteRefs, targetID) {
-			add(EntityTypeTask, t.ID, t.Title)
-		}
-	}
 
 	sort.Slice(out, func(i, j int) bool {
 		if out[i].Title != out[j].Title {

@@ -9,6 +9,11 @@ import {
   relativePath,
   resolveHref,
   type NoteRef,
+  type FileRef,
+  filterCandidates,
+  resolveFileHref,
+  isVaultFileLink,
+  escapeLinkPath,
 } from './noteRefsCore.ts';
 
 test('resolveRef: 已绑定目标存在时成功解析', () => {
@@ -152,3 +157,70 @@ test('relativePath & resolveHref: 路径解析', () => {
   // 外部链接返回 undefined
   assert.strictEqual(resolveHref('notes/a.md', 'https://example.com', notes), undefined);
 });
+
+test('filterCandidates: 同时混合 Note 与 File 候选并正确筛选', () => {
+  const notes: NoteRef[] = [
+    { id: '1', title: 'React 进阶', path: 'notes/react.md' },
+    { id: '2', title: '周会纪要', path: 'notes/meeting.md' },
+  ];
+  const files: FileRef[] = [
+    { name: 'react-flow.png', path: 'files/react-flow.png', ext: '.png', size: 1024, mod_time: '' },
+    { name: 'spec.pdf', path: 'files/spec.pdf', ext: '.pdf', size: 2048, mod_time: '' },
+  ];
+
+  // 空 query -> 全部
+  const all = filterCandidates(notes, files, '');
+  assert.strictEqual(all.length, 4);
+
+  // query 'react' -> 匹配 1 个 Note + 1 个 File
+  const matched = filterCandidates(notes, files, 'react');
+  assert.strictEqual(matched.length, 2);
+  assert.strictEqual(matched[0].kind, 'note');
+  if (matched[0].kind === 'note') {
+    assert.strictEqual(matched[0].note.title, 'React 进阶');
+  }
+  assert.strictEqual(matched[1].kind, 'file');
+  if (matched[1].kind === 'file') {
+    assert.strictEqual(matched[1].file.name, 'react-flow.png');
+  }
+});
+
+test('isVaultFileLink: 识别资源文件相对路径', () => {
+  assert.strictEqual(isVaultFileLink('../files/spec.pdf'), true);
+  assert.strictEqual(isVaultFileLink('files/image.png'), true);
+  assert.strictEqual(isVaultFileLink('./files/doc.pdf'), true);
+  assert.strictEqual(isVaultFileLink('../notes/b.md'), false);
+  assert.strictEqual(isVaultFileLink('https://example.com/files/spec.pdf'), false);
+});
+
+test('resolveFileHref: 相对路径定位 Vault 文件资源', () => {
+  const files: FileRef[] = [
+    { name: 'spec.pdf', path: 'files/spec.pdf', ext: '.pdf', size: 2048, mod_time: '' },
+  ];
+
+  // 笔记中引用 ../files/spec.pdf
+  const found = resolveFileHref('notes/a.md', '../files/spec.pdf', files);
+  assert.strictEqual(found?.name, 'spec.pdf');
+
+  // Today/Activity 中引用 ../files/spec.pdf
+  const foundFromPlan = resolveFileHref('plans/2026-03-31.md', '../files/spec.pdf', files);
+  assert.strictEqual(foundFromPlan?.name, 'spec.pdf');
+
+  // 不存在的文件
+  const notFound = resolveFileHref('notes/a.md', '../files/missing.pdf', files);
+  assert.strictEqual(notFound, undefined);
+});
+
+test('escapeLinkPath & resolveFileHref: 支持包含 # 和 ? 的特殊文件名', () => {
+  const original = '../files/report #1?draft.pdf';
+  const escaped = escapeLinkPath(original);
+  assert.strictEqual(escaped, '../files/report%20%231%3Fdraft.pdf');
+
+  const files: FileRef[] = [
+    { name: 'report #1?draft.pdf', path: 'files/report #1?draft.pdf', ext: '.pdf', size: 1024, mod_time: '' },
+  ];
+  const found = resolveFileHref('notes/a.md', escaped, files);
+  assert.strictEqual(found?.name, 'report #1?draft.pdf');
+});
+
+

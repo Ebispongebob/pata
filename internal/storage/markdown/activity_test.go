@@ -244,8 +244,8 @@ func TestTaskAndDayPlan_ActivitiesIndexAndVault(t *testing.T) {
 	for _, item := range overview {
 		if item.Tag == "底层" {
 			foundBaseTag = true
-			if item.MemoCount < 1 {
-				t.Errorf("expected TagOverview for '底层' to have memo/activity count >= 1, got %+v", item)
+			if item.ActivityCount < 1 {
+				t.Errorf("expected TagOverview for '底层' to have activity count >= 1, got %+v", item)
 			}
 		}
 	}

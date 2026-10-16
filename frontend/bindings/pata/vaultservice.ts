@@ -26,14 +26,6 @@ export function CreateActivity(input: $models.CreateActivityInput): $Cancellable
 }
 
 /**
- * CreateMemo creates a new Memo, writes it safely as Markdown, and updates the index.
- * Deprecated: new code should use CreateActivity.
- */
-export function CreateMemo(input: $models.CreateMemoInput): $CancellablePromise<markdown$0.Memo | null> {
-    return $Call.ByID(1514226879, input);
-}
-
-/**
  * CreateNote creates a new Note, writes it safely as Markdown, and updates the index.
  */
 export function CreateNote(input: $models.CreateNoteInput): $CancellablePromise<markdown$0.Note | null> {
@@ -77,17 +69,10 @@ export function GetDayPlan(date: string): $CancellablePromise<markdown$0.DayPlan
 }
 
 /**
- * GetDayTimeline returns daily timeline items (activities, memos, and task completion events) for a given date YYYY-MM-DD in local timezone.
+ * GetDayTimeline returns daily timeline items (activities and task completion events) for a given date YYYY-MM-DD in local timezone.
  */
 export function GetDayTimeline(date: string): $CancellablePromise<$models.TimelineItem[] | null> {
     return $Call.ByID(2161441604, date);
-}
-
-/**
- * GetMemo returns a memo by its ID (checking legacy memos and converted activities).
- */
-export function GetMemo(id: string): $CancellablePromise<markdown$0.Memo | null> {
-    return $Call.ByID(780043581, id);
 }
 
 /**
@@ -105,7 +90,7 @@ export function GetNoteBacklinks(noteID: string): $CancellablePromise<markdown$0
 }
 
 /**
- * GetTagOverview returns aggregated counts of all unique tags across tasks, notes, and memos.
+ * GetTagOverview returns aggregated counts of all unique tags across tasks, notes, and activities.
  */
 export function GetTagOverview(): $CancellablePromise<markdown$0.TagOverviewItem[] | null> {
     return $Call.ByID(3863596086);
@@ -133,6 +118,20 @@ export function GetVaultStatus(): $CancellablePromise<$models.VaultStatus> {
 }
 
 /**
+ * ImportFile safely copies an external file into the vault's files/ directory without overwriting.
+ */
+export function ImportFile(sourcePath: string): $CancellablePromise<markdown$0.FileResource | null> {
+    return $Call.ByID(3021514830, sourcePath);
+}
+
+/**
+ * ImportFileData saves base64-encoded binary data into the vault's files/ directory.
+ */
+export function ImportFileData(name: string, base64Data: string): $CancellablePromise<markdown$0.FileResource | null> {
+    return $Call.ByID(3430794990, name, base64Data);
+}
+
+/**
  * ListActivitiesByTask returns all activities of a task sorted chronologically by At.
  */
 export function ListActivitiesByTask(taskID: string): $CancellablePromise<markdown$0.Activity[] | null> {
@@ -141,17 +140,17 @@ export function ListActivitiesByTask(taskID: string): $CancellablePromise<markdo
 
 /**
  * ListByTag returns all entities matching the specified tag.
- * For Memos, tag matching checks memo.Tags ∪ parentTask.Tags.
+ * For Activities, tag matching checks act.Tags ∪ parentTask.Tags (for task activities).
  */
 export function ListByTag(tag: string): $CancellablePromise<markdown$0.EntityRef[] | null> {
     return $Call.ByID(1184398980, tag);
 }
 
 /**
- * ListMemosByTask returns all memos associated with taskID, including legacy memos and converted activities.
+ * ListFiles returns all files in the files/ directory of the vault.
  */
-export function ListMemosByTask(taskID: string): $CancellablePromise<(markdown$0.Memo | null)[] | null> {
-    return $Call.ByID(2666858332, taskID);
+export function ListFiles(): $CancellablePromise<markdown$0.FileResource[] | null> {
+    return $Call.ByID(1556008584);
 }
 
 /**
@@ -176,10 +175,31 @@ export function ListTasks(): $CancellablePromise<(markdown$0.Task | null)[] | nu
 }
 
 /**
+ * OpenFile opens a file in the vault with the system default application.
+ */
+export function OpenFile(filePath: string): $CancellablePromise<void> {
+    return $Call.ByID(848523435, filePath);
+}
+
+/**
+ * PreviewFile invokes the macOS Quick Look preview or system preview for a file in the vault.
+ */
+export function PreviewFile(filePath: string): $CancellablePromise<void> {
+    return $Call.ByID(201750005, filePath);
+}
+
+/**
  * RescanVault rebuilds the index from disk (manual refresh; watcher handles external changes).
  */
 export function RescanVault(): $CancellablePromise<void> {
     return $Call.ByID(1981298399);
+}
+
+/**
+ * RevealInFinder reveals a file inside Finder (or Explorer on Windows).
+ */
+export function RevealInFinder(filePath: string): $CancellablePromise<void> {
+    return $Call.ByID(2039505063, filePath);
 }
 
 /**
@@ -190,7 +210,7 @@ export function SaveDayPlan(date: string, taskIDs: string[] | null): $Cancellabl
 }
 
 /**
- * SearchAll performs case-insensitive substring search across tasks, notes, and memos.
+ * SearchAll performs case-insensitive substring search across tasks, notes, activities, and files.
  * Empty or whitespace-only queries return an empty list without error.
  */
 export function SearchAll(query: string): $CancellablePromise<markdown$0.SearchResultItem[] | null> {
@@ -217,13 +237,6 @@ export function SetTaskStatus(id: string, status: markdown$0.TaskStatus): $Cance
  */
 export function UpdateActivity(input: $models.UpdateActivityInput): $CancellablePromise<markdown$0.Activity | null> {
     return $Call.ByID(1816010589, input);
-}
-
-/**
- * UpdateMemo updates an existing Memo or Activity.
- */
-export function UpdateMemo(input: $models.UpdateMemoInput): $CancellablePromise<markdown$0.Memo | null> {
-    return $Call.ByID(971500362, input);
 }
 
 /**

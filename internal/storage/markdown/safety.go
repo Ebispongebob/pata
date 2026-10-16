@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 )
@@ -279,3 +280,83 @@ func SafeWrite(targetPath string, data []byte, baseline *FileBaseline, tracker *
 		ModTime: modTime,
 	}, nil
 }
+
+// SafeResolveVaultPath resolves a relative or absolute targetPath against vaultRoot.
+// It verifies that the resulting path is strictly located within vaultRoot and does not
+// escape via ".." or symlinks. Returns the absolute path and slash-separated vault-relative path.
+func SafeResolveVaultPath(vaultRoot, targetPath string) (absPath string, relPath string, err error) {
+	if strings.TrimSpace(vaultRoot) == "" {
+		return "", "", fmt.Errorf("vault root cannot be empty")
+	}
+	cleanTarget := strings.TrimSpace(targetPath)
+	if cleanTarget == "" {
+		return "", "", fmt.Errorf("target path cannot be empty")
+	}
+
+	absRoot, err := filepath.Abs(vaultRoot)
+	if err != nil {
+		return "", "", fmt.Errorf("invalid vault root: %w", err)
+	}
+
+	var candidate string
+	if filepath.IsAbs(cleanTarget) {
+		candidate = filepath.Clean(cleanTarget)
+	} else {
+		candidate = filepath.Clean(filepath.Join(absRoot, filepath.FromSlash(cleanTarget)))
+	}
+
+	rel, err := filepath.Rel(absRoot, candidate)
+	if err != nil || strings.HasPrefix(rel, "..") || filepath.IsAbs(rel) {
+		return "", "", fmt.Errorf("path escapes vault: %s", targetPath)
+	}
+
+	realRoot, err := filepath.EvalSymlinks(absRoot)
+	if err != nil {
+		realRoot = absRoot
+	}
+
+	// Verify symlinks to prevent symlink escape (both terminal and ancestor directories)
+	if _, err := os.Stat(candidate); err == nil {
+		evalTarget, err := filepath.EvalSymlinks(candidate)
+		if err != nil {
+			return "", "", fmt.Errorf("failed to evaluate symlink: %w", err)
+		}
+		evalRel, err := filepath.Rel(realRoot, evalTarget)
+		if err != nil || strings.HasPrefix(evalRel, "..") || filepath.IsAbs(evalRel) {
+			return "", "", fmt.Errorf("path escapes vault via symlink: %s", targetPath)
+		}
+	} else if fi, err := os.Lstat(candidate); err == nil && fi.Mode()&os.ModeSymlink != 0 {
+		// Terminal broken symlink
+		evalTarget, err := filepath.EvalSymlinks(candidate)
+		if err != nil {
+			return "", "", fmt.Errorf("failed to evaluate broken symlink: %w", err)
+		}
+		evalRel, err := filepath.Rel(realRoot, evalTarget)
+		if err != nil || strings.HasPrefix(evalRel, "..") || filepath.IsAbs(evalRel) {
+			return "", "", fmt.Errorf("symlink target escapes vault: %s", targetPath)
+		}
+	} else {
+		// Target does not exist yet; check nearest existing ancestor directory
+		checkDir := filepath.Dir(candidate)
+		for {
+			if _, err := os.Stat(checkDir); err == nil {
+				evalDir, err := filepath.EvalSymlinks(checkDir)
+				if err == nil {
+					evalRel, err := filepath.Rel(realRoot, evalDir)
+					if err != nil || strings.HasPrefix(evalRel, "..") || filepath.IsAbs(evalRel) {
+						return "", "", fmt.Errorf("path escapes vault via ancestor symlink: %s", targetPath)
+					}
+				}
+				break
+			}
+			parent := filepath.Dir(checkDir)
+			if parent == checkDir {
+				break
+			}
+			checkDir = parent
+		}
+	}
+
+	return candidate, filepath.ToSlash(rel), nil
+}
+

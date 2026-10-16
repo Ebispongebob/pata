@@ -11,11 +11,20 @@ type EntityType string
 
 const (
 	EntityTypeTask     EntityType = "task"
-	EntityTypeMemo     EntityType = "memo"
 	EntityTypeNote     EntityType = "note"
 	EntityTypeDayPlan  EntityType = "day_plan"
 	EntityTypeActivity EntityType = "activity"
+	EntityTypeFile     EntityType = "file"
 )
+
+// FileResource represents an ordinary binary or document file in the files/ directory.
+type FileResource struct {
+	Path    string    `json:"path"`     // Vault-relative path with forward slashes (e.g. "files/doc.pdf")
+	Name    string    `json:"name"`     // Base filename (e.g. "doc.pdf")
+	Ext     string    `json:"ext"`      // Extension including dot (e.g. ".pdf")
+	Size    int64     `json:"size"`     // File size in bytes
+	ModTime time.Time `json:"mod_time"` // Last modification time
+}
 
 // Activity represents an embedded activity inside a Task or DayPlan.
 type Activity struct {
@@ -24,6 +33,7 @@ type Activity struct {
 	Tags     []string             `yaml:"tags,omitempty" json:"tags,omitempty"`
 	NoteRefs map[string]string    `yaml:"note_refs,omitempty" json:"note_refs,omitempty"`
 	Body     string               `yaml:"-" json:"body"`
+	TaskID   string               `yaml:"-" json:"task_id,omitempty"`
 	Extra    map[string]yaml.Node `yaml:",inline" json:"-"`
 }
 
@@ -129,38 +139,6 @@ func (t *Task) Clone() Entity {
 	if t.Extra != nil {
 		cp.Extra = make(map[string]yaml.Node, len(t.Extra))
 		for k, v := range t.Extra {
-			cp.Extra[k] = v
-		}
-	}
-	return &cp
-}
-
-// Memo represents a short memo or task comment.
-type Memo struct {
-	Type      EntityType           `yaml:"type" json:"type"`
-	ID        string               `yaml:"id" json:"id"`
-	TaskID    string               `yaml:"task_id,omitempty" json:"task_id,omitempty"`
-	CreatedAt time.Time            `yaml:"created_at" json:"created_at"`
-	Tags      []string             `yaml:"tags,omitempty" json:"tags,omitempty"`
-	NoteRefs  map[string]string    `yaml:"note_refs,omitempty" json:"note_refs,omitempty"` // 正文 [[名称]] -> Note ID
-	Extra     map[string]yaml.Node `yaml:",inline" json:"-"`
-	Body      string               `yaml:"-" json:"body"`
-}
-
-func (m *Memo) GetType() EntityType            { return EntityTypeMemo }
-func (m *Memo) GetID() string                  { return m.ID }
-func (m *Memo) GetBody() string                { return m.Body }
-func (m *Memo) SetBody(body string)            { m.Body = body }
-func (m *Memo) GetExtra() map[string]yaml.Node { return m.Extra }
-func (m *Memo) Clone() Entity {
-	cp := *m
-	cp.NoteRefs = cloneRefs(m.NoteRefs)
-	if m.Tags != nil {
-		cp.Tags = append([]string(nil), m.Tags...)
-	}
-	if m.Extra != nil {
-		cp.Extra = make(map[string]yaml.Node, len(m.Extra))
-		for k, v := range m.Extra {
 			cp.Extra[k] = v
 		}
 	}

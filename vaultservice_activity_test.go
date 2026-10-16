@@ -317,15 +317,9 @@ func TestVaultService_DayTimeline_AggregatesTaskAndDayPlanActivities(t *testing.
 			if item.TaskID != task1.ID || item.TaskTitle != "任务一" {
 				t.Fatalf("task activity item missing task info: %+v", item)
 			}
-			if item.Memo == nil || item.Memo.ID != taskAct.ID {
-				t.Fatalf("task activity item missing backward-compatible Memo view: %+v", item)
-			}
 		}
 		if item.Activity != nil && item.Activity.ID == dpAct.ID {
 			foundDpAct = true
-			if item.Memo == nil || item.Memo.ID != dpAct.ID {
-				t.Fatalf("day plan activity item missing backward-compatible Memo view: %+v", item)
-			}
 		}
 		if item.Kind == "completion" && item.TaskID == task1.ID {
 			foundCompletion = true

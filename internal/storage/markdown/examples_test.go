@@ -60,7 +60,7 @@ func TestParseExamples(t *testing.T) {
 		t.Fatalf("Walk failed: %v", err)
 	}
 
-	if count < 6 {
-		t.Fatalf("expected at least 6 example files, found %d", count)
+	if count < 4 {
+		t.Fatalf("expected at least 4 example files, found %d", count)
 	}
 }

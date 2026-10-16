@@ -10,6 +10,7 @@ export interface Activity {
     "tags"?: string[] | null;
     "note_refs"?: { [_ in string]?: string } | null;
     "body": string;
+    "task_id"?: string;
 }
 
 /**
@@ -64,11 +65,41 @@ export enum EntityType {
     $zero = "",
 
     EntityTypeTask = "task",
-    EntityTypeMemo = "memo",
     EntityTypeNote = "note",
     EntityTypeDayPlan = "day_plan",
     EntityTypeActivity = "activity",
+    EntityTypeFile = "file",
 };
+
+/**
+ * FileResource represents an ordinary binary or document file in the files/ directory.
+ */
+export interface FileResource {
+    /**
+     * Vault-relative path with forward slashes (e.g. "files/doc.pdf")
+     */
+    "path": string;
+
+    /**
+     * Base filename (e.g. "doc.pdf")
+     */
+    "name": string;
+
+    /**
+     * Extension including dot (e.g. ".pdf")
+     */
+    "ext": string;
+
+    /**
+     * File size in bytes
+     */
+    "size": number;
+
+    /**
+     * Last modification time
+     */
+    "mod_time": string;
+}
 
 /**
  * LinkSource 是「被引用」来源（Note 或 Task，按类型+ID 去重）。
@@ -78,23 +109,6 @@ export interface LinkSource {
     "id": string;
     "title": string;
     "path": string;
-}
-
-/**
- * Memo represents a short memo or task comment.
- */
-export interface Memo {
-    "type": EntityType;
-    "id": string;
-    "task_id"?: string;
-    "created_at": string;
-    "tags"?: string[] | null;
-
-    /**
-     * 正文 [[名称]] -> Note ID
-     */
-    "note_refs"?: { [_ in string]?: string } | null;
-    "body": string;
 }
 
 /**
@@ -161,13 +175,13 @@ export enum StatusEventAction {
 };
 
 /**
- * TagOverviewItem represents a tag aggregated across tasks, notes, and memos.
+ * TagOverviewItem represents a tag aggregated across tasks, notes, and activities.
  */
 export interface TagOverviewItem {
     "tag": string;
     "task_count": number;
     "note_count": number;
-    "memo_count": number;
+    "activity_count": number;
     "total": number;
 }
 

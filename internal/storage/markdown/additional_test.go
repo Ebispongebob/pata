@@ -125,7 +125,7 @@ title: Unclosed
 	}
 }
 
-func TestVault_DeleteEntity_PreservesReferencingMemos(t *testing.T) {
+func TestVault_DeleteEntity_PreservesReferencingDayPlan(t *testing.T) {
 	tmpDir := t.TempDir()
 	vault, err := NewVault(tmpDir)
 	if err != nil {
@@ -145,26 +145,24 @@ func TestVault_DeleteEntity_PreservesReferencingMemos(t *testing.T) {
 		t.Fatalf("failed to save task: %v", err)
 	}
 
-	memo := &Memo{
-		Type:      EntityTypeMemo,
-		ID:        "m-ref-01",
-		TaskID:    "t-del-01",
-		CreatedAt: time.Now(),
-		Body:      "关联到待删除任务的 Memo",
+	plan := &DayPlan{
+		Type:    EntityTypeDayPlan,
+		Date:    "2026-10-15",
+		TaskIDs: []string{"t-del-01"},
 	}
-	if _, err := vault.SaveEntity(memo, nil); err != nil {
-		t.Fatalf("failed to save memo: %v", err)
+	if _, err := vault.SaveEntity(plan, nil); err != nil {
+		t.Fatalf("failed to save plan: %v", err)
 	}
 
 	taskPath := vault.ResolveEntityPath(task)
-	memoPath := vault.ResolveEntityPath(memo)
+	planPath := vault.ResolveEntityPath(plan)
 
 	// Pre-condition: both exist
 	if _, err := os.Stat(taskPath); err != nil {
 		t.Fatalf("task file not found before delete: %v", err)
 	}
-	if _, err := os.Stat(memoPath); err != nil {
-		t.Fatalf("memo file not found before delete: %v", err)
+	if _, err := os.Stat(planPath); err != nil {
+		t.Fatalf("plan file not found before delete: %v", err)
 	}
 	if len(vault.Index.ListDanglingReferences()) != 0 {
 		t.Fatalf("unexpected dangling refs before delete")
@@ -185,15 +183,15 @@ func TestVault_DeleteEntity_PreservesReferencingMemos(t *testing.T) {
 		t.Fatalf("task still exists in index after DeleteEntity")
 	}
 
-	// 3. Memo file still exists on disk
-	if _, err := os.Stat(memoPath); err != nil {
-		t.Fatalf("memo file was deleted or cannot be stated: %v", err)
+	// 3. Plan file still exists on disk
+	if _, err := os.Stat(planPath); err != nil {
+		t.Fatalf("plan file was deleted or cannot be stated: %v", err)
 	}
 
-	// 4. Memo still exists in index
-	m, ok := vault.Index.GetMemo("m-ref-01")
-	if !ok || m.Body != "关联到待删除任务的 Memo" {
-		t.Fatalf("memo missing or corrupted in index after task delete: %+v", m)
+	// 4. Plan still exists in index
+	p, ok := vault.Index.GetDayPlan("2026-10-15")
+	if !ok || len(p.TaskIDs) != 1 || p.TaskIDs[0] != "t-del-01" {
+		t.Fatalf("plan missing or corrupted in index after task delete: %+v", p)
 	}
 
 	// 5. Dangling references recomputed to include deleted task
@@ -558,3 +556,54 @@ updated_at: 2026-10-14T10:00:00+08:00
 		t.Fatalf("serialized markdown missing completed_at: %s", string(bytes))
 	}
 }
+
+func TestWatcher_FolderEntityTypeEnforcement(t *testing.T) {
+	vaultDir := t.TempDir()
+	vault, err := NewVault(vaultDir)
+	if err != nil {
+		t.Fatalf("NewVault failed: %v", err)
+	}
+
+	notesDir := filepath.Join(vaultDir, "notes")
+	_ = os.MkdirAll(notesDir, 0755)
+
+	// An external file created in notes/ with type: task
+	mismatchFile := filepath.Join(notesDir, "fake_task.md")
+	content := `---
+type: task
+id: t-mismatch-01
+title: 误入笔记目录的任务
+status: todo
+created_at: 2026-10-16T12:00:00+08:00
+updated_at: 2026-10-16T12:00:00+08:00
+---
+`
+	if err := os.WriteFile(mismatchFile, []byte(content), 0644); err != nil {
+		t.Fatalf("failed to write test file: %v", err)
+	}
+
+	// Trigger watcher event
+	vault.handleFSEvent(fsnotify.Event{
+		Name: mismatchFile,
+		Op:   fsnotify.Create,
+	})
+
+	// Must NOT be indexed as a task
+	if _, ok := vault.Index.GetTask("t-mismatch-01"); ok {
+		t.Fatalf("task with folder type mismatch was unexpectedly indexed")
+	}
+
+	// Must record a parse error
+	parseErrs := vault.Index.ListParseErrors()
+	found := false
+	for _, pe := range parseErrs {
+		if pe.Path == mismatchFile {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("expected parse error for folder type mismatch, got: %+v", parseErrs)
+	}
+}
+

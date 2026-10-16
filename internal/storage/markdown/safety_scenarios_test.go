@@ -281,16 +281,15 @@ func TestScenario_DanglingReferenceDegradation(t *testing.T) {
 		t.Fatalf("failed to save task: %v", err)
 	}
 
-	// Create memo referencing missing task
-	memo := &Memo{
-		Type:      EntityTypeMemo,
-		ID:        "m-dang-01",
-		TaskID:    "t-nonexistent-01",
-		CreatedAt: time.Now(),
+	// Create day plan referencing missing task
+	plan := &DayPlan{
+		Type:    EntityTypeDayPlan,
+		Date:    "2026-10-15",
+		TaskIDs: []string{"t-nonexistent-01"},
 	}
-	_, err = vault.SaveEntity(memo, nil)
+	_, err = vault.SaveEntity(plan, nil)
 	if err != nil {
-		t.Fatalf("failed to save memo: %v", err)
+		t.Fatalf("failed to save day plan: %v", err)
 	}
 
 	// Check dangling references

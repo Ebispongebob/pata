@@ -7,7 +7,7 @@ import (
 	"pata/internal/storage/markdown"
 )
 
-func TestTodayMemoNoteLinksPersistAndEdit(t *testing.T) {
+func TestTodayActivityNoteLinksPersistAndEdit(t *testing.T) {
 	v, err := markdown.NewVault(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -21,7 +21,9 @@ func TestTodayMemoNoteLinksPersistAndEdit(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	memo, err := s.CreateMemo(CreateMemoInput{
+	today := time.Now().In(time.Local).Format("2006-01-02")
+	act, err := s.CreateActivity(CreateActivityInput{
+		Date: today,
 		Body: "今日记录 **纯文本**\n[[同名笔记]]", Tags: []string{"工作"},
 		NoteRefs: map[string]string{"同名笔记": b.ID},
 	})
@@ -35,13 +37,13 @@ func TestTodayMemoNoteLinksPersistAndEdit(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		timeline, err := (&VaultService{vault: reopened}).GetDayTimeline(time.Now().In(time.Local).Format("2006-01-02"))
-		if err != nil || len(timeline) != 1 || timeline[0].Memo == nil {
+		timeline, err := (&VaultService{vault: reopened}).GetDayTimeline(today)
+		if err != nil || len(timeline) != 1 || timeline[0].Activity == nil {
 			t.Fatalf("timeline: %+v, %v", timeline, err)
 		}
-		got := timeline[0].Memo
-		if got.Body != body+"\n" || got.TaskID != "" || len(got.Tags) != 1 || got.Tags[0] != "工作" {
-			t.Fatalf("memo content changed: %+v", got)
+		got := timeline[0].Activity
+		if got.Body != body || len(got.Tags) != 1 || got.Tags[0] != "工作" {
+			t.Fatalf("activity content changed: %+v", got)
 		}
 		if len(got.NoteRefs) != len(refs) {
 			t.Fatalf("bindings: %+v, want %+v", got.NoteRefs, refs)
@@ -52,11 +54,11 @@ func TestTodayMemoNoteLinksPersistAndEdit(t *testing.T) {
 			}
 		}
 	}
-	check(memo.Body, map[string]string{"同名笔记": b.ID})
+	check(act.Body, map[string]string{"同名笔记": b.ID})
 
 	// 行内编辑选择另一个同名目标，应保存新绑定，而非沿用旧目标。
-	if _, err := s.UpdateMemo(UpdateMemoInput{
-		ID: memo.ID, Body: "改为 [[同名笔记]]", Tags: memo.Tags,
+	if _, err := s.UpdateActivity(UpdateActivityInput{
+		ID: act.ID, Body: "改为 [[同名笔记]]", Tags: act.Tags,
 		NoteRefs: map[string]string{"同名笔记": a.ID},
 	}); err != nil {
 		t.Fatal(err)
@@ -64,8 +66,8 @@ func TestTodayMemoNoteLinksPersistAndEdit(t *testing.T) {
 	check("改为 [[同名笔记]]", map[string]string{"同名笔记": a.ID})
 
 	// 删除引用，空 map 明确清除绑定。
-	if _, err := s.UpdateMemo(UpdateMemoInput{
-		ID: memo.ID, Body: "只保留文字", Tags: memo.Tags, NoteRefs: map[string]string{},
+	if _, err := s.UpdateActivity(UpdateActivityInput{
+		ID: act.ID, Body: "只保留文字", Tags: act.Tags, NoteRefs: map[string]string{},
 	}); err != nil {
 		t.Fatal(err)
 	}

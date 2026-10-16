@@ -29,8 +29,6 @@ func ValidateEntity(filePath string, entity Entity) error {
 	switch e := entity.(type) {
 	case *Task:
 		return validateTask(filePath, e)
-	case *Memo:
-		return validateMemo(filePath, e)
 	case *Note:
 		return validateNote(filePath, e)
 	case *DayPlan:
@@ -122,25 +120,6 @@ func validateTask(path string, t *Task) error {
 		return err
 	}
 
-	return nil
-}
-
-func validateMemo(path string, m *Memo) error {
-	if strings.TrimSpace(m.ID) == "" {
-		return &ValidationError{Path: path, Field: "id", Reason: "is required"}
-	}
-	if m.CreatedAt.IsZero() {
-		return &ValidationError{Path: path, Field: "created_at", Reason: "is required and must be valid RFC3339 timestamp"}
-	}
-	for i, tag := range m.Tags {
-		if strings.Contains(tag, "#") {
-			return &ValidationError{
-				Path:   path,
-				Field:  fmt.Sprintf("tags[%d]", i),
-				Reason: fmt.Sprintf("must not contain '#'; got '%s'", tag),
-			}
-		}
-	}
 	return nil
 }
 

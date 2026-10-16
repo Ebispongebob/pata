@@ -2,11 +2,14 @@ package main
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"log"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
 	"sync"
@@ -83,22 +86,6 @@ type UpdateActivityInput struct {
 	NoteRefs map[string]string `json:"note_refs,omitempty"`
 }
 
-// CreateMemoInput defines parameters for creating a new Memo (deprecated: maps to Activity).
-type CreateMemoInput struct {
-	Body     string            `json:"body"`
-	TaskID   string            `json:"task_id,omitempty"`
-	Tags     []string          `json:"tags,omitempty"`
-	NoteRefs map[string]string `json:"note_refs,omitempty"`
-}
-
-// UpdateMemoInput defines parameters for updating an existing Memo (deprecated: maps to Activity).
-type UpdateMemoInput struct {
-	ID       string            `json:"id"`
-	Body     string            `json:"body"`
-	Tags     []string          `json:"tags,omitempty"`
-	NoteRefs map[string]string `json:"note_refs,omitempty"` // nil keeps existing
-}
-
 // CreateNoteInput defines parameters for creating a new Note.
 type CreateNoteInput struct {
 	Title string   `json:"title"`
@@ -115,12 +102,11 @@ type UpdateNoteInput struct {
 	Body  string   `json:"body"`
 }
 
-// TimelineItem represents an aggregated item in the day timeline (activity, memo or completion).
+// TimelineItem represents an aggregated item in the day timeline (activity or completion).
 type TimelineItem struct {
-	Kind      string             `json:"kind"` // "activity" | "memo" | "completion" | "reopen"
+	Kind      string             `json:"kind"` // "activity" | "completion" | "reopen"
 	Time      time.Time          `json:"time"`
 	Activity  *markdown.Activity `json:"activity,omitempty"`
-	Memo      *markdown.Memo     `json:"memo,omitempty"`
 	TaskID    string             `json:"task_id,omitempty"`
 	TaskTitle string             `json:"task_title,omitempty"`
 }
@@ -845,11 +831,15 @@ func (s *VaultService) GetActivity(id string) (*markdown.Activity, error) {
 		return nil, fmt.Errorf("Activity ID 不能为空")
 	}
 
-	act, _, ok := v.Index.GetActivity(trimmedID)
+	act, loc, ok := v.Index.GetActivity(trimmedID)
 	if !ok {
 		return nil, fmt.Errorf("Activity 不存在: %s", trimmedID)
 	}
-	return &act, nil
+	cp := act.Clone()
+	if loc.OwnerType == markdown.EntityTypeTask {
+		cp.TaskID = loc.OwnerID
+	}
+	return &cp, nil
 }
 
 // ListActivitiesByTask returns all activities of a task sorted chronologically by At.
@@ -861,206 +851,6 @@ func (s *VaultService) ListActivitiesByTask(taskID string) ([]markdown.Activity,
 		return nil, fmt.Errorf("尚未打开 Vault")
 	}
 	return v.Index.ListActivitiesByTask(taskID), nil
-}
-
-// ListMemosByTask returns all memos associated with taskID, including legacy memos and converted activities.
-func (s *VaultService) ListMemosByTask(taskID string) ([]*markdown.Memo, error) {
-	s.mu.Lock()
-	v := s.vault
-	s.mu.Unlock()
-	if v == nil {
-		return nil, fmt.Errorf("尚未打开 Vault")
-	}
-	legacyMemos := v.Index.ListMemosByTask(taskID)
-	activities := v.Index.ListActivitiesByTask(taskID)
-	res := make([]*markdown.Memo, 0, len(legacyMemos)+len(activities))
-	res = append(res, legacyMemos...)
-	for _, act := range activities {
-		a := act
-		res = append(res, &markdown.Memo{
-			Type:      markdown.EntityTypeMemo,
-			ID:        a.ID,
-			TaskID:    taskID,
-			CreatedAt: a.At,
-			Tags:      a.Tags,
-			NoteRefs:  a.NoteRefs,
-			Body:      a.Body,
-		})
-	}
-	sort.Slice(res, func(i, j int) bool {
-		if res[i].CreatedAt.Equal(res[j].CreatedAt) {
-			return res[i].ID < res[j].ID
-		}
-		return res[i].CreatedAt.Before(res[j].CreatedAt)
-	})
-	return res, nil
-}
-
-// GetMemo returns a memo by its ID (checking legacy memos and converted activities).
-func (s *VaultService) GetMemo(id string) (*markdown.Memo, error) {
-	s.mu.Lock()
-	v := s.vault
-	s.mu.Unlock()
-	if v == nil {
-		return nil, fmt.Errorf("尚未打开 Vault")
-	}
-
-	trimmedID := strings.TrimSpace(id)
-	if trimmedID == "" {
-		return nil, fmt.Errorf("Memo ID 不能为空")
-	}
-
-	if memo, ok := v.Index.GetMemo(trimmedID); ok {
-		return memo, nil
-	}
-
-	if act, loc, ok := v.Index.GetActivity(trimmedID); ok {
-		taskID := ""
-		if loc.OwnerType == markdown.EntityTypeTask {
-			taskID = loc.OwnerID
-		}
-		return &markdown.Memo{
-			Type:      markdown.EntityTypeMemo,
-			ID:        act.ID,
-			TaskID:    taskID,
-			CreatedAt: act.At,
-			Tags:      act.Tags,
-			NoteRefs:  act.NoteRefs,
-			Body:      act.Body,
-		}, nil
-	}
-
-	return nil, fmt.Errorf("Memo 不存在: %s", trimmedID)
-}
-
-// CreateMemo creates a new Memo, writes it safely as Markdown, and updates the index.
-// Deprecated: new code should use CreateActivity.
-func (s *VaultService) CreateMemo(input CreateMemoInput) (*markdown.Memo, error) {
-	s.mu.Lock()
-	v := s.vault
-	s.mu.Unlock()
-	if v == nil {
-		return nil, fmt.Errorf("尚未打开 Vault")
-	}
-
-	body := strings.TrimSpace(input.Body)
-	if body == "" {
-		return nil, fmt.Errorf("Memo 正文不能为空")
-	}
-
-	taskID := strings.TrimSpace(input.TaskID)
-	if taskID != "" {
-		if _, ok := v.Index.GetTask(taskID); !ok {
-			return nil, fmt.Errorf("任务不存在: %s", taskID)
-		}
-	}
-
-	var tags []string
-	for _, tag := range input.Tags {
-		cleaned := strings.TrimSpace(strings.TrimPrefix(tag, "#"))
-		if cleaned != "" {
-			tags = append(tags, cleaned)
-		}
-	}
-
-	memo := &markdown.Memo{
-		Type:      markdown.EntityTypeMemo,
-		ID:        markdown.GenerateEntityID(markdown.EntityTypeMemo),
-		TaskID:    taskID,
-		CreatedAt: time.Now(),
-		Tags:      tags,
-		NoteRefs:  cleanNoteRefs(input.NoteRefs),
-		Body:      input.Body,
-	}
-
-	if _, err := v.SaveEntity(memo, nil); err != nil {
-		return nil, err
-	}
-
-	return memo, nil
-}
-
-// UpdateMemo updates an existing Memo or Activity.
-func (s *VaultService) UpdateMemo(input UpdateMemoInput) (*markdown.Memo, error) {
-	s.mu.Lock()
-	v := s.vault
-	s.mu.Unlock()
-	if v == nil {
-		return nil, fmt.Errorf("尚未打开 Vault")
-	}
-
-	trimmedID := strings.TrimSpace(input.ID)
-	if trimmedID == "" {
-		return nil, fmt.Errorf("Memo ID 不能为空")
-	}
-
-	// If it's an activity:
-	if _, _, ok := v.Index.GetActivity(trimmedID); ok {
-		act, err := s.UpdateActivity(UpdateActivityInput{
-			ID:       trimmedID,
-			Body:     input.Body,
-			Tags:     input.Tags,
-			NoteRefs: input.NoteRefs,
-		})
-		if err != nil {
-			return nil, err
-		}
-		_, loc, _ := v.Index.GetActivity(trimmedID)
-		taskID := ""
-		if loc.OwnerType == markdown.EntityTypeTask {
-			taskID = loc.OwnerID
-		}
-		return &markdown.Memo{
-			Type:      markdown.EntityTypeMemo,
-			ID:        act.ID,
-			TaskID:    taskID,
-			CreatedAt: act.At,
-			Tags:      act.Tags,
-			NoteRefs:  act.NoteRefs,
-			Body:      act.Body,
-		}, nil
-	}
-
-	// Otherwise legacy Memo
-	body := strings.TrimSpace(input.Body)
-	if body == "" {
-		return nil, fmt.Errorf("Memo 正文不能为空")
-	}
-
-	existing, ok := v.Index.GetMemo(trimmedID)
-	if !ok {
-		return nil, fmt.Errorf("Memo 不存在: %s", trimmedID)
-	}
-
-	var tags []string
-	for _, tag := range input.Tags {
-		cleaned := strings.TrimSpace(strings.TrimPrefix(tag, "#"))
-		if cleaned != "" {
-			tags = append(tags, cleaned)
-		}
-	}
-
-	existing.Body = input.Body
-	existing.Tags = tags
-	if input.NoteRefs != nil {
-		existing.NoteRefs = cleanNoteRefs(input.NoteRefs)
-	}
-
-	baseline := memoBaseline(v, existing)
-	if _, err := v.SaveEntity(existing, baseline); err != nil {
-		return nil, err
-	}
-
-	return existing, nil
-}
-
-// memoBaseline looks up the baseline for a memo directly from the memory index.
-func memoBaseline(v *markdown.Vault, memo *markdown.Memo) *markdown.FileBaseline {
-	path := v.ResolveEntityPath(memo)
-	if b, ok := v.Index.GetBaseline(path); ok {
-		return &b
-	}
-	return nil
 }
 
 // ListNotes returns all notes from the vault index, newest updated first.
@@ -1275,7 +1065,7 @@ func dayPlanBaseline(v *markdown.Vault, plan *markdown.DayPlan) *markdown.FileBa
 	return nil
 }
 
-// GetDayTimeline returns daily timeline items (activities, memos, and task completion events) for a given date YYYY-MM-DD in local timezone.
+// GetDayTimeline returns daily timeline items (activities and task completion events) for a given date YYYY-MM-DD in local timezone.
 func (s *VaultService) GetDayTimeline(date string) ([]TimelineItem, error) {
 	s.mu.Lock()
 	v := s.vault
@@ -1337,20 +1127,10 @@ func (s *VaultService) GetDayTimeline(date string) ([]TimelineItem, error) {
 			localDate := act.At.In(time.Local).Format("2006-01-02")
 			if localDate == trimmedDate {
 				actClone := act.Clone()
-				memoView := &markdown.Memo{
-					Type:      markdown.EntityTypeMemo,
-					ID:        act.ID,
-					TaskID:    t.ID,
-					CreatedAt: act.At,
-					Tags:      act.Tags,
-					NoteRefs:  act.NoteRefs,
-					Body:      act.Body,
-				}
 				items = append(items, TimelineItem{
 					Kind:      "activity",
 					Time:      act.At,
 					Activity:  &actClone,
-					Memo:      memoView,
 					TaskID:    t.ID,
 					TaskTitle: t.Title,
 				})
@@ -1362,42 +1142,10 @@ func (s *VaultService) GetDayTimeline(date string) ([]TimelineItem, error) {
 	if plan, ok := v.Index.GetDayPlan(trimmedDate); ok {
 		for _, act := range plan.Activities {
 			actClone := act.Clone()
-			memoView := &markdown.Memo{
-				Type:      markdown.EntityTypeMemo,
-				ID:        act.ID,
-				CreatedAt: act.At,
-				Tags:      act.Tags,
-				NoteRefs:  act.NoteRefs,
-				Body:      act.Body,
-			}
 			items = append(items, TimelineItem{
 				Kind:     "activity",
 				Time:     act.At,
 				Activity: &actClone,
-				Memo:     memoView,
-			})
-		}
-	}
-
-	// 4. Legacy Memos: created_at local date matches
-	allMemos := s.getAllMemos(v)
-	for _, m := range allMemos {
-		localDate := m.CreatedAt.In(time.Local).Format("2006-01-02")
-		if localDate == trimmedDate {
-			var taskTitle string
-			if m.TaskID != "" {
-				if parent, ok := taskMap[m.TaskID]; ok {
-					taskTitle = parent.Title
-				} else if parent, ok := v.Index.GetTask(m.TaskID); ok {
-					taskTitle = parent.Title
-				}
-			}
-			items = append(items, TimelineItem{
-				Kind:      "memo",
-				Time:      m.CreatedAt,
-				Memo:      m,
-				TaskID:    m.TaskID,
-				TaskTitle: taskTitle,
 			})
 		}
 	}
@@ -1411,8 +1159,6 @@ func (s *VaultService) GetDayTimeline(date string) ([]TimelineItem, error) {
 			idI := ""
 			if items[i].Activity != nil {
 				idI = items[i].Activity.ID
-			} else if items[i].Memo != nil {
-				idI = items[i].Memo.ID
 			} else {
 				idI = items[i].TaskID
 			}
@@ -1420,8 +1166,6 @@ func (s *VaultService) GetDayTimeline(date string) ([]TimelineItem, error) {
 			idJ := ""
 			if items[j].Activity != nil {
 				idJ = items[j].Activity.ID
-			} else if items[j].Memo != nil {
-				idJ = items[j].Memo.ID
 			} else {
 				idJ = items[j].TaskID
 			}
@@ -1436,45 +1180,7 @@ func (s *VaultService) GetDayTimeline(date string) ([]TimelineItem, error) {
 	return items, nil
 }
 
-// getAllMemos retrieves clones of all memos across the vault (independent, task-associated, and dangling).
-func (s *VaultService) getAllMemos(v *markdown.Vault) []*markdown.Memo {
-	seen := make(map[string]bool)
-	var allMemos []*markdown.Memo
-
-	// 1. Independent memos (TaskID == "")
-	for _, m := range v.Index.ListMemosByTask("") {
-		if !seen[m.ID] {
-			seen[m.ID] = true
-			allMemos = append(allMemos, m)
-		}
-	}
-
-	// 2. Memos associated with active tasks
-	for _, t := range v.Index.ListTasks() {
-		for _, m := range v.Index.ListMemosByTask(t.ID) {
-			if !seen[m.ID] {
-				seen[m.ID] = true
-				allMemos = append(allMemos, m)
-			}
-		}
-	}
-
-	// 3. Memos referencing missing/deleted tasks (dangling refs)
-	for _, d := range v.Index.ListDanglingReferences() {
-		if d.SourceType == markdown.EntityTypeMemo {
-			if !seen[d.SourceID] {
-				if m, ok := v.Index.GetMemo(d.SourceID); ok {
-					seen[d.SourceID] = true
-					allMemos = append(allMemos, m)
-				}
-			}
-		}
-	}
-
-	return allMemos
-}
-
-// GetTagOverview returns aggregated counts of all unique tags across tasks, notes, and memos.
+// GetTagOverview returns aggregated counts of all unique tags across tasks, notes, and activities.
 func (s *VaultService) GetTagOverview() ([]markdown.TagOverviewItem, error) {
 	s.mu.Lock()
 	v := s.vault
@@ -1487,7 +1193,7 @@ func (s *VaultService) GetTagOverview() ([]markdown.TagOverviewItem, error) {
 }
 
 // ListByTag returns all entities matching the specified tag.
-// For Memos, tag matching checks memo.Tags ∪ parentTask.Tags.
+// For Activities, tag matching checks act.Tags ∪ parentTask.Tags (for task activities).
 func (s *VaultService) ListByTag(tag string) ([]markdown.EntityRef, error) {
 	s.mu.Lock()
 	v := s.vault
@@ -1513,7 +1219,7 @@ func (s *VaultService) ListByTag(tag string) ([]markdown.EntityRef, error) {
 					return 1
 				case markdown.EntityTypeNote:
 					return 2
-				case markdown.EntityTypeMemo:
+				case markdown.EntityTypeActivity:
 					return 3
 				default:
 					return 4
@@ -1527,7 +1233,7 @@ func (s *VaultService) ListByTag(tag string) ([]markdown.EntityRef, error) {
 	return result, nil
 }
 
-// SearchAll performs case-insensitive substring search across tasks, notes, and memos.
+// SearchAll performs case-insensitive substring search across tasks, notes, activities, and files.
 // Empty or whitespace-only queries return an empty list without error.
 func (s *VaultService) SearchAll(query string) ([]markdown.SearchResultItem, error) {
 	s.mu.Lock()
@@ -1538,6 +1244,236 @@ func (s *VaultService) SearchAll(query string) ([]markdown.SearchResultItem, err
 	}
 
 	return v.Index.SearchAll(query), nil
+}
+
+func generateUniqueFilename(dir, filename string) string {
+	ext := filepath.Ext(filename)
+	stem := strings.TrimSuffix(filename, ext)
+	if stem == "" {
+		stem = "file"
+	}
+	candidate := filename
+	counter := 1
+	for {
+		targetPath := filepath.Join(dir, candidate)
+		if _, err := os.Stat(targetPath); os.IsNotExist(err) {
+			return candidate
+		}
+		candidate = fmt.Sprintf("%s %d%s", stem, counter, ext)
+		counter++
+	}
+}
+
+// ListFiles returns all files in the files/ directory of the vault.
+func (s *VaultService) ListFiles() ([]markdown.FileResource, error) {
+	s.mu.Lock()
+	v := s.vault
+	s.mu.Unlock()
+	if v == nil {
+		return nil, fmt.Errorf("尚未打开 Vault")
+	}
+	return v.Index.ListFiles(), nil
+}
+
+// ImportFile safely copies an external file into the vault's files/ directory without overwriting.
+func (s *VaultService) ImportFile(sourcePath string) (*markdown.FileResource, error) {
+	s.mu.Lock()
+	v := s.vault
+	s.mu.Unlock()
+	if v == nil {
+		return nil, fmt.Errorf("尚未打开 Vault")
+	}
+
+	cleanSrc := filepath.Clean(strings.TrimSpace(sourcePath))
+	fi, err := os.Stat(cleanSrc)
+	if err != nil {
+		return nil, fmt.Errorf("读取源文件失败: %w", err)
+	}
+	if fi.IsDir() {
+		return nil, fmt.Errorf("源路径是一个目录，仅支持导入文件")
+	}
+
+	filesDir := filepath.Join(v.RootPath, "files")
+	if err := os.MkdirAll(filesDir, 0755); err != nil {
+		return nil, fmt.Errorf("创建 files 目录失败: %w", err)
+	}
+
+	baseName := filepath.Base(cleanSrc)
+	uniqueName := generateUniqueFilename(filesDir, baseName)
+	targetPath := filepath.Join(filesDir, uniqueName)
+
+	data, err := os.ReadFile(cleanSrc)
+	if err != nil {
+		return nil, fmt.Errorf("读取源文件内容失败: %w", err)
+	}
+
+	baseline, err := markdown.SafeWrite(targetPath, data, nil, v.Tracker)
+	if err != nil {
+		return nil, fmt.Errorf("保存文件至 files/ 失败: %w", err)
+	}
+
+	relPath := "files/" + uniqueName
+	res := markdown.FileResource{
+		Path:    relPath,
+		Name:    uniqueName,
+		Ext:     filepath.Ext(uniqueName),
+		Size:    int64(len(data)),
+		ModTime: baseline.ModTime,
+	}
+
+	v.Index.PutFile(res)
+	s.dispatchEvent(EventVaultChanged, VaultChangeEvent{
+		Op:       "create",
+		Path:     targetPath,
+		EntityID: relPath,
+		Type:     string(markdown.EntityTypeFile),
+	})
+
+	return &res, nil
+}
+
+// ImportFileData saves base64-encoded binary data into the vault's files/ directory.
+func (s *VaultService) ImportFileData(name string, base64Data string) (*markdown.FileResource, error) {
+	s.mu.Lock()
+	v := s.vault
+	s.mu.Unlock()
+	if v == nil {
+		return nil, fmt.Errorf("尚未打开 Vault")
+	}
+
+	cleanName := filepath.Base(strings.TrimSpace(name))
+	if cleanName == "" || cleanName == "." {
+		cleanName = "attachment"
+	}
+
+	rawB64 := base64Data
+	if commaIdx := strings.Index(rawB64, ","); commaIdx != -1 {
+		rawB64 = rawB64[commaIdx+1:]
+	}
+
+	data, err := base64.StdEncoding.DecodeString(rawB64)
+	if err != nil {
+		return nil, fmt.Errorf("base64 解码失败: %w", err)
+	}
+
+	filesDir := filepath.Join(v.RootPath, "files")
+	if err := os.MkdirAll(filesDir, 0755); err != nil {
+		return nil, fmt.Errorf("创建 files 目录失败: %w", err)
+	}
+
+	uniqueName := generateUniqueFilename(filesDir, cleanName)
+	targetPath := filepath.Join(filesDir, uniqueName)
+
+	baseline, err := markdown.SafeWrite(targetPath, data, nil, v.Tracker)
+	if err != nil {
+		return nil, fmt.Errorf("写入文件失败: %w", err)
+	}
+
+	relPath := "files/" + uniqueName
+	res := markdown.FileResource{
+		Path:    relPath,
+		Name:    uniqueName,
+		Ext:     filepath.Ext(uniqueName),
+		Size:    int64(len(data)),
+		ModTime: baseline.ModTime,
+	}
+
+	v.Index.PutFile(res)
+	s.dispatchEvent(EventVaultChanged, VaultChangeEvent{
+		Op:       "create",
+		Path:     targetPath,
+		EntityID: relPath,
+		Type:     string(markdown.EntityTypeFile),
+	})
+
+	return &res, nil
+}
+
+func (s *VaultService) resolveSafeFilePath(filePath string) (string, error) {
+	s.mu.Lock()
+	v := s.vault
+	s.mu.Unlock()
+	if v == nil {
+		return "", fmt.Errorf("尚未打开 Vault")
+	}
+
+	absPath, _, err := markdown.SafeResolveVaultPath(v.RootPath, filePath)
+	if err != nil {
+		return "", fmt.Errorf("非法文件路径: %w", err)
+	}
+
+	if _, err := os.Stat(absPath); err != nil {
+		return "", fmt.Errorf("文件不存在或已移动: %s", filePath)
+	}
+
+	return absPath, nil
+}
+
+func startAndReap(cmd *exec.Cmd) error {
+	if err := cmd.Start(); err != nil {
+		return err
+	}
+	go func() {
+		_ = cmd.Wait()
+	}()
+	return nil
+}
+
+// PreviewFile invokes the macOS Quick Look preview or system preview for a file in the vault.
+func (s *VaultService) PreviewFile(filePath string) error {
+	absPath, err := s.resolveSafeFilePath(filePath)
+	if err != nil {
+		return err
+	}
+
+	if runtime.GOOS == "darwin" {
+		cmd := exec.Command("qlmanage", "-p", absPath)
+		if err := startAndReap(cmd); err == nil {
+			return nil
+		}
+	}
+
+	return s.OpenFile(filePath)
+}
+
+// OpenFile opens a file in the vault with the system default application.
+func (s *VaultService) OpenFile(filePath string) error {
+	absPath, err := s.resolveSafeFilePath(filePath)
+	if err != nil {
+		return err
+	}
+
+	var cmd *exec.Cmd
+	switch runtime.GOOS {
+	case "darwin":
+		cmd = exec.Command("open", absPath)
+	case "windows":
+		cmd = exec.Command("cmd", "/c", "start", "", absPath)
+	default:
+		cmd = exec.Command("xdg-open", absPath)
+	}
+
+	return startAndReap(cmd)
+}
+
+// RevealInFinder reveals a file inside Finder (or Explorer on Windows).
+func (s *VaultService) RevealInFinder(filePath string) error {
+	absPath, err := s.resolveSafeFilePath(filePath)
+	if err != nil {
+		return err
+	}
+
+	var cmd *exec.Cmd
+	switch runtime.GOOS {
+	case "darwin":
+		cmd = exec.Command("open", "-R", absPath)
+	case "windows":
+		cmd = exec.Command("explorer", "/select,", absPath)
+	default:
+		cmd = exec.Command("xdg-open", filepath.Dir(absPath))
+	}
+
+	return startAndReap(cmd)
 }
 
 // GetVaultHealth returns the current health status of the vault, including parse errors and dangling references.

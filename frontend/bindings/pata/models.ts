@@ -30,16 +30,6 @@ export interface CreateActivityInput {
 }
 
 /**
- * CreateMemoInput defines parameters for creating a new Memo (deprecated: maps to Activity).
- */
-export interface CreateMemoInput {
-    "body": string;
-    "task_id"?: string;
-    "tags"?: string[] | null;
-    "note_refs"?: { [_ in string]?: string } | null;
-}
-
-/**
  * CreateNoteInput defines parameters for creating a new Note.
  */
 export interface CreateNoteInput {
@@ -67,16 +57,15 @@ export interface CreateTaskInput {
 }
 
 /**
- * TimelineItem represents an aggregated item in the day timeline (activity, memo or completion).
+ * TimelineItem represents an aggregated item in the day timeline (activity or completion).
  */
 export interface TimelineItem {
     /**
-     * "activity" | "memo" | "completion" | "reopen"
+     * "activity" | "completion" | "reopen"
      */
     "kind": string;
     "time": string;
     "activity"?: markdown$0.Activity | null;
-    "memo"?: markdown$0.Memo | null;
     "task_id"?: string;
     "task_title"?: string;
 }
@@ -88,20 +77,6 @@ export interface UpdateActivityInput {
     "id": string;
     "body": string;
     "tags"?: string[] | null;
-    "note_refs"?: { [_ in string]?: string } | null;
-}
-
-/**
- * UpdateMemoInput defines parameters for updating an existing Memo (deprecated: maps to Activity).
- */
-export interface UpdateMemoInput {
-    "id": string;
-    "body": string;
-    "tags"?: string[] | null;
-
-    /**
-     * nil keeps existing
-     */
     "note_refs"?: { [_ in string]?: string } | null;
 }
 
