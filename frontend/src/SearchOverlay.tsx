@@ -257,7 +257,16 @@ export function SearchOverlay({
           {loading && <Loader2 className="w-3.5 h-3.5 text-stone-400 animate-spin shrink-0" />}
           {query && !loading && (
             <button
-              onClick={() => setQuery('')}
+              type="button"
+              onMouseDown={(e) => {
+                e.preventDefault();
+                setQuery('');
+                inputRef.current?.focus();
+              }}
+              onClick={() => {
+                setQuery('');
+                inputRef.current?.focus();
+              }}
               className="p-1 rounded text-stone-400 hover:text-stone-600 dark:hover:text-stone-300"
               title="清空"
             >

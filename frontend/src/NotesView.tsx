@@ -1060,6 +1060,7 @@ function NoteEditor({
               />
               <button
                 type="button"
+                onMouseDown={(e) => e.preventDefault()}
                 onClick={() => setIsEditingTags(false)}
                 className="text-xs px-2 py-1 rounded-md text-stone-500 hover:text-stone-700 dark:text-stone-400 dark:hover:text-stone-200 hover:bg-stone-100 dark:hover:bg-stone-800 transition"
               >

@@ -460,7 +460,7 @@ export function NoteRefTextarea({
         }}
         onSelect={(e) => sync(e.currentTarget)}
         onBlur={(e) => {
-          setSt(null);
+          if (st) setSt(null);
           rest.onBlur?.(e);
         }}
         onDrop={(e) => {

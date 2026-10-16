@@ -873,6 +873,7 @@ export const TaskDetailPanel = forwardRef<TaskDetailHandle, TaskDetailPanelProps
                         <button
                           key={t}
                           type="button"
+                          onMouseDown={(e) => e.preventDefault()}
                           onClick={() => void handleAddTag(t)}
                           className="w-full text-left px-2 py-1 rounded text-xs text-stone-700 dark:text-stone-300 hover:bg-stone-100 dark:hover:bg-stone-800 transition font-mono truncate"
                         >
@@ -1026,6 +1027,7 @@ export const TaskDetailPanel = forwardRef<TaskDetailHandle, TaskDetailPanelProps
               <span className="text-[10px] text-stone-400 select-none">⌘ Enter 发送</span>
               <button
                 type="submit"
+                onMouseDown={(e) => e.preventDefault()}
                 disabled={submittingActivity || !newActivityBody.trim()}
                 className="p-1 rounded-md text-stone-400 hover:text-emerald-700 dark:hover:text-emerald-400 hover:bg-stone-100 dark:hover:bg-stone-800 disabled:opacity-30 disabled:hover:text-stone-400 disabled:hover:bg-transparent transition"
                 title="发送 (⌘+Enter)"

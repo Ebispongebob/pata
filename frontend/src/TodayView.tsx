@@ -900,6 +900,7 @@ export function TodayView({
                             <div className="flex gap-2">
                               <button
                                 type="button"
+                                onMouseDown={(e) => e.preventDefault()}
                                 onClick={() => void handleSaveActivityEdit(act.id, act.tags ?? [])}
                                 disabled={editSaving || !editBody.trim()}
                                 className="px-2.5 py-1 rounded-md bg-emerald-700 hover:bg-emerald-800 text-white font-medium disabled:opacity-40"
@@ -908,6 +909,7 @@ export function TodayView({
                               </button>
                               <button
                                 type="button"
+                                onMouseDown={(e) => e.preventDefault()}
                                 onClick={() => setEditingActivityId(null)}
                                 className="px-2.5 py-1 rounded-md text-stone-600 dark:text-stone-300 hover:bg-stone-100 dark:hover:bg-stone-800"
                               >
@@ -1016,6 +1018,7 @@ export function TodayView({
                   <button
                     key={t.id}
                     type="button"
+                    onMouseDown={(e) => e.preventDefault()}
                     onClick={async () => {
                       await handleAddExisting(t.id);
                       setAddModalOpen(false);
