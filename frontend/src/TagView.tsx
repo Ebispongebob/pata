@@ -56,8 +56,8 @@ export function TagView({ selectedTag, onOpenTask, onOpenNote }: TagViewProps) {
       const refs = (rawRefs || []).filter((r): r is EntityRef => r !== null);
       setItems(refs);
 
-      // Fetch memo content in parallel for all memo entities
-      const memoRefs = refs.filter((r) => r.type === 'memo');
+      // Fetch memo/activity content in parallel
+      const memoRefs = refs.filter((r) => r.type === 'memo' || (r.type as string) === 'activity');
       if (memoRefs.length > 0) {
         const fetchedMemos: Record<string, Memo> = {};
         await Promise.all(
@@ -109,7 +109,7 @@ export function TagView({ selectedTag, onOpenTask, onOpenNote }: TagViewProps) {
   // Group items by type: Task -> Note -> Memo (ui.md §05 order)
   const taskItems = useMemo(() => items.filter((it) => it.type === 'task'), [items]);
   const noteItems = useMemo(() => items.filter((it) => it.type === 'note'), [items]);
-  const memoItems = useMemo(() => items.filter((it) => it.type === 'memo'), [items]);
+  const memoItems = useMemo(() => items.filter((it) => it.type === 'memo' || (it.type as string) === 'activity'), [items]);
 
   if (!selectedTag) {
     return (

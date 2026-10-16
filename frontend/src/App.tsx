@@ -110,6 +110,16 @@ export default function App() {
   // 从任务详情打开笔记时记录来源，笔记页「返回」回到该任务
   const [noteOrigin, setNoteOrigin] = useState<{ nav: 'today' | 'tasks'; taskId: string } | null>(null);
   const [todayTaskId, setTodayTaskId] = useState<string | null>(null);
+  const [todayDate, setTodayDate] = useState<string | null>(null);
+
+  const handleOpenTodayDate = (date: string) => {
+    void guarded(() => {
+      setSelectedTag(null);
+      setTodayDate(date);
+      setActiveNav('today');
+    });
+  };
+
   const handleOpenNote = (noteID: string, fromTaskId?: string) => {
     void guarded(() => {
       setNoteOrigin(fromTaskId && (activeNav === 'today' || activeNav === 'tasks') ? { nav: activeNav, taskId: fromTaskId } : null);
@@ -577,6 +587,8 @@ export default function App() {
               onOpenNote={handleOpenNote}
               initialTaskId={todayTaskId}
               onInitialTaskConsumed={() => setTodayTaskId(null)}
+              initialDate={todayDate}
+              onInitialDateConsumed={() => setTodayDate(null)}
               tagNames={tagNames}
               onVaultDataChanged={refreshVault}
               leaveGuardRef={leaveGuardRef}
@@ -627,6 +639,7 @@ export default function App() {
         onClose={() => setIsSearchOpen(false)}
         onOpenTask={handleOpenTask}
         onOpenNote={handleOpenNote}
+        onOpenTodayDate={handleOpenTodayDate}
         vaultOpen={vaultStatus?.open}
       />
 

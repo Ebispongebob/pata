@@ -10,11 +10,37 @@ import (
 type EntityType string
 
 const (
-	EntityTypeTask    EntityType = "task"
-	EntityTypeMemo    EntityType = "memo"
-	EntityTypeNote    EntityType = "note"
-	EntityTypeDayPlan EntityType = "day_plan"
+	EntityTypeTask     EntityType = "task"
+	EntityTypeMemo     EntityType = "memo"
+	EntityTypeNote     EntityType = "note"
+	EntityTypeDayPlan  EntityType = "day_plan"
+	EntityTypeActivity EntityType = "activity"
 )
+
+// Activity represents an embedded activity inside a Task or DayPlan.
+type Activity struct {
+	ID       string               `yaml:"id" json:"id"`
+	At       time.Time            `yaml:"at" json:"at"`
+	Tags     []string             `yaml:"tags,omitempty" json:"tags,omitempty"`
+	NoteRefs map[string]string    `yaml:"note_refs,omitempty" json:"note_refs,omitempty"`
+	Body     string               `yaml:"-" json:"body"`
+	Extra    map[string]yaml.Node `yaml:",inline" json:"-"`
+}
+
+func (a *Activity) Clone() Activity {
+	cp := *a
+	if a.Tags != nil {
+		cp.Tags = append([]string(nil), a.Tags...)
+	}
+	cp.NoteRefs = cloneRefs(a.NoteRefs)
+	if a.Extra != nil {
+		cp.Extra = make(map[string]yaml.Node, len(a.Extra))
+		for k, v := range a.Extra {
+			cp.Extra[k] = v
+		}
+	}
+	return cp
+}
 
 // TaskStatus represents the current status of a task.
 type TaskStatus string
@@ -54,17 +80,19 @@ type Task struct {
 	Type         EntityType           `yaml:"type" json:"type"`
 	ID           string               `yaml:"id" json:"id"`
 	Title        string               `yaml:"title" json:"title"`
+	Description  string               `yaml:"description,omitempty" json:"description"`
 	Status       TaskStatus           `yaml:"status" json:"status"`
 	CompletedAt  *time.Time           `yaml:"completed_at,omitempty" json:"completed_at,omitempty"`
 	Due          *string              `yaml:"due" json:"due"` // YYYY-MM-DD or nil
 	Tags         []string             `yaml:"tags,omitempty" json:"tags,omitempty"`
 	NoteIDs      []string             `yaml:"note_ids,omitempty" json:"note_ids,omitempty"`
-	NoteRefs     map[string]string    `yaml:"note_refs,omitempty" json:"note_refs,omitempty"` // 正文 [[名称]] -> Note ID
+	NoteRefs     map[string]string    `yaml:"note_refs,omitempty" json:"note_refs,omitempty"` // 描述 [[名称]] -> Note ID
 	CreatedAt    time.Time            `yaml:"created_at" json:"created_at"`
 	UpdatedAt    time.Time            `yaml:"updated_at" json:"updated_at"`
 	StatusEvents []StatusEvent        `yaml:"status_events,omitempty" json:"status_events,omitempty"`
 	Extra        map[string]yaml.Node `yaml:",inline" json:"-"`
 	Body         string               `yaml:"-" json:"body"`
+	Activities   []Activity           `yaml:"-" json:"activities,omitempty"`
 }
 
 func (t *Task) GetType() EntityType            { return EntityTypeTask }
@@ -91,6 +119,12 @@ func (t *Task) Clone() Entity {
 	cp.NoteRefs = cloneRefs(t.NoteRefs)
 	if t.StatusEvents != nil {
 		cp.StatusEvents = append([]StatusEvent(nil), t.StatusEvents...)
+	}
+	if t.Activities != nil {
+		cp.Activities = make([]Activity, len(t.Activities))
+		for i, a := range t.Activities {
+			cp.Activities[i] = a.Clone()
+		}
 	}
 	if t.Extra != nil {
 		cp.Extra = make(map[string]yaml.Node, len(t.Extra))
@@ -164,13 +198,14 @@ func (n *Note) Clone() Entity {
 	return &cp
 }
 
-// DayPlan represents a daily plan stored in .pata/plans/YYYY-MM-DD.md.
+// DayPlan represents a daily plan stored in plans/YYYY-MM-DD.md.
 type DayPlan struct {
-	Type    EntityType           `yaml:"type" json:"type"`
-	Date    string               `yaml:"date" json:"date"` // YYYY-MM-DD
-	TaskIDs []string             `yaml:"task_ids" json:"task_ids"`
-	Extra   map[string]yaml.Node `yaml:",inline" json:"-"`
-	Body    string               `yaml:"-" json:"body"`
+	Type       EntityType           `yaml:"type" json:"type"`
+	Date       string               `yaml:"date" json:"date"` // YYYY-MM-DD
+	TaskIDs    []string             `yaml:"task_ids" json:"task_ids"`
+	Extra      map[string]yaml.Node `yaml:",inline" json:"-"`
+	Body       string               `yaml:"-" json:"body"`
+	Activities []Activity           `yaml:"-" json:"activities,omitempty"`
 }
 
 func (d *DayPlan) GetType() EntityType            { return EntityTypeDayPlan }
@@ -182,6 +217,12 @@ func (d *DayPlan) Clone() Entity {
 	cp := *d
 	if d.TaskIDs != nil {
 		cp.TaskIDs = append([]string(nil), d.TaskIDs...)
+	}
+	if d.Activities != nil {
+		cp.Activities = make([]Activity, len(d.Activities))
+		for i, a := range d.Activities {
+			cp.Activities[i] = a.Clone()
+		}
 	}
 	if d.Extra != nil {
 		cp.Extra = make(map[string]yaml.Node, len(d.Extra))

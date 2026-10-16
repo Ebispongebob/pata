@@ -17,6 +17,7 @@ interface SearchOverlayProps {
   onClose: () => void;
   onOpenTask: (taskId: string) => void;
   onOpenNote: (noteId: string) => void;
+  onOpenTodayDate?: (date: string) => void;
   vaultOpen?: boolean;
 }
 
@@ -25,6 +26,7 @@ export function SearchOverlay({
   onClose,
   onOpenTask,
   onOpenNote,
+  onOpenTodayDate,
   vaultOpen = true,
 }: SearchOverlayProps) {
   const [query, setQuery] = useState('');
@@ -88,8 +90,8 @@ export function SearchOverlay({
         setResults(items);
         setSelectedIndex(0);
 
-        // Preload memo task_ids for up to 5 displayed memos
-        const displayedMemos = items.filter((r) => r.type === 'memo').slice(0, 5);
+        // Preload memo/activity task_ids for up to 5 displayed records
+        const displayedMemos = items.filter((r) => r.type === 'memo' || (r.type as string) === 'activity').slice(0, 5);
         if (displayedMemos.length > 0) {
           const taskMap: Record<string, string> = {};
           await Promise.all(
@@ -125,10 +127,10 @@ export function SearchOverlay({
     };
   }, [query, isOpen]);
 
-  // Group results by type (Task -> Note -> Memo)
+  // Group results by type (Task -> Note -> Memo/Activity)
   const tasks = useMemo(() => results.filter((r) => r.type === 'task'), [results]);
   const notes = useMemo(() => results.filter((r) => r.type === 'note'), [results]);
-  const memos = useMemo(() => results.filter((r) => r.type === 'memo'), [results]);
+  const memos = useMemo(() => results.filter((r) => r.type === 'memo' || (r.type as string) === 'activity'), [results]);
 
   // Truncate displayed items to first 5 per type
   const displayedTasks = useMemo(() => tasks.slice(0, 5), [tasks]);
@@ -168,15 +170,20 @@ export function SearchOverlay({
       } else if (item.type === 'note') {
         onOpenNote(item.id);
         onClose();
-      } else if (item.type === 'memo') {
+      } else if (item.type === 'memo' || (item.type as string) === 'activity') {
         const taskId = memoTaskMap[item.id];
         if (taskId) {
           onOpenTask(taskId);
           onClose();
+        } else if (item.title && /^\d{4}-\d{2}-\d{2}$/.test(item.title)) {
+          onOpenTodayDate?.(item.title);
+          onClose();
+        } else {
+          onClose();
         }
       }
     },
-    [memoTaskMap, onOpenTask, onOpenNote, onClose]
+    [memoTaskMap, onOpenTask, onOpenNote, onOpenTodayDate, onClose]
   );
 
   // Keyboard navigation & a11y focus trap
@@ -411,6 +418,8 @@ export function SearchOverlay({
                       const isSelected = selectedIndex === globalIndex;
                       const taskId = memoTaskMap[memo.id];
                       const hasTaskId = Boolean(taskId);
+                      const hasDate = Boolean(memo.title && /^\d{4}-\d{2}-\d{2}$/.test(memo.title));
+                      const isClickable = hasTaskId || hasDate;
 
                       return (
                         <div
@@ -423,12 +432,12 @@ export function SearchOverlay({
                           }}
                           onMouseEnter={() => setSelectedIndex(globalIndex)}
                           onClick={() => {
-                            if (hasTaskId) {
+                            if (isClickable) {
                               handleItemSelect(memo);
                             }
                           }}
                           className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-xs transition-colors ${
-                            hasTaskId ? 'cursor-pointer' : 'cursor-default opacity-85'
+                            isClickable ? 'cursor-pointer' : 'cursor-default opacity-85'
                           } ${
                             isSelected
                               ? 'bg-stone-200/80 dark:bg-stone-800 text-stone-900 dark:text-stone-50'
@@ -446,6 +455,10 @@ export function SearchOverlay({
                                   <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-mono">
                                     关联任务评论
                                   </span>
+                                ) : hasDate ? (
+                                  <span className="text-[10px] text-blue-600 dark:text-blue-400 font-mono">
+                                    日计划活动 ({memo.title})
+                                  </span>
                                 ) : (
                                   <span className="text-[10px] text-stone-400 font-mono">
                                     独立记录 (仅展示)
@@ -457,6 +470,12 @@ export function SearchOverlay({
                           {isSelected && hasTaskId && (
                             <span className="text-[10px] font-mono text-stone-400 dark:text-stone-500 shrink-0 flex items-center space-x-1">
                               <span>↵ 跳父任务</span>
+                              <ExternalLink className="w-2.5 h-2.5" />
+                            </span>
+                          )}
+                          {isSelected && !hasTaskId && hasDate && (
+                            <span className="text-[10px] font-mono text-stone-400 dark:text-stone-500 shrink-0 flex items-center space-x-1">
+                              <span>↵ 打开日计划</span>
                               <ExternalLink className="w-2.5 h-2.5" />
                             </span>
                           )}

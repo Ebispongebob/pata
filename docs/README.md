@@ -43,7 +43,7 @@
 
 **阶段 7：代码完成，待实机验收。** Notes / Task 描述 / 任务评论 / Today 记录的 `[[` 选择、跳转与持久绑定，Note 相对链接及按 Note/Task 身份去重的“被引用”均已实现。唯一必修项「已绑定 Note ID 失效时禁止退回同名标题匹配」已修复并补充前端独立单测（`src/noteRefs.test.ts`）；Go 与前端单元测试全部通过。返回来源页面/日期是可选优化，不阻塞阶段 8；外部移动跨文件自动维护、批量更新/重试和精确滚动/光标恢复均取消。与阶段 8 Activity 内嵌模型衔接时须保留现有引用能力；见 [idea](07-note-links/idea.md) 与 [proposal](07-note-links/proposal.md)。
 
-**阶段 8 设计已确认、待实施**：统一 `a-` Activity；Task Frontmatter 改存纯文本描述、Body 存活动；DayPlan 目标调整为 Vault 根目录 `plans/`（当前代码仍可能在 `.pata/plans/`），Body 存独立活动。删除 Task 连同 Activity 一起删除并清理 DayPlan 引用；单文件原子写入、幂等修复、异常文件隔离。仅计划存储和业务重构，不实现 CLI。详见 [idea](08-activity-storage/idea.md)、[proposal](08-activity-storage/proposal.md)；Schema 见 [阶段 2 规范](02-foundation/schema.md)。
+**阶段 8：代码完成，待实机验收。** 统一内嵌 `a-` Activity；Task Frontmatter 存纯文本描述、Body 存活动；DayPlan 根目录 `plans/`（兼读兼容旧 `.pata/plans/`），Body 存独立活动。删除 Task 连同 Activity 一起删除并幂等级联清理 DayPlan 引用；单文件原子写入、解析错误异常文件隔离；Today 时间线、全局标签聚合与跨实体搜索全部适配 Activity，Go 与前端测试 100% 通过。详见 [idea](08-activity-storage/idea.md)、[proposal](08-activity-storage/proposal.md)。
 
 **阶段 9 设计已确认、待实施**：Vault 专属且仅管理约定目录；通过 Activity/Note 拖入文件、复制到 `files/` 并插入标准链接，已有 `[[` 同时搜索 Note 和 File；全局搜索支持按文件名直接找回资源。文件可被多处引用、没有引用也继续保留。无 Files 页面、自动清理、inode 追踪或文件内容全文索引；详见 [idea](09-vault-files/idea.md)、[proposal](09-vault-files/proposal.md)。
 

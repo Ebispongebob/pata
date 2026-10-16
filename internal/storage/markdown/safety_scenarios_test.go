@@ -253,8 +253,8 @@ func TestScenario_UTF8ChineseAndEmoji(t *testing.T) {
 	if len(readTask.Tags) != 3 || readTask.Tags[1] != "⚡️性能优化" {
 		t.Fatalf("tags mismatch: %+v", readTask.Tags)
 	}
-	if !strings.Contains(readTask.Body, "Emoji 组合：👨‍💻 🚀 💥 💯") {
-		t.Fatalf("body unicode corrupted: %s", readTask.Body)
+	if !strings.Contains(readTask.Body, "Emoji 组合：👨‍💻 🚀 💥 💯") && !strings.Contains(readTask.Description, "Emoji 组合：👨‍💻 🚀 💥 💯") {
+		t.Fatalf("body/description unicode corrupted: body=%s, desc=%s", readTask.Body, readTask.Description)
 	}
 }
 

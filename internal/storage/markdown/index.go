@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"time"
 )
 
 // EntityRef represents a reference to an entity returned from queries.
@@ -33,6 +34,13 @@ func (d DanglingRef) String() string {
 		d.SourceType, d.SourceID, d.SourcePath, d.TargetType, d.TargetID, d.Reason)
 }
 
+// ActivityLocation describes where an embedded activity is located.
+type ActivityLocation struct {
+	OwnerType EntityType `json:"owner_type"` // EntityTypeTask or EntityTypeDayPlan
+	OwnerID   string     `json:"owner_id"`   // TaskID or Date
+	Path      string     `json:"path"`       // absolute file path
+}
+
 // MemoryIndex maintains an in-memory rebuildable index of all vault entities.
 type MemoryIndex struct {
 	mu           sync.RWMutex
@@ -42,6 +50,7 @@ type MemoryIndex struct {
 	dayPlans     map[string]*DayPlan // key: date YYYY-MM-DD
 	fileToID     map[string]string   // absPath -> entity ID
 	idToFile     map[string]string   // entity ID -> absPath
+	activityLocs map[string]ActivityLocation // activityID -> location
 	baselines    map[string]FileBaseline
 	danglingRefs []DanglingRef
 	parseErrors  []ParseError
@@ -63,6 +72,7 @@ func NewMemoryIndex() *MemoryIndex {
 		dayPlans:     make(map[string]*DayPlan),
 		fileToID:     make(map[string]string),
 		idToFile:     make(map[string]string),
+		activityLocs: make(map[string]ActivityLocation),
 		baselines:    make(map[string]FileBaseline),
 		pendingMoves: make(map[string]pendingMove),
 	}
@@ -79,10 +89,82 @@ func (idx *MemoryIndex) Clear() {
 	idx.dayPlans = make(map[string]*DayPlan)
 	idx.fileToID = make(map[string]string)
 	idx.idToFile = make(map[string]string)
+	idx.activityLocs = make(map[string]ActivityLocation)
 	idx.baselines = make(map[string]FileBaseline)
 	idx.pendingMoves = make(map[string]pendingMove)
 	idx.danglingRefs = nil
 	idx.parseErrors = nil
+}
+
+// GetActivity returns a clone of the activity by ID and its location.
+func (idx *MemoryIndex) GetActivity(id string) (Activity, ActivityLocation, bool) {
+	idx.mu.RLock()
+	defer idx.mu.RUnlock()
+	loc, ok := idx.activityLocs[id]
+	if !ok {
+		return Activity{}, ActivityLocation{}, false
+	}
+	switch loc.OwnerType {
+	case EntityTypeTask:
+		if t, exists := idx.tasks[loc.OwnerID]; exists {
+			for _, act := range t.Activities {
+				if act.ID == id {
+					return act.Clone(), loc, true
+				}
+			}
+		}
+	case EntityTypeDayPlan:
+		if p, exists := idx.dayPlans[loc.OwnerID]; exists {
+			for _, act := range p.Activities {
+				if act.ID == id {
+					return act.Clone(), loc, true
+				}
+			}
+		}
+	}
+	return Activity{}, ActivityLocation{}, false
+}
+
+// ListActivitiesByTask returns all activities of a task sorted chronologically by At.
+func (idx *MemoryIndex) ListActivitiesByTask(taskID string) []Activity {
+	idx.mu.RLock()
+	defer idx.mu.RUnlock()
+	t, ok := idx.tasks[taskID]
+	if !ok {
+		return []Activity{}
+	}
+	res := make([]Activity, len(t.Activities))
+	for i, a := range t.Activities {
+		res[i] = a.Clone()
+	}
+	sort.Slice(res, func(i, j int) bool {
+		if res[i].At.Equal(res[j].At) {
+			return res[i].ID < res[j].ID
+		}
+		return res[i].At.Before(res[j].At)
+	})
+	return res
+}
+
+// ListActivitiesByDayPlan returns all activities of a day plan sorted chronologically by At.
+func (idx *MemoryIndex) ListActivitiesByDayPlan(date string) []Activity {
+	idx.mu.RLock()
+	defer idx.mu.RUnlock()
+	p, ok := idx.dayPlans[date]
+	if !ok {
+		return []Activity{}
+	}
+	res := make([]Activity, len(p.Activities))
+	for i, a := range p.Activities {
+		res[i] = a.Clone()
+	}
+	sort.Slice(res, func(i, j int) bool {
+		if res[i].At.Equal(res[j].At) {
+			return res[i].ID < res[j].ID
+		}
+		return res[i].At.Before(res[j].At)
+	})
+	return res
 }
 
 // GetTask returns a clone of the task by ID.
@@ -180,6 +262,17 @@ func (idx *MemoryIndex) GetDayPlan(date string) (*DayPlan, bool) {
 	return p.Clone().(*DayPlan), true
 }
 
+// ListDayPlans returns clones of all day plans.
+func (idx *MemoryIndex) ListDayPlans() []*DayPlan {
+	idx.mu.RLock()
+	defer idx.mu.RUnlock()
+	res := make([]*DayPlan, 0, len(idx.dayPlans))
+	for _, p := range idx.dayPlans {
+		res = append(res, p.Clone().(*DayPlan))
+	}
+	return res
+}
+
 // GetBaseline returns baseline info for a file path.
 func (idx *MemoryIndex) GetBaseline(absPath string) (FileBaseline, bool) {
 	idx.mu.RLock()
@@ -262,6 +355,42 @@ func (idx *MemoryIndex) FindByTag(tag string) []EntityRef {
 						Inherited: true,
 					})
 				}
+			}
+		}
+	}
+
+	// Search Activities
+	for _, t := range idx.tasks {
+		for _, act := range t.Activities {
+			ownMatch := hasTag(act.Tags, targetTag)
+			if ownMatch {
+				results = append(results, EntityRef{
+					Type:  EntityTypeActivity,
+					ID:    act.ID,
+					Title: t.Title,
+					Path:  idx.idToFile[t.ID],
+				})
+			} else if hasTag(t.Tags, targetTag) {
+				// Inherited from parent task
+				results = append(results, EntityRef{
+					Type:      EntityTypeActivity,
+					ID:        act.ID,
+					Title:     t.Title,
+					Path:      idx.idToFile[t.ID],
+					Inherited: true,
+				})
+			}
+		}
+	}
+	for _, p := range idx.dayPlans {
+		for _, act := range p.Activities {
+			if hasTag(act.Tags, targetTag) {
+				results = append(results, EntityRef{
+					Type:  EntityTypeActivity,
+					ID:    act.ID,
+					Title: p.Date,
+					Path:  idx.idToFile[p.Date],
+				})
 			}
 		}
 	}
@@ -391,6 +520,51 @@ func (idx *MemoryIndex) TagOverview() []TagOverviewItem {
 		}
 	}
 
+	// Task activities own tags
+	for _, id := range taskIDs {
+		t := idx.tasks[id]
+		for _, act := range t.Activities {
+			seen := make(map[string]bool)
+			for _, raw := range act.Tags {
+				tag := strings.TrimSpace(raw)
+				if tag == "" {
+					continue
+				}
+				lowerKey := strings.ToLower(tag)
+				if seen[lowerKey] {
+					continue
+				}
+				seen[lowerKey] = true
+				getStats(tag).memoCount++
+			}
+		}
+	}
+
+	// DayPlan activities own tags
+	dayPlanDates := make([]string, 0, len(idx.dayPlans))
+	for d := range idx.dayPlans {
+		dayPlanDates = append(dayPlanDates, d)
+	}
+	sort.Strings(dayPlanDates)
+	for _, d := range dayPlanDates {
+		p := idx.dayPlans[d]
+		for _, act := range p.Activities {
+			seen := make(map[string]bool)
+			for _, raw := range act.Tags {
+				tag := strings.TrimSpace(raw)
+				if tag == "" {
+					continue
+				}
+				lowerKey := strings.ToLower(tag)
+				if seen[lowerKey] {
+					continue
+				}
+				seen[lowerKey] = true
+				getStats(tag).memoCount++
+			}
+		}
+	}
+
 	results := make([]TagOverviewItem, 0, len(tagMap))
 	for _, s := range tagMap {
 		results = append(results, TagOverviewItem{
@@ -426,15 +600,20 @@ func (idx *MemoryIndex) SearchAll(query string) []SearchResultItem {
 	var taskResults []SearchResultItem
 	var noteResults []SearchResultItem
 	var memoResults []SearchResultItem
+	var actResults []SearchResultItem
 
-	// 1. Tasks: match title, body, or tags
+	// 1. Tasks: match title, description, body, or tags
 	for id, t := range idx.tasks {
-		if matchCaseInsensitive(t.Title, lowerQ) || matchCaseInsensitive(t.Body, lowerQ) || matchTagsCaseInsensitive(t.Tags, lowerQ) {
+		if matchCaseInsensitive(t.Title, lowerQ) || matchCaseInsensitive(t.Description, lowerQ) || matchCaseInsensitive(t.Body, lowerQ) || matchTagsCaseInsensitive(t.Tags, lowerQ) {
+			snippet := extractSnippet(t.Description, lowerQ)
+			if snippet == "" {
+				snippet = extractSnippet(t.Body, lowerQ)
+			}
 			taskResults = append(taskResults, SearchResultItem{
 				Type:    EntityTypeTask,
 				ID:      id,
 				Title:   t.Title,
-				Snippet: extractSnippet(t.Body, lowerQ),
+				Snippet: snippet,
 				Path:    idx.idToFile[id],
 			})
 		}
@@ -486,11 +665,60 @@ func (idx *MemoryIndex) SearchAll(query string) []SearchResultItem {
 		return mi.CreatedAt.After(mj.CreatedAt)
 	})
 
-	total := len(taskResults) + len(noteResults) + len(memoResults)
+	// 4. Activities: match body or own tags
+	type actItemWithTime struct {
+		item SearchResultItem
+		at   time.Time
+	}
+	var actItemsWithTime []actItemWithTime
+	for _, t := range idx.tasks {
+		for _, act := range t.Activities {
+			if matchCaseInsensitive(act.Body, lowerQ) || matchTagsCaseInsensitive(act.Tags, lowerQ) {
+				actItemsWithTime = append(actItemsWithTime, actItemWithTime{
+					item: SearchResultItem{
+						Type:    EntityTypeActivity,
+						ID:      act.ID,
+						Title:   t.Title,
+						Snippet: extractSnippet(act.Body, lowerQ),
+						Path:    idx.idToFile[t.ID],
+					},
+					at: act.At,
+				})
+			}
+		}
+	}
+	for _, p := range idx.dayPlans {
+		for _, act := range p.Activities {
+			if matchCaseInsensitive(act.Body, lowerQ) || matchTagsCaseInsensitive(act.Tags, lowerQ) {
+				actItemsWithTime = append(actItemsWithTime, actItemWithTime{
+					item: SearchResultItem{
+						Type:    EntityTypeActivity,
+						ID:      act.ID,
+						Title:   p.Date,
+						Snippet: extractSnippet(act.Body, lowerQ),
+						Path:    idx.idToFile[p.Date],
+					},
+					at: act.At,
+				})
+			}
+		}
+	}
+	sort.Slice(actItemsWithTime, func(i, j int) bool {
+		if actItemsWithTime[i].at.Equal(actItemsWithTime[j].at) {
+			return actItemsWithTime[i].item.ID < actItemsWithTime[j].item.ID
+		}
+		return actItemsWithTime[i].at.After(actItemsWithTime[j].at)
+	})
+	for _, a := range actItemsWithTime {
+		actResults = append(actResults, a.item)
+	}
+
+	total := len(taskResults) + len(noteResults) + len(memoResults) + len(actResults)
 	results := make([]SearchResultItem, 0, total)
 	results = append(results, taskResults...)
 	results = append(results, noteResults...)
 	results = append(results, memoResults...)
+	results = append(results, actResults...)
 
 	return results
 }
@@ -559,6 +787,12 @@ func (idx *MemoryIndex) RemoveFileWithPromotion(absPath string) (deletedID, prom
 	idx.mu.Lock()
 	defer idx.mu.Unlock()
 
+	for actID, loc := range idx.activityLocs {
+		if loc.Path == absPath {
+			delete(idx.activityLocs, actID)
+		}
+	}
+
 	id, ok := idx.fileToID[absPath]
 	if ok {
 		deletedID = id
@@ -586,12 +820,18 @@ func (idx *MemoryIndex) RemoveFileWithPromotion(absPath string) (deletedID, prom
 				switch e := pm.entity.(type) {
 				case *Task:
 					idx.tasks[id] = e.Clone().(*Task)
+					for _, act := range e.Activities {
+						idx.activityLocs[act.ID] = ActivityLocation{OwnerType: EntityTypeTask, OwnerID: id, Path: pm.path}
+					}
 				case *Memo:
 					idx.memos[id] = e.Clone().(*Memo)
 				case *Note:
 					idx.notes[id] = e.Clone().(*Note)
 				case *DayPlan:
 					idx.dayPlans[id] = e.Clone().(*DayPlan)
+					for _, act := range e.Activities {
+						idx.activityLocs[act.ID] = ActivityLocation{OwnerType: EntityTypeDayPlan, OwnerID: id, Path: pm.path}
+					}
 				}
 
 				idx.removeDuplicateParseErrorLocked(id, pm.path)
@@ -632,6 +872,12 @@ func (idx *MemoryIndex) PutEntity(absPath string, entity Entity, baseline FileBa
 		delete(idx.dayPlans, oldID)
 	}
 
+	for actID, loc := range idx.activityLocs {
+		if loc.Path == absPath {
+			delete(idx.activityLocs, actID)
+		}
+	}
+
 	id := entity.GetID()
 	if existingPath, exists := idx.idToFile[id]; exists && existingPath != absPath {
 		// Check whether existingPath still exists on disk
@@ -670,12 +916,42 @@ func (idx *MemoryIndex) PutEntity(absPath string, entity Entity, baseline FileBa
 	switch e := entity.(type) {
 	case *Task:
 		idx.tasks[id] = e.Clone().(*Task)
+		for _, act := range e.Activities {
+			if existingLoc, exists := idx.activityLocs[act.ID]; exists && existingLoc.Path != absPath {
+				idx.parseErrors = append(idx.parseErrors, ParseError{
+					Path:   absPath,
+					Reason: fmt.Sprintf("duplicate activity ID collision '%s' (already declared in %s)", act.ID, existingLoc.Path),
+					Err:    fmt.Errorf("duplicate activity ID: %s", act.ID),
+				})
+			} else {
+				idx.activityLocs[act.ID] = ActivityLocation{
+					OwnerType: EntityTypeTask,
+					OwnerID:   id,
+					Path:      absPath,
+				}
+			}
+		}
 	case *Memo:
 		idx.memos[id] = e.Clone().(*Memo)
 	case *Note:
 		idx.notes[id] = e.Clone().(*Note)
 	case *DayPlan:
 		idx.dayPlans[id] = e.Clone().(*DayPlan)
+		for _, act := range e.Activities {
+			if existingLoc, exists := idx.activityLocs[act.ID]; exists && existingLoc.Path != absPath {
+				idx.parseErrors = append(idx.parseErrors, ParseError{
+					Path:   absPath,
+					Reason: fmt.Sprintf("duplicate activity ID collision '%s' (already declared in %s)", act.ID, existingLoc.Path),
+					Err:    fmt.Errorf("duplicate activity ID: %s", act.ID),
+				})
+			} else {
+				idx.activityLocs[act.ID] = ActivityLocation{
+					OwnerType: EntityTypeDayPlan,
+					OwnerID:   id,
+					Path:      absPath,
+				}
+			}
+		}
 	}
 
 	idx.recomputeDanglingRefsLocked()
@@ -797,14 +1073,34 @@ func ScanVault(vaultRoot string) (*MemoryIndex, error) {
 
 		id := entity.GetID()
 		if existingPath, exists := idx.idToFile[id]; exists && existingPath != path {
-			// M2: Duplicate ID detected across different files.
-			// Do not overwrite existing entity; isolate error in parseErrors to align with Invariant 6.
-			parseErrs = append(parseErrs, ParseError{
-				Path:   path,
-				Reason: fmt.Sprintf("duplicate entity ID collision '%s' (already declared in %s); file ignored to prevent silent overwrite", id, existingPath),
-				Err:    fmt.Errorf("duplicate entity ID collision: %s", id),
-			})
-			return nil
+			// Special handling for DayPlan: root plans/YYYY-MM-DD.md supersedes legacy .pata/plans/YYYY-MM-DD.md
+			isDayPlan := entity.GetType() == EntityTypeDayPlan
+			isLegacyCurrent := strings.Contains(path, filepath.Join(".pata", "plans"))
+			isLegacyExisting := strings.Contains(existingPath, filepath.Join(".pata", "plans"))
+
+			if isDayPlan && isLegacyCurrent && !isLegacyExisting {
+				// Current file is legacy and we already scanned the root one: ignore legacy silently
+				return nil
+			} else if isDayPlan && !isLegacyCurrent && isLegacyExisting {
+				// Current file is root and existing one was legacy: root wins! Clean up legacy entry first
+				delete(idx.fileToID, existingPath)
+				delete(idx.baselines, existingPath)
+				if oldPlan, ok := idx.dayPlans[id]; ok {
+					for _, act := range oldPlan.Activities {
+						delete(idx.activityLocs, act.ID)
+					}
+				}
+				delete(idx.dayPlans, id)
+			} else {
+				// M2: Duplicate ID detected across different files.
+				// Do not overwrite existing entity; isolate error in parseErrors to align with Invariant 6.
+				parseErrs = append(parseErrs, ParseError{
+					Path:   path,
+					Reason: fmt.Sprintf("duplicate entity ID collision '%s' (already declared in %s); file ignored to prevent silent overwrite", id, existingPath),
+					Err:    fmt.Errorf("duplicate entity ID collision: %s", id),
+				})
+				return nil
+			}
 		}
 
 		idx.fileToID[path] = id
@@ -814,12 +1110,34 @@ func ScanVault(vaultRoot string) (*MemoryIndex, error) {
 		switch e := entity.(type) {
 		case *Task:
 			idx.tasks[id] = e
+			for _, act := range e.Activities {
+				if existingLoc, exists := idx.activityLocs[act.ID]; exists && existingLoc.Path != path {
+					parseErrs = append(parseErrs, ParseError{
+						Path:   path,
+						Reason: fmt.Sprintf("duplicate activity ID collision '%s' (already declared in %s); activity ignored", act.ID, existingLoc.Path),
+						Err:    fmt.Errorf("duplicate activity ID collision: %s", act.ID),
+					})
+				} else {
+					idx.activityLocs[act.ID] = ActivityLocation{OwnerType: EntityTypeTask, OwnerID: id, Path: path}
+				}
+			}
 		case *Memo:
 			idx.memos[id] = e
 		case *Note:
 			idx.notes[id] = e
 		case *DayPlan:
 			idx.dayPlans[id] = e
+			for _, act := range e.Activities {
+				if existingLoc, exists := idx.activityLocs[act.ID]; exists && existingLoc.Path != path {
+					parseErrs = append(parseErrs, ParseError{
+						Path:   path,
+						Reason: fmt.Sprintf("duplicate activity ID collision '%s' (already declared in %s); activity ignored", act.ID, existingLoc.Path),
+						Err:    fmt.Errorf("duplicate activity ID collision: %s", act.ID),
+					})
+				} else {
+					idx.activityLocs[act.ID] = ActivityLocation{OwnerType: EntityTypeDayPlan, OwnerID: id, Path: path}
+				}
+			}
 		}
 
 		return nil

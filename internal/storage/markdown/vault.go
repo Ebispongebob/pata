@@ -121,7 +121,7 @@ func (v *Vault) ResolveEntityPath(entity Entity) string {
 		}
 		return filepath.Join(v.RootPath, "memos", t.Format("2006"), t.Format("01"), filename)
 	case *DayPlan:
-		return filepath.Join(v.RootPath, ".pata", "plans", filename)
+		return filepath.Join(v.RootPath, "plans", filename)
 	default:
 		return filepath.Join(v.RootPath, filename)
 	}

@@ -39,31 +39,51 @@ type VaultHealth struct {
 
 // CreateTaskInput defines parameters for creating a new Task.
 type CreateTaskInput struct {
-	Title   string              `json:"title"`
-	Status  markdown.TaskStatus `json:"status,omitempty"`
-	Due     *string             `json:"due,omitempty"`
-	Tags    []string            `json:"tags,omitempty"`
-	NoteIDs []string            `json:"note_ids,omitempty"`
-	Body    string              `json:"body,omitempty"`
-	// NoteRefs binds [[名称]] in Body to real Note IDs.
+	Title       string              `json:"title"`
+	Description string              `json:"description,omitempty"`
+	Status      markdown.TaskStatus `json:"status,omitempty"`
+	Due         *string             `json:"due,omitempty"`
+	Tags        []string            `json:"tags,omitempty"`
+	NoteIDs     []string            `json:"note_ids,omitempty"`
+	Body        string              `json:"body,omitempty"`
+	// NoteRefs binds [[名称]] in Description to real Note IDs.
 	NoteRefs map[string]string `json:"note_refs,omitempty"`
 }
 
 // UpdateTaskInput defines parameters for updating an existing Task.
-// Note: tags, note_ids, and body follow full-replacement semantics (not partial patch).
 type UpdateTaskInput struct {
-	ID      string              `json:"id"`
-	Title   string              `json:"title"`
-	Status  markdown.TaskStatus `json:"status"`
-	Due     *string             `json:"due"`
-	Tags    []string            `json:"tags,omitempty"`
-	NoteIDs []string            `json:"note_ids,omitempty"`
-	Body    string              `json:"body"`
+	ID          string              `json:"id"`
+	Title       string              `json:"title"`
+	Description string              `json:"description,omitempty"`
+	Status      markdown.TaskStatus `json:"status"`
+	Due         *string             `json:"due"`
+	Tags        []string            `json:"tags,omitempty"`
+	NoteIDs     []string            `json:"note_ids,omitempty"`
+	Body        string              `json:"body,omitempty"`
 	// NoteRefs: nil keeps existing bindings; non-nil (even empty) replaces them.
 	NoteRefs map[string]string `json:"note_refs,omitempty"`
 }
 
-// CreateMemoInput defines parameters for creating a new Memo.
+// CreateActivityInput defines parameters for creating an Activity.
+type CreateActivityInput struct {
+	OwnerType markdown.EntityType `json:"owner_type,omitempty"` // "task" | "day_plan"
+	TaskID    string              `json:"task_id,omitempty"`    // if owner is task
+	Date      string              `json:"date,omitempty"`       // if owner is day_plan (YYYY-MM-DD)
+	At        *time.Time          `json:"at,omitempty"`
+	Body      string              `json:"body"`
+	Tags      []string            `json:"tags,omitempty"`
+	NoteRefs  map[string]string   `json:"note_refs,omitempty"`
+}
+
+// UpdateActivityInput defines parameters for updating an existing Activity by its ID.
+type UpdateActivityInput struct {
+	ID       string            `json:"id"`
+	Body     string            `json:"body"`
+	Tags     []string          `json:"tags,omitempty"`
+	NoteRefs map[string]string `json:"note_refs,omitempty"`
+}
+
+// CreateMemoInput defines parameters for creating a new Memo (deprecated: maps to Activity).
 type CreateMemoInput struct {
 	Body     string            `json:"body"`
 	TaskID   string            `json:"task_id,omitempty"`
@@ -71,7 +91,7 @@ type CreateMemoInput struct {
 	NoteRefs map[string]string `json:"note_refs,omitempty"`
 }
 
-// UpdateMemoInput defines parameters for updating an existing Memo.
+// UpdateMemoInput defines parameters for updating an existing Memo (deprecated: maps to Activity).
 type UpdateMemoInput struct {
 	ID       string            `json:"id"`
 	Body     string            `json:"body"`
@@ -95,13 +115,14 @@ type UpdateNoteInput struct {
 	Body  string   `json:"body"`
 }
 
-// TimelineItem represents an aggregated item in the day timeline (memo or completion).
+// TimelineItem represents an aggregated item in the day timeline (activity, memo or completion).
 type TimelineItem struct {
-	Kind      string         `json:"kind"` // "memo" | "completion" | "reopen"
-	Time      time.Time      `json:"time"`
-	Memo      *markdown.Memo `json:"memo,omitempty"`
-	TaskID    string         `json:"task_id,omitempty"`
-	TaskTitle string         `json:"task_title,omitempty"`
+	Kind      string             `json:"kind"` // "activity" | "memo" | "completion" | "reopen"
+	Time      time.Time          `json:"time"`
+	Activity  *markdown.Activity `json:"activity,omitempty"`
+	Memo      *markdown.Memo     `json:"memo,omitempty"`
+	TaskID    string             `json:"task_id,omitempty"`
+	TaskTitle string             `json:"task_title,omitempty"`
 }
 
 // EventVaultChanged is emitted to the Wails frontend when a vault entity is created, modified, or deleted.
@@ -269,19 +290,24 @@ func (s *VaultService) CreateTask(input CreateTaskInput) (*markdown.Task, error)
 		due = &d
 	}
 
+	desc := input.Description
+	if desc == "" && input.Body != "" {
+		desc = input.Body
+	}
+
 	now := time.Now()
 	task := &markdown.Task{
-		Type:      markdown.EntityTypeTask,
-		ID:        markdown.GenerateEntityID(markdown.EntityTypeTask),
-		Title:     title,
-		Status:    status,
-		Due:       due,
-		Tags:      input.Tags,
-		NoteIDs:   cleanedNoteIDs,
-		NoteRefs:  cleanNoteRefs(input.NoteRefs),
-		CreatedAt: now,
-		UpdatedAt: now,
-		Body:      input.Body,
+		Type:        markdown.EntityTypeTask,
+		ID:          markdown.GenerateEntityID(markdown.EntityTypeTask),
+		Title:       title,
+		Description: desc,
+		Status:      status,
+		Due:         due,
+		Tags:        input.Tags,
+		NoteIDs:     cleanedNoteIDs,
+		NoteRefs:    cleanNoteRefs(input.NoteRefs),
+		CreatedAt:   now,
+		UpdatedAt:   now,
 	}
 
 	if status == markdown.TaskStatusDone {
@@ -301,7 +327,7 @@ func (s *VaultService) CreateTask(input CreateTaskInput) (*markdown.Task, error)
 	return task, nil
 }
 
-// UpdateTask updates an existing Task, safely writes changes to Markdown, and preserves unknown frontmatter.
+// UpdateTask updates an existing Task, safely writes changes to Markdown, and preserves unknown frontmatter and embedded activities.
 func (s *VaultService) UpdateTask(input UpdateTaskInput) (*markdown.Task, error) {
 	s.mu.Lock()
 	v := s.vault
@@ -369,10 +395,16 @@ func (s *VaultService) UpdateTask(input UpdateTaskInput) (*markdown.Task, error)
 	if input.NoteRefs != nil {
 		existing.NoteRefs = cleanNoteRefs(input.NoteRefs)
 	}
-	existing.Body = input.Body
+	if input.Description != "" {
+		existing.Description = input.Description
+	} else if input.Body != "" {
+		existing.Description = input.Body
+	} else {
+		existing.Description = ""
+	}
 	existing.UpdatedAt = now
 
-	// SaveEntity preserves Extra (unknown frontmatter)
+	// SaveEntity preserves Extra (unknown frontmatter) and serializes embedded activities
 	baseline := taskBaseline(v, existing)
 	if _, err := v.SaveEntity(existing, baseline); err != nil {
 		return nil, err
@@ -507,7 +539,8 @@ func (s *VaultService) SetTaskStatus(id string, status markdown.TaskStatus) (*ma
 	return existing, nil
 }
 
-// DeleteTask deletes a task from disk and updates the index, preserving any referencing Memos.
+// DeleteTask deletes a task from disk and updates the index, cascading deletion to all its embedded activities
+// and removing references to this task from all day plans.
 func (s *VaultService) DeleteTask(id string) error {
 	s.mu.Lock()
 	v := s.vault
@@ -516,18 +549,321 @@ func (s *VaultService) DeleteTask(id string) error {
 		return fmt.Errorf("尚未打开 Vault")
 	}
 
-	if strings.TrimSpace(id) == "" {
+	trimmedID := strings.TrimSpace(id)
+	if trimmedID == "" {
 		return fmt.Errorf("任务 ID 不能为空")
 	}
 
-	if _, ok := v.Index.GetTask(id); !ok {
-		return fmt.Errorf("任务不存在: %s", id)
+	if _, ok := v.Index.GetTask(trimmedID); !ok {
+		return fmt.Errorf("任务不存在: %s", trimmedID)
 	}
 
-	return v.DeleteEntity(id)
+	if err := v.DeleteEntity(trimmedID); err != nil {
+		return err
+	}
+
+	// Clean up task ID from all DayPlans (cascade cleanup)
+	var cleanupErrors []string
+	for _, dp := range v.Index.ListDayPlans() {
+		newIDs := make([]string, 0, len(dp.TaskIDs))
+		changed := false
+		for _, tid := range dp.TaskIDs {
+			if tid == trimmedID {
+				changed = true
+			} else {
+				newIDs = append(newIDs, tid)
+			}
+		}
+		if changed {
+			dpClone := dp.Clone().(*markdown.DayPlan)
+			dpClone.TaskIDs = newIDs
+			baseline := dayPlanBaseline(v, dpClone)
+			if _, err := v.SaveEntity(dpClone, baseline); err != nil {
+				cleanupErrors = append(cleanupErrors, fmt.Sprintf("%s: %v", dp.Date, err))
+			}
+		}
+	}
+
+	if len(cleanupErrors) > 0 {
+		return fmt.Errorf("任务已删除，但部分日计划引用清理失败: %s", strings.Join(cleanupErrors, "; "))
+	}
+
+	return nil
 }
 
-// ListMemosByTask returns all memos associated with taskID from the vault index, oldest first.
+// CreateActivity creates an activity embedded inside a Task or DayPlan.
+func (s *VaultService) CreateActivity(input CreateActivityInput) (*markdown.Activity, error) {
+	s.mu.Lock()
+	v := s.vault
+	s.mu.Unlock()
+	if v == nil {
+		return nil, fmt.Errorf("尚未打开 Vault")
+	}
+
+	body := strings.TrimSpace(input.Body)
+	if body == "" {
+		return nil, fmt.Errorf("Activity 正文不能为空")
+	}
+
+	var tags []string
+	for _, tag := range input.Tags {
+		cleaned := strings.TrimSpace(strings.TrimPrefix(tag, "#"))
+		if cleaned != "" {
+			tags = append(tags, cleaned)
+		}
+	}
+
+	taskID := strings.TrimSpace(input.TaskID)
+	date := strings.TrimSpace(input.Date)
+
+	at := time.Now().UTC()
+	if input.At != nil && !input.At.IsZero() {
+		at = input.At.UTC()
+	} else if date != "" && taskID == "" {
+		if d, err := time.ParseInLocation("2006-01-02", date, time.Local); err == nil {
+			now := time.Now().In(time.Local)
+			combined := time.Date(d.Year(), d.Month(), d.Day(), now.Hour(), now.Minute(), now.Second(), now.Nanosecond(), time.Local)
+			at = combined.UTC()
+		}
+	}
+
+	act := markdown.Activity{
+		ID:       markdown.GenerateActivityID(),
+		At:       at,
+		Tags:     tags,
+		NoteRefs: cleanNoteRefs(input.NoteRefs),
+		Body:     input.Body,
+	}
+
+	// Determine owner: Task vs DayPlan
+	if taskID != "" || input.OwnerType == markdown.EntityTypeTask {
+		if taskID == "" {
+			return nil, fmt.Errorf("任务 ID 不能为空")
+		}
+		task, ok := v.Index.GetTask(taskID)
+		if !ok {
+			return nil, fmt.Errorf("任务不存在: %s", taskID)
+		}
+		task.Activities = append(task.Activities, act)
+		task.UpdatedAt = time.Now()
+		baseline := taskBaseline(v, task)
+		if _, err := v.SaveEntity(task, baseline); err != nil {
+			return nil, err
+		}
+		return &act, nil
+	}
+
+	// DayPlan owner
+	if date == "" {
+		date = at.In(time.Local).Format("2006-01-02")
+	}
+	if _, err := time.Parse("2006-01-02", date); err != nil {
+		return nil, fmt.Errorf("无效的日期格式: %s (必须为 YYYY-MM-DD)", date)
+	}
+
+	plan, exists := v.Index.GetDayPlan(date)
+	var baseline *markdown.FileBaseline
+	if exists {
+		baseline = dayPlanBaseline(v, plan)
+		plan.Activities = append(plan.Activities, act)
+	} else {
+		plan = &markdown.DayPlan{
+			Type:       markdown.EntityTypeDayPlan,
+			Date:       date,
+			TaskIDs:    []string{},
+			Activities: []markdown.Activity{act},
+		}
+	}
+
+	if _, err := v.SaveEntity(plan, baseline); err != nil {
+		return nil, err
+	}
+
+	return &act, nil
+}
+
+// UpdateActivity updates an existing Activity's body, tags, and note refs in its host Task or DayPlan.
+func (s *VaultService) UpdateActivity(input UpdateActivityInput) (*markdown.Activity, error) {
+	s.mu.Lock()
+	v := s.vault
+	s.mu.Unlock()
+	if v == nil {
+		return nil, fmt.Errorf("尚未打开 Vault")
+	}
+
+	id := strings.TrimSpace(input.ID)
+	if id == "" {
+		return nil, fmt.Errorf("Activity ID 不能为空")
+	}
+
+	body := strings.TrimSpace(input.Body)
+	if body == "" {
+		return nil, fmt.Errorf("Activity 正文不能为空")
+	}
+
+	_, loc, ok := v.Index.GetActivity(id)
+	if !ok {
+		return nil, fmt.Errorf("Activity 不存在: %s", id)
+	}
+
+	var tags []string
+	for _, tag := range input.Tags {
+		cleaned := strings.TrimSpace(strings.TrimPrefix(tag, "#"))
+		if cleaned != "" {
+			tags = append(tags, cleaned)
+		}
+	}
+
+	switch loc.OwnerType {
+	case markdown.EntityTypeTask:
+		task, ok := v.Index.GetTask(loc.OwnerID)
+		if !ok {
+			return nil, fmt.Errorf("任务不存在: %s", loc.OwnerID)
+		}
+		var updated *markdown.Activity
+		for i := range task.Activities {
+			if task.Activities[i].ID == id {
+				task.Activities[i].Body = input.Body
+				task.Activities[i].Tags = tags
+				if input.NoteRefs != nil {
+					task.Activities[i].NoteRefs = cleanNoteRefs(input.NoteRefs)
+				}
+				updated = &task.Activities[i]
+				break
+			}
+		}
+		if updated == nil {
+			return nil, fmt.Errorf("Activity 不存在: %s", id)
+		}
+		task.UpdatedAt = time.Now()
+		baseline := taskBaseline(v, task)
+		if _, err := v.SaveEntity(task, baseline); err != nil {
+			return nil, err
+		}
+		return updated, nil
+
+	case markdown.EntityTypeDayPlan:
+		plan, ok := v.Index.GetDayPlan(loc.OwnerID)
+		if !ok {
+			return nil, fmt.Errorf("日计划不存在: %s", loc.OwnerID)
+		}
+		var updated *markdown.Activity
+		for i := range plan.Activities {
+			if plan.Activities[i].ID == id {
+				plan.Activities[i].Body = input.Body
+				plan.Activities[i].Tags = tags
+				if input.NoteRefs != nil {
+					plan.Activities[i].NoteRefs = cleanNoteRefs(input.NoteRefs)
+				}
+				updated = &plan.Activities[i]
+				break
+			}
+		}
+		if updated == nil {
+			return nil, fmt.Errorf("Activity 不存在: %s", id)
+		}
+		baseline := dayPlanBaseline(v, plan)
+		if _, err := v.SaveEntity(plan, baseline); err != nil {
+			return nil, err
+		}
+		return updated, nil
+
+	default:
+		return nil, fmt.Errorf("未知的宿主类型: %s", loc.OwnerType)
+	}
+}
+
+// DeleteActivity deletes an Activity from its host Task or DayPlan.
+func (s *VaultService) DeleteActivity(id string) error {
+	s.mu.Lock()
+	v := s.vault
+	s.mu.Unlock()
+	if v == nil {
+		return fmt.Errorf("尚未打开 Vault")
+	}
+
+	trimmedID := strings.TrimSpace(id)
+	if trimmedID == "" {
+		return fmt.Errorf("Activity ID 不能为空")
+	}
+
+	_, loc, ok := v.Index.GetActivity(trimmedID)
+	if !ok {
+		return fmt.Errorf("Activity 不存在: %s", trimmedID)
+	}
+
+	switch loc.OwnerType {
+	case markdown.EntityTypeTask:
+		task, ok := v.Index.GetTask(loc.OwnerID)
+		if !ok {
+			return fmt.Errorf("任务不存在: %s", loc.OwnerID)
+		}
+		filtered := make([]markdown.Activity, 0, len(task.Activities))
+		for _, a := range task.Activities {
+			if a.ID != trimmedID {
+				filtered = append(filtered, a)
+			}
+		}
+		task.Activities = filtered
+		task.UpdatedAt = time.Now()
+		baseline := taskBaseline(v, task)
+		_, err := v.SaveEntity(task, baseline)
+		return err
+
+	case markdown.EntityTypeDayPlan:
+		plan, ok := v.Index.GetDayPlan(loc.OwnerID)
+		if !ok {
+			return fmt.Errorf("日计划不存在: %s", loc.OwnerID)
+		}
+		filtered := make([]markdown.Activity, 0, len(plan.Activities))
+		for _, a := range plan.Activities {
+			if a.ID != trimmedID {
+				filtered = append(filtered, a)
+			}
+		}
+		plan.Activities = filtered
+		baseline := dayPlanBaseline(v, plan)
+		_, err := v.SaveEntity(plan, baseline)
+		return err
+
+	default:
+		return fmt.Errorf("未知的宿主类型: %s", loc.OwnerType)
+	}
+}
+
+// GetActivity returns an activity by its ID.
+func (s *VaultService) GetActivity(id string) (*markdown.Activity, error) {
+	s.mu.Lock()
+	v := s.vault
+	s.mu.Unlock()
+	if v == nil {
+		return nil, fmt.Errorf("尚未打开 Vault")
+	}
+
+	trimmedID := strings.TrimSpace(id)
+	if trimmedID == "" {
+		return nil, fmt.Errorf("Activity ID 不能为空")
+	}
+
+	act, _, ok := v.Index.GetActivity(trimmedID)
+	if !ok {
+		return nil, fmt.Errorf("Activity 不存在: %s", trimmedID)
+	}
+	return &act, nil
+}
+
+// ListActivitiesByTask returns all activities of a task sorted chronologically by At.
+func (s *VaultService) ListActivitiesByTask(taskID string) ([]markdown.Activity, error) {
+	s.mu.Lock()
+	v := s.vault
+	s.mu.Unlock()
+	if v == nil {
+		return nil, fmt.Errorf("尚未打开 Vault")
+	}
+	return v.Index.ListActivitiesByTask(taskID), nil
+}
+
+// ListMemosByTask returns all memos associated with taskID, including legacy memos and converted activities.
 func (s *VaultService) ListMemosByTask(taskID string) ([]*markdown.Memo, error) {
 	s.mu.Lock()
 	v := s.vault
@@ -535,10 +871,32 @@ func (s *VaultService) ListMemosByTask(taskID string) ([]*markdown.Memo, error) 
 	if v == nil {
 		return nil, fmt.Errorf("尚未打开 Vault")
 	}
-	return v.Index.ListMemosByTask(taskID), nil
+	legacyMemos := v.Index.ListMemosByTask(taskID)
+	activities := v.Index.ListActivitiesByTask(taskID)
+	res := make([]*markdown.Memo, 0, len(legacyMemos)+len(activities))
+	res = append(res, legacyMemos...)
+	for _, act := range activities {
+		a := act
+		res = append(res, &markdown.Memo{
+			Type:      markdown.EntityTypeMemo,
+			ID:        a.ID,
+			TaskID:    taskID,
+			CreatedAt: a.At,
+			Tags:      a.Tags,
+			NoteRefs:  a.NoteRefs,
+			Body:      a.Body,
+		})
+	}
+	sort.Slice(res, func(i, j int) bool {
+		if res[i].CreatedAt.Equal(res[j].CreatedAt) {
+			return res[i].ID < res[j].ID
+		}
+		return res[i].CreatedAt.Before(res[j].CreatedAt)
+	})
+	return res, nil
 }
 
-// GetMemo returns a memo by its ID.
+// GetMemo returns a memo by its ID (checking legacy memos and converted activities).
 func (s *VaultService) GetMemo(id string) (*markdown.Memo, error) {
 	s.mu.Lock()
 	v := s.vault
@@ -547,18 +905,36 @@ func (s *VaultService) GetMemo(id string) (*markdown.Memo, error) {
 		return nil, fmt.Errorf("尚未打开 Vault")
 	}
 
-	if strings.TrimSpace(id) == "" {
+	trimmedID := strings.TrimSpace(id)
+	if trimmedID == "" {
 		return nil, fmt.Errorf("Memo ID 不能为空")
 	}
 
-	memo, ok := v.Index.GetMemo(id)
-	if !ok {
-		return nil, fmt.Errorf("Memo 不存在: %s", id)
+	if memo, ok := v.Index.GetMemo(trimmedID); ok {
+		return memo, nil
 	}
-	return memo, nil
+
+	if act, loc, ok := v.Index.GetActivity(trimmedID); ok {
+		taskID := ""
+		if loc.OwnerType == markdown.EntityTypeTask {
+			taskID = loc.OwnerID
+		}
+		return &markdown.Memo{
+			Type:      markdown.EntityTypeMemo,
+			ID:        act.ID,
+			TaskID:    taskID,
+			CreatedAt: act.At,
+			Tags:      act.Tags,
+			NoteRefs:  act.NoteRefs,
+			Body:      act.Body,
+		}, nil
+	}
+
+	return nil, fmt.Errorf("Memo 不存在: %s", trimmedID)
 }
 
 // CreateMemo creates a new Memo, writes it safely as Markdown, and updates the index.
+// Deprecated: new code should use CreateActivity.
 func (s *VaultService) CreateMemo(input CreateMemoInput) (*markdown.Memo, error) {
 	s.mu.Lock()
 	v := s.vault
@@ -604,7 +980,7 @@ func (s *VaultService) CreateMemo(input CreateMemoInput) (*markdown.Memo, error)
 	return memo, nil
 }
 
-// UpdateMemo updates an existing Memo's body and tags while preserving its creation timestamp.
+// UpdateMemo updates an existing Memo or Activity.
 func (s *VaultService) UpdateMemo(input UpdateMemoInput) (*markdown.Memo, error) {
 	s.mu.Lock()
 	v := s.vault
@@ -613,18 +989,47 @@ func (s *VaultService) UpdateMemo(input UpdateMemoInput) (*markdown.Memo, error)
 		return nil, fmt.Errorf("尚未打开 Vault")
 	}
 
-	if strings.TrimSpace(input.ID) == "" {
+	trimmedID := strings.TrimSpace(input.ID)
+	if trimmedID == "" {
 		return nil, fmt.Errorf("Memo ID 不能为空")
 	}
 
+	// If it's an activity:
+	if _, _, ok := v.Index.GetActivity(trimmedID); ok {
+		act, err := s.UpdateActivity(UpdateActivityInput{
+			ID:       trimmedID,
+			Body:     input.Body,
+			Tags:     input.Tags,
+			NoteRefs: input.NoteRefs,
+		})
+		if err != nil {
+			return nil, err
+		}
+		_, loc, _ := v.Index.GetActivity(trimmedID)
+		taskID := ""
+		if loc.OwnerType == markdown.EntityTypeTask {
+			taskID = loc.OwnerID
+		}
+		return &markdown.Memo{
+			Type:      markdown.EntityTypeMemo,
+			ID:        act.ID,
+			TaskID:    taskID,
+			CreatedAt: act.At,
+			Tags:      act.Tags,
+			NoteRefs:  act.NoteRefs,
+			Body:      act.Body,
+		}, nil
+	}
+
+	// Otherwise legacy Memo
 	body := strings.TrimSpace(input.Body)
 	if body == "" {
 		return nil, fmt.Errorf("Memo 正文不能为空")
 	}
 
-	existing, ok := v.Index.GetMemo(input.ID)
+	existing, ok := v.Index.GetMemo(trimmedID)
 	if !ok {
-		return nil, fmt.Errorf("Memo 不存在: %s", input.ID)
+		return nil, fmt.Errorf("Memo 不存在: %s", trimmedID)
 	}
 
 	var tags []string
@@ -870,7 +1275,7 @@ func dayPlanBaseline(v *markdown.Vault, plan *markdown.DayPlan) *markdown.FileBa
 	return nil
 }
 
-// GetDayTimeline returns daily timeline items (memos and task completion events) for a given date YYYY-MM-DD in local timezone.
+// GetDayTimeline returns daily timeline items (activities, memos, and task completion events) for a given date YYYY-MM-DD in local timezone.
 func (s *VaultService) GetDayTimeline(date string) ([]TimelineItem, error) {
 	s.mu.Lock()
 	v := s.vault
@@ -926,7 +1331,55 @@ func (s *VaultService) GetDayTimeline(date string) ([]TimelineItem, error) {
 		}
 	}
 
-	// 2. Memos: created_at local date matches
+	// 2. Task embedded activities whose local date matches
+	for _, t := range tasks {
+		for _, act := range t.Activities {
+			localDate := act.At.In(time.Local).Format("2006-01-02")
+			if localDate == trimmedDate {
+				actClone := act.Clone()
+				memoView := &markdown.Memo{
+					Type:      markdown.EntityTypeMemo,
+					ID:        act.ID,
+					TaskID:    t.ID,
+					CreatedAt: act.At,
+					Tags:      act.Tags,
+					NoteRefs:  act.NoteRefs,
+					Body:      act.Body,
+				}
+				items = append(items, TimelineItem{
+					Kind:      "activity",
+					Time:      act.At,
+					Activity:  &actClone,
+					Memo:      memoView,
+					TaskID:    t.ID,
+					TaskTitle: t.Title,
+				})
+			}
+		}
+	}
+
+	// 3. DayPlan independent activities whose date matches
+	if plan, ok := v.Index.GetDayPlan(trimmedDate); ok {
+		for _, act := range plan.Activities {
+			actClone := act.Clone()
+			memoView := &markdown.Memo{
+				Type:      markdown.EntityTypeMemo,
+				ID:        act.ID,
+				CreatedAt: act.At,
+				Tags:      act.Tags,
+				NoteRefs:  act.NoteRefs,
+				Body:      act.Body,
+			}
+			items = append(items, TimelineItem{
+				Kind:     "activity",
+				Time:     act.At,
+				Activity: &actClone,
+				Memo:     memoView,
+			})
+		}
+	}
+
+	// 4. Legacy Memos: created_at local date matches
 	allMemos := s.getAllMemos(v)
 	for _, m := range allMemos {
 		localDate := m.CreatedAt.In(time.Local).Format("2006-01-02")
@@ -955,10 +1408,24 @@ func (s *VaultService) GetDayTimeline(date string) ([]TimelineItem, error) {
 			if items[i].Kind != items[j].Kind {
 				return items[i].Kind < items[j].Kind
 			}
-			if items[i].Memo != nil && items[j].Memo != nil {
-				return items[i].Memo.ID > items[j].Memo.ID
+			idI := ""
+			if items[i].Activity != nil {
+				idI = items[i].Activity.ID
+			} else if items[i].Memo != nil {
+				idI = items[i].Memo.ID
+			} else {
+				idI = items[i].TaskID
 			}
-			return items[i].TaskID > items[j].TaskID
+
+			idJ := ""
+			if items[j].Activity != nil {
+				idJ = items[j].Activity.ID
+			} else if items[j].Memo != nil {
+				idJ = items[j].Memo.ID
+			} else {
+				idJ = items[j].TaskID
+			}
+			return idI > idJ
 		}
 		return items[i].Time.After(items[j].Time)
 	})

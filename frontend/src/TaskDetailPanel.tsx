@@ -16,7 +16,7 @@ import {
 } from 'lucide-react';
 import * as VaultService from '../bindings/pata/vaultservice';
 import { Task, TaskStatus, Memo } from '../bindings/pata/internal/storage/markdown/models';
-import { UpdateTaskInput, CreateMemoInput } from '../bindings/pata/models';
+import { UpdateTaskInput, CreateActivityInput } from '../bindings/pata/models';
 import { playLogoSuccess } from './logoAnimation';
 import { dedupeTags } from './quickCreate';
 import { NoteRefText, NoteRefTextarea, NoteRefMap, pruneRefs, sameRefs, useNoteRefs } from './noteRefs';
@@ -220,7 +220,7 @@ export const TaskDetailPanel = forwardRef<TaskDetailHandle, TaskDetailPanelProps
     setDetailStatus(t.status);
     setDetailDue(t.due ?? '');
     setDetailTags(t.tags ?? []);
-    setDetailBody(t.body ?? '');
+    setDetailBody(t.description ?? t.body ?? '');
     setDetailRefs(t.note_refs ?? {});
     latestRefsRef.current = t.note_refs ?? {};
   }, []);
@@ -340,6 +340,7 @@ export const TaskDetailPanel = forwardRef<TaskDetailHandle, TaskDetailPanelProps
         const input: UpdateTaskInput = {
           id: taskId,
           title: titleToSave,
+          description: bodyToSave,
           status: statusToSave,
           due: dueToSave,
           tags: dedupeTags(tagsToSave),
@@ -379,8 +380,9 @@ export const TaskDetailPanel = forwardRef<TaskDetailHandle, TaskDetailPanelProps
     const curTags = dedupeTags(detailTags).sort().join(',');
     const taskTags = dedupeTags(task.tags ?? []).sort().join(',');
     if (curTags !== taskTags) return true;
-    if (detailBody !== (task.body ?? '')) return true;
-    if (!sameRefs(pruneRefs(detailBody, detailRefs), pruneRefs(task.body ?? '', task.note_refs ?? {}))) return true;
+    const taskDesc = task.description ?? task.body ?? '';
+    if (detailBody !== taskDesc) return true;
+    if (!sameRefs(pruneRefs(detailBody, detailRefs), pruneRefs(taskDesc, task.note_refs ?? {}))) return true;
     return false;
   }, [task, detailTitle, detailStatus, detailDue, detailTags, detailBody, detailRefs]);
 
@@ -469,7 +471,8 @@ export const TaskDetailPanel = forwardRef<TaskDetailHandle, TaskDetailPanelProps
 
     if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
     debounceTimerRef.current = setTimeout(() => {
-      if (latestTaskRef.current && val !== (latestTaskRef.current.body ?? '')) {
+      const taskDesc = latestTaskRef.current ? (latestTaskRef.current.description ?? latestTaskRef.current.body ?? '') : '';
+      if (val !== taskDesc) {
         void saveTask({ body: val });
       }
     }, 1500);
@@ -480,7 +483,8 @@ export const TaskDetailPanel = forwardRef<TaskDetailHandle, TaskDetailPanelProps
       clearTimeout(debounceTimerRef.current);
       debounceTimerRef.current = null;
     }
-    if (task && detailBody !== (task.body ?? '')) {
+    const taskDesc = task ? (task.description ?? task.body ?? '') : '';
+    if (task && detailBody !== taskDesc) {
       await saveTask({ body: detailBody });
     }
     setIsEditingBody(false);
@@ -493,8 +497,8 @@ export const TaskDetailPanel = forwardRef<TaskDetailHandle, TaskDetailPanelProps
     setSubmittingMemo(true);
     setSubmitMemoError(null);
     try {
-      const input: CreateMemoInput = { body, task_id: taskId, note_refs: pruneRefs(body, newMemoRefs) };
-      await VaultService.CreateMemo(input);
+      const input: CreateActivityInput = { body, task_id: taskId, note_refs: pruneRefs(body, newMemoRefs) };
+      await VaultService.CreateActivity(input);
       playLogoSuccess();
       setNewMemoBody('');
       setNewMemoRefs({});
@@ -1137,7 +1141,7 @@ export const TaskDetailPanel = forwardRef<TaskDetailHandle, TaskDetailPanelProps
               <div className="space-y-1">
                 <h3 className="text-sm font-semibold text-stone-900 dark:text-stone-100">确认删除任务？</h3>
                 <p className="text-xs text-stone-500 leading-relaxed">
-                  任务「{task.title}」的文件将从 Vault 中永久删除。关联的 Memo 将被保留，此操作不可撤销。
+                  任务「{task.title}」的文件将从 Vault 中永久删除。任务及其活动记录将一起删除，此操作不可撤销。
                 </p>
               </div>
             </div>

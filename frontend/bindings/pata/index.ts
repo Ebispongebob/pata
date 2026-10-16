@@ -7,10 +7,12 @@ export {
 };
 
 export type {
+    CreateActivityInput,
     CreateMemoInput,
     CreateNoteInput,
     CreateTaskInput,
     TimelineItem,
+    UpdateActivityInput,
     UpdateMemoInput,
     UpdateNoteInput,
     UpdateTaskInput,

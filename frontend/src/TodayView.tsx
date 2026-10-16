@@ -21,7 +21,7 @@ import {
 } from 'lucide-react';
 import * as VaultService from '../bindings/pata/vaultservice';
 import { Task, TaskStatus } from '../bindings/pata/internal/storage/markdown/models';
-import { VaultStatus, CreateTaskInput, TimelineItem, CreateMemoInput } from '../bindings/pata/models';
+import { VaultStatus, CreateTaskInput, TimelineItem, CreateActivityInput } from '../bindings/pata/models';
 import { playLogoSuccess } from './logoAnimation';
 import { QuickCreateInput } from './QuickCreateInput';
 import { TaskDetailPanel, TaskDetailHandle } from './TaskDetailPanel';
@@ -36,6 +36,9 @@ interface TodayViewProps {
   /** 从笔记返回时恢复打开的任务详情。 */
   initialTaskId?: string | null;
   onInitialTaskConsumed?: () => void;
+  /** 打开指定日期的日计划 */
+  initialDate?: string | null;
+  onInitialDateConsumed?: () => void;
   tagNames: string[];
   onVaultDataChanged: () => void;
   leaveGuardRef: React.MutableRefObject<(() => Promise<boolean>) | null>;
@@ -105,12 +108,23 @@ export function TodayView({
   onOpenNote,
   initialTaskId,
   onInitialTaskConsumed,
+  initialDate,
+  onInitialDateConsumed,
   tagNames,
   onVaultDataChanged,
   leaveGuardRef,
 }: TodayViewProps) {
   const todayStr = useMemo(() => getLocalDateStr(), []);
-  const [selectedDate, setSelectedDate] = useState<string>(todayStr);
+  const [selectedDate, setSelectedDate] = useState<string>(
+    initialDate && /^\d{4}-\d{2}-\d{2}$/.test(initialDate) ? initialDate : todayStr
+  );
+
+  useEffect(() => {
+    if (initialDate && /^\d{4}-\d{2}-\d{2}$/.test(initialDate)) {
+      setSelectedDate(initialDate);
+      onInitialDateConsumed?.();
+    }
+  }, [initialDate, onInitialDateConsumed]);
 
   const [tasks, setTasks] = useState<Task[]>([]);
   const [dayPlanTaskIds, setDayPlanTaskIds] = useState<string[]>([]);
@@ -345,22 +359,27 @@ export function TodayView({
     }
   };
 
-  // ---- Memo ----
+  // ---- Activity ----
   const handleCreateQuickMemo = async () => {
     const body = quickMemoBody.trim();
     if (!body) return true;
     setCreatingMemo(true);
     setMemoError(null);
     try {
-      const input: CreateMemoInput = { body, tags: [], note_refs: pruneRefs(body, quickMemoRefs) };
-      await VaultService.CreateMemo(input);
+      const input: CreateActivityInput = {
+        date: selectedDate,
+        body,
+        tags: [],
+        note_refs: pruneRefs(body, quickMemoRefs),
+      };
+      await VaultService.CreateActivity(input);
       playLogoSuccess();
       setQuickMemoBody('');
       setQuickMemoRefs({});
       await loadData();
       return true;
     } catch (err: any) {
-      console.error('Failed to create memo:', err);
+      console.error('Failed to create activity:', err);
       setMemoError(err?.message || String(err));
       return false;
     } finally {
@@ -372,7 +391,7 @@ export function TodayView({
     setEditSaving(true);
     setMemoError(null);
     try {
-      await VaultService.UpdateMemo({ id, body: editBody, tags, note_refs: pruneRefs(editBody, editRefs) });
+      await VaultService.UpdateActivity({ id, body: editBody, tags, note_refs: pruneRefs(editBody, editRefs) });
       setEditingMemoId(null);
       await loadData();
       return true;
@@ -807,7 +826,7 @@ export function TodayView({
                   <span>{creatingMemo ? '发送中' : '发送'}</span>
                 </button>
               </div>
-              {!isToday && <div className="text-[11px] text-stone-400 px-1">记录将按当前时间记入今天</div>}
+              {!isToday && <div className="text-[11px] text-stone-400 px-1">记录将记入 {selectedDate} 的日计划</div>}
               {memoError && (
                 <Banner tone="rose" onClose={() => setMemoError(null)}>
                   记录保存失败: {memoError}

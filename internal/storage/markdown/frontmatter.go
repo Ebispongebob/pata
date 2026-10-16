@@ -185,6 +185,31 @@ func ParseMarkdown(filePath string, content []byte) (Entity, error) {
 			}
 		}
 		task.Body = string(bodyBytes)
+		if strings.Contains(task.Body, activityStartTag) {
+			acts, err := ParseActivities(task.Body)
+			if err != nil {
+				return nil, &ParseError{
+					Path:   filePath,
+					Reason: "failed to parse activities in task body",
+					Err:    err,
+				}
+			}
+			task.Activities = acts
+		} else if task.Description == "" && strings.TrimSpace(task.Body) != "" {
+			// Legacy task with description in body: populate Description for compatibility during read
+			task.Description = strings.TrimSpace(task.Body)
+			task.Activities = []Activity{}
+		} else {
+			acts, err := ParseActivities(task.Body)
+			if err != nil {
+				return nil, &ParseError{
+					Path:   filePath,
+					Reason: "failed to parse activities in task body",
+					Err:    err,
+				}
+			}
+			task.Activities = acts
+		}
 		entity = &task
 
 	case EntityTypeMemo:
@@ -221,6 +246,15 @@ func ParseMarkdown(filePath string, content []byte) (Entity, error) {
 			}
 		}
 		plan.Body = string(bodyBytes)
+		acts, err := ParseActivities(plan.Body)
+		if err != nil {
+			return nil, &ParseError{
+				Path:   filePath,
+				Reason: "failed to parse activities in day_plan body",
+				Err:    err,
+			}
+		}
+		plan.Activities = acts
 		entity = &plan
 
 	case "":
@@ -262,12 +296,25 @@ func SerializeMarkdown(entity Entity) ([]byte, error) {
 	var err error
 	switch e := entity.(type) {
 	case *Task:
+		if e.Description == "" && !strings.Contains(e.Body, activityStartTag) && strings.TrimSpace(e.Body) != "" {
+			e.Description = strings.TrimSpace(e.Body)
+		}
+		actBody, actErr := FormatActivities(e.Activities)
+		if actErr != nil {
+			return nil, fmt.Errorf("failed to format task activities: %w", actErr)
+		}
+		e.Body = actBody
 		err = enc.Encode(e)
 	case *Memo:
 		err = enc.Encode(e)
 	case *Note:
 		err = enc.Encode(e)
 	case *DayPlan:
+		actBody, actErr := FormatActivities(e.Activities)
+		if actErr != nil {
+			return nil, fmt.Errorf("failed to format day_plan activities: %w", actErr)
+		}
+		e.Body = actBody
 		err = enc.Encode(e)
 	default:
 		err = enc.Encode(entity)

@@ -19,7 +19,15 @@ import * as markdown$0 from "./internal/storage/markdown/models.js";
 import * as $models from "./models.js";
 
 /**
+ * CreateActivity creates an activity embedded inside a Task or DayPlan.
+ */
+export function CreateActivity(input: $models.CreateActivityInput): $CancellablePromise<markdown$0.Activity | null> {
+    return $Call.ByID(3984259696, input);
+}
+
+/**
  * CreateMemo creates a new Memo, writes it safely as Markdown, and updates the index.
+ * Deprecated: new code should use CreateActivity.
  */
 export function CreateMemo(input: $models.CreateMemoInput): $CancellablePromise<markdown$0.Memo | null> {
     return $Call.ByID(1514226879, input);
@@ -40,10 +48,25 @@ export function CreateTask(input: $models.CreateTaskInput): $CancellablePromise<
 }
 
 /**
- * DeleteTask deletes a task from disk and updates the index, preserving any referencing Memos.
+ * DeleteActivity deletes an Activity from its host Task or DayPlan.
+ */
+export function DeleteActivity(id: string): $CancellablePromise<void> {
+    return $Call.ByID(359049003, id);
+}
+
+/**
+ * DeleteTask deletes a task from disk and updates the index, cascading deletion to all its embedded activities
+ * and removing references to this task from all day plans.
  */
 export function DeleteTask(id: string): $CancellablePromise<void> {
     return $Call.ByID(3037921099, id);
+}
+
+/**
+ * GetActivity returns an activity by its ID.
+ */
+export function GetActivity(id: string): $CancellablePromise<markdown$0.Activity | null> {
+    return $Call.ByID(2823849866, id);
 }
 
 /**
@@ -54,14 +77,14 @@ export function GetDayPlan(date: string): $CancellablePromise<markdown$0.DayPlan
 }
 
 /**
- * GetDayTimeline returns daily timeline items (memos and task completion events) for a given date YYYY-MM-DD in local timezone.
+ * GetDayTimeline returns daily timeline items (activities, memos, and task completion events) for a given date YYYY-MM-DD in local timezone.
  */
 export function GetDayTimeline(date: string): $CancellablePromise<$models.TimelineItem[] | null> {
     return $Call.ByID(2161441604, date);
 }
 
 /**
- * GetMemo returns a memo by its ID.
+ * GetMemo returns a memo by its ID (checking legacy memos and converted activities).
  */
 export function GetMemo(id: string): $CancellablePromise<markdown$0.Memo | null> {
     return $Call.ByID(780043581, id);
@@ -110,6 +133,13 @@ export function GetVaultStatus(): $CancellablePromise<$models.VaultStatus> {
 }
 
 /**
+ * ListActivitiesByTask returns all activities of a task sorted chronologically by At.
+ */
+export function ListActivitiesByTask(taskID: string): $CancellablePromise<markdown$0.Activity[] | null> {
+    return $Call.ByID(3610475444, taskID);
+}
+
+/**
  * ListByTag returns all entities matching the specified tag.
  * For Memos, tag matching checks memo.Tags ∪ parentTask.Tags.
  */
@@ -118,7 +148,7 @@ export function ListByTag(tag: string): $CancellablePromise<markdown$0.EntityRef
 }
 
 /**
- * ListMemosByTask returns all memos associated with taskID from the vault index, oldest first.
+ * ListMemosByTask returns all memos associated with taskID, including legacy memos and converted activities.
  */
 export function ListMemosByTask(taskID: string): $CancellablePromise<(markdown$0.Memo | null)[] | null> {
     return $Call.ByID(2666858332, taskID);
@@ -183,7 +213,14 @@ export function SetTaskStatus(id: string, status: markdown$0.TaskStatus): $Cance
 }
 
 /**
- * UpdateMemo updates an existing Memo's body and tags while preserving its creation timestamp.
+ * UpdateActivity updates an existing Activity's body, tags, and note refs in its host Task or DayPlan.
+ */
+export function UpdateActivity(input: $models.UpdateActivityInput): $CancellablePromise<markdown$0.Activity | null> {
+    return $Call.ByID(1816010589, input);
+}
+
+/**
+ * UpdateMemo updates an existing Memo or Activity.
  */
 export function UpdateMemo(input: $models.UpdateMemoInput): $CancellablePromise<markdown$0.Memo | null> {
     return $Call.ByID(971500362, input);
@@ -197,7 +234,7 @@ export function UpdateNote(input: $models.UpdateNoteInput): $CancellablePromise<
 }
 
 /**
- * UpdateTask updates an existing Task, safely writes changes to Markdown, and preserves unknown frontmatter.
+ * UpdateTask updates an existing Task, safely writes changes to Markdown, and preserves unknown frontmatter and embedded activities.
  */
 export function UpdateTask(input: $models.UpdateTaskInput): $CancellablePromise<markdown$0.Task | null> {
     return $Call.ByID(12384053, input);

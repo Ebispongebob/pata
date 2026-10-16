@@ -8,6 +8,7 @@ export {
 } from "./models.js";
 
 export type {
+    Activity,
     DanglingRef,
     DayPlan,
     EntityRef,

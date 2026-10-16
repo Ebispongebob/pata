@@ -118,6 +118,10 @@ func validateTask(path string, t *Task) error {
 		}
 	}
 
+	if err := validateActivities(path, t.Activities); err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -194,6 +198,36 @@ func validateDayPlan(path string, p *DayPlan) error {
 		seen[taskID] = true
 	}
 
+	if err := validateActivities(path, p.Activities); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func validateActivities(path string, activities []Activity) error {
+	seen := make(map[string]bool, len(activities))
+	for i, act := range activities {
+		id := strings.TrimSpace(act.ID)
+		if id == "" {
+			return &ValidationError{Path: path, Field: fmt.Sprintf("activities[%d].id", i), Reason: "is required"}
+		}
+		if !strings.HasPrefix(id, "a-") || len(id) <= 2 {
+			return &ValidationError{Path: path, Field: fmt.Sprintf("activities[%d].id", i), Reason: fmt.Sprintf("must start with 'a-'; got '%s'", id)}
+		}
+		if act.At.IsZero() {
+			return &ValidationError{Path: path, Field: fmt.Sprintf("activities[%d].at", i), Reason: "is required and must be valid RFC3339 timestamp"}
+		}
+		if seen[id] {
+			return &ValidationError{Path: path, Field: fmt.Sprintf("activities[%d].id", i), Reason: fmt.Sprintf("duplicate activity ID '%s' in same entity", id)}
+		}
+		seen[id] = true
+		for j, tag := range act.Tags {
+			if strings.Contains(tag, "#") {
+				return &ValidationError{Path: path, Field: fmt.Sprintf("activities[%d].tags[%d]", i, j), Reason: fmt.Sprintf("must not contain '#'; got '%s'", tag)}
+			}
+		}
+	}
 	return nil
 }
 

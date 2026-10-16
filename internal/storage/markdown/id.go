@@ -31,7 +31,12 @@ func GenerateULID() string {
 	return ulid.MustNew(ulid.Timestamp(time.Now()), entropyPool).String()
 }
 
-// GenerateEntityID generates a stable ID with an entity type prefix, e.g. "t-01J...", "m-01J...", "n-01J...".
+// GenerateActivityID generates an activity ID with prefix "a-", e.g. "a-01j...".
+func GenerateActivityID() string {
+	return fmt.Sprintf("a-%s", strings.ToLower(GenerateULID()))
+}
+
+// GenerateEntityID generates a stable ID with an entity type prefix, e.g. "t-01J...", "m-01J...", "n-01J...", "a-01J...".
 func GenerateEntityID(entityType EntityType) string {
 	u := strings.ToLower(GenerateULID())
 	switch entityType {
@@ -41,6 +46,8 @@ func GenerateEntityID(entityType EntityType) string {
 		return fmt.Sprintf("m-%s", u)
 	case EntityTypeNote:
 		return fmt.Sprintf("n-%s", u)
+	case EntityTypeActivity:
+		return fmt.Sprintf("a-%s", u)
 	case EntityTypeDayPlan:
 		return time.Now().Format("2006-01-02")
 	default:
