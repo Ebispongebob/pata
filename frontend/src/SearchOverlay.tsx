@@ -88,8 +88,8 @@ export function SearchOverlay({
         setResults(items);
         setSelectedIndex(0);
 
-        // Preload memo task_ids for up to 5 displayed memos
-        const displayedMemos = items.filter((r) => r.type === 'memo').slice(0, 5);
+        // Preload memo/activity task_ids for up to 5 displayed records
+        const displayedMemos = items.filter((r) => r.type === 'memo' || (r.type as string) === 'activity').slice(0, 5);
         if (displayedMemos.length > 0) {
           const taskMap: Record<string, string> = {};
           await Promise.all(
@@ -125,10 +125,10 @@ export function SearchOverlay({
     };
   }, [query, isOpen]);
 
-  // Group results by type (Task -> Note -> Memo)
+  // Group results by type (Task -> Note -> Memo/Activity)
   const tasks = useMemo(() => results.filter((r) => r.type === 'task'), [results]);
   const notes = useMemo(() => results.filter((r) => r.type === 'note'), [results]);
-  const memos = useMemo(() => results.filter((r) => r.type === 'memo'), [results]);
+  const memos = useMemo(() => results.filter((r) => r.type === 'memo' || (r.type as string) === 'activity'), [results]);
 
   // Truncate displayed items to first 5 per type
   const displayedTasks = useMemo(() => tasks.slice(0, 5), [tasks]);
@@ -168,7 +168,7 @@ export function SearchOverlay({
       } else if (item.type === 'note') {
         onOpenNote(item.id);
         onClose();
-      } else if (item.type === 'memo') {
+      } else if (item.type === 'memo' || (item.type as string) === 'activity') {
         const taskId = memoTaskMap[item.id];
         if (taskId) {
           onOpenTask(taskId);

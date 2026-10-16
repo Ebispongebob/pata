@@ -16,7 +16,7 @@ import {
 } from 'lucide-react';
 import * as VaultService from '../bindings/pata/vaultservice';
 import { Task, TaskStatus, Memo } from '../bindings/pata/internal/storage/markdown/models';
-import { UpdateTaskInput, CreateMemoInput } from '../bindings/pata/models';
+import { UpdateTaskInput, CreateActivityInput } from '../bindings/pata/models';
 import { playLogoSuccess } from './logoAnimation';
 import { dedupeTags } from './quickCreate';
 import { NoteRefText, NoteRefTextarea, NoteRefMap, pruneRefs, sameRefs, useNoteRefs } from './noteRefs';
@@ -493,8 +493,8 @@ export const TaskDetailPanel = forwardRef<TaskDetailHandle, TaskDetailPanelProps
     setSubmittingMemo(true);
     setSubmitMemoError(null);
     try {
-      const input: CreateMemoInput = { body, task_id: taskId, note_refs: pruneRefs(body, newMemoRefs) };
-      await VaultService.CreateMemo(input);
+      const input: CreateActivityInput = { body, task_id: taskId, note_refs: pruneRefs(body, newMemoRefs) };
+      await VaultService.CreateActivity(input);
       playLogoSuccess();
       setNewMemoBody('');
       setNewMemoRefs({});
@@ -1137,7 +1137,7 @@ export const TaskDetailPanel = forwardRef<TaskDetailHandle, TaskDetailPanelProps
               <div className="space-y-1">
                 <h3 className="text-sm font-semibold text-stone-900 dark:text-stone-100">确认删除任务？</h3>
                 <p className="text-xs text-stone-500 leading-relaxed">
-                  任务「{task.title}」的文件将从 Vault 中永久删除。关联的 Memo 将被保留，此操作不可撤销。
+                  任务「{task.title}」的文件将从 Vault 中永久删除。任务及其活动记录将一起删除，此操作不可撤销。
                 </p>
               </div>
             </div>

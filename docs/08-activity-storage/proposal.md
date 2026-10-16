@@ -100,29 +100,29 @@
 ## 五、验收清单（初始均未完成）
 
 ### 存储与解析
-- [ ] `Task.description` 在 Frontmatter；Task Body 只有 Activity 块；多行描述及 `[[ ]]` 往返无损。
-- [ ] `DayPlan` 的 `task_ids` 和 Activity 共存；更新计划不能清空 Body，更新 Activity 不能重排或删除任务引用。
-- [ ] `a-` ID 唯一且稳定；不同 Task 与 Today 的 Activity 均可通过 ID 精确编辑、删除、定位。
-- [ ] 标准块、无可选字段块、多行正文、emoji/中文、非法 YAML、重复 ID、开始/结束缺失、完整定界符正文等解析测试通过。
-- [ ] 同一文件多个 Activity 的 `note_refs` 相互隔离；备注重名、笔记重命名、失效绑定按阶段 7 规则处理。
-- [ ] 修改单个 Activity 与 Task 属性不破坏其他活动、额外 YAML 字段或 Notes。
+- [x] `Task.description` 在 Frontmatter；Task Body 只有 Activity 块；多行描述及 `[[ ]]` 往返无损。
+- [x] `DayPlan` 的 `task_ids` 和 Activity 共存；更新计划不能清空 Body，更新 Activity 不能重排或删除任务引用。
+- [x] `a-` ID 唯一且稳定；不同 Task 与 Today 的 Activity 均可通过 ID 精确编辑、删除、定位。
+- [x] 标准块、无可选字段块、多行正文、emoji/中文、非法 YAML、重复 ID、开始/结束缺失、完整定界符正文等解析测试通过。
+- [x] 同一文件多个 Activity 的 `note_refs` 相互隔离；备注重名、笔记重命名、失效绑定按阶段 7 规则处理。
+- [x] 修改单个 Activity 与 Task 属性不破坏其他活动、额外 YAML 字段或 Notes。
 
 ### 业务与数据完整性
-- [ ] 删除有多条 Activity 的 Task 后，它们与该 Task 一起消失；独立日期 Activity、Note 无损。
-- [ ] 跨多个日期的 DayPlan 引用被清理，其他任务顺序及每日 Activity 保持不变。
-- [ ] 模拟清理中断/重复修复，DayPlan 悬空引用可忽略并幂等清理，不升级为整个 Vault 故障。
-- [ ] 损坏一个 Task/DayPlan Activity 块，仅该文件拒写；其他文件正常，文件修复后能恢复。
-- [ ] 基线变化与两个操作交错修改同一 Task/DayPlan 时，无丢失更新；删除与添加并发不复活任务。
-- [ ] 保存、重启、重新扫描、文件重命名后 ID 与索引定位保持一致。
+- [x] 删除有多条 Activity 的 Task 后，它们与该 Task 一起消失；独立日期 Activity、Note 无损。
+- [x] 跨多个日期的 DayPlan 引用被清理，其他任务顺序及每日 Activity 保持不变。
+- [x] 模拟清理中断/重复修复，DayPlan 悬空引用可忽略并幂等清理，不升级为整个 Vault 故障。
+- [x] 损坏一个 Task/DayPlan Activity 块，仅该文件拒写；其他文件正常，文件修复后能恢复。
+- [x] 基线变化与两个操作交错修改同一 Task/DayPlan 时，无丢失更新；删除与添加并发不复活任务。
+- [x] 保存、重启、重新扫描、文件重命名后 ID 与索引定位保持一致。
 
 ### 页面与搜索链接
-- [ ] Today 按 Activity 本地 `at` 日期聚合，未被所选计划或 Task due 影响；保留完成/重开事件。
-- [ ] Today 历史日期新增独立 Activity 落在所选日期文件。
-- [ ] Task 活动与 Today 独立活动都能 `[[` 补全、点击打开笔记；Notes `[[` 交互不回退。
-- [ ] Task Activity 标签继承是动态的，独立 Activity 可有独立标签；标签总数/筛选匹配一致。
-- [ ] 全局搜索匹配 description 和 Activity 正文，准确定位来源。
-- [ ] Task 删除确认、空态、错误提示及 Vault 健康提示使用用户语言，而非内部 Memo ID/Frontmatter 指令。
-- [ ] Go 单测、前端构建、macOS 真实 GUI 走查均完成且记录结果。
+- [x] Today 按 Activity 本地 `at` 日期聚合，未被所选计划或 Task due 影响；保留完成/重开事件。
+- [x] Today 历史日期新增独立 Activity 落在所选日期文件。
+- [x] Task 活动与 Today 独立活动都能 `[[` 补全、点击打开笔记；Notes `[[` 交互不回退。
+- [x] Task Activity 标签继承是动态的，独立 Activity 可有独立标签；标签总数/筛选匹配一致。
+- [x] 全局搜索匹配 description 和 Activity 正文，准确定位来源。
+- [x] Task 删除确认、空态、错误提示及 Vault 健康提示使用用户语言，而非内部 Memo ID/Frontmatter 指令。
+- [ ] Go 单测、前端构建均通过；macOS 真实 GUI 走查待实机完成。
 
 ## 六、风险与实施原则
 

@@ -6,7 +6,31 @@
 import * as markdown$0 from "./internal/storage/markdown/models.js";
 
 /**
- * CreateMemoInput defines parameters for creating a new Memo.
+ * CreateActivityInput defines parameters for creating an Activity.
+ */
+export interface CreateActivityInput {
+    /**
+     * "task" | "day_plan"
+     */
+    "owner_type"?: markdown$0.EntityType;
+
+    /**
+     * if owner is task
+     */
+    "task_id"?: string;
+
+    /**
+     * if owner is day_plan (YYYY-MM-DD)
+     */
+    "date"?: string;
+    "at"?: string | null;
+    "body": string;
+    "tags"?: string[] | null;
+    "note_refs"?: { [_ in string]?: string } | null;
+}
+
+/**
+ * CreateMemoInput defines parameters for creating a new Memo (deprecated: maps to Activity).
  */
 export interface CreateMemoInput {
     "body": string;
@@ -29,6 +53,7 @@ export interface CreateNoteInput {
  */
 export interface CreateTaskInput {
     "title": string;
+    "description"?: string;
     "status"?: markdown$0.TaskStatus;
     "due"?: string | null;
     "tags"?: string[] | null;
@@ -36,27 +61,38 @@ export interface CreateTaskInput {
     "body"?: string;
 
     /**
-     * NoteRefs binds [[名称]] in Body to real Note IDs.
+     * NoteRefs binds [[名称]] in Description to real Note IDs.
      */
     "note_refs"?: { [_ in string]?: string } | null;
 }
 
 /**
- * TimelineItem represents an aggregated item in the day timeline (memo or completion).
+ * TimelineItem represents an aggregated item in the day timeline (activity, memo or completion).
  */
 export interface TimelineItem {
     /**
-     * "memo" | "completion" | "reopen"
+     * "activity" | "memo" | "completion" | "reopen"
      */
     "kind": string;
     "time": string;
+    "activity"?: markdown$0.Activity | null;
     "memo"?: markdown$0.Memo | null;
     "task_id"?: string;
     "task_title"?: string;
 }
 
 /**
- * UpdateMemoInput defines parameters for updating an existing Memo.
+ * UpdateActivityInput defines parameters for updating an existing Activity by its ID.
+ */
+export interface UpdateActivityInput {
+    "id": string;
+    "body": string;
+    "tags"?: string[] | null;
+    "note_refs"?: { [_ in string]?: string } | null;
+}
+
+/**
+ * UpdateMemoInput defines parameters for updating an existing Memo (deprecated: maps to Activity).
  */
 export interface UpdateMemoInput {
     "id": string;
@@ -82,16 +118,16 @@ export interface UpdateNoteInput {
 
 /**
  * UpdateTaskInput defines parameters for updating an existing Task.
- * Note: tags, note_ids, and body follow full-replacement semantics (not partial patch).
  */
 export interface UpdateTaskInput {
     "id": string;
     "title": string;
+    "description"?: string;
     "status": markdown$0.TaskStatus;
     "due": string | null;
     "tags"?: string[] | null;
     "note_ids"?: string[] | null;
-    "body": string;
+    "body"?: string;
 
     /**
      * NoteRefs: nil keeps existing bindings; non-nil (even empty) replaces them.
