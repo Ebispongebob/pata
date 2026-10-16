@@ -255,10 +255,10 @@ export function NoteRefText({
           <span
             key={`file-${t.start}`}
             title="文件不存在或已移动"
-            className="inline-flex items-center gap-1 my-0.5 px-1.5 py-0.5 rounded bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 text-amber-700 dark:text-amber-400 font-sans text-xs align-baseline"
+            className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 text-amber-700 dark:text-amber-400 font-sans text-xs leading-none align-[-1px]"
           >
             <Paperclip className="w-3 h-3 shrink-0" />
-            <span>{t.title} (文件已丢失)</span>
+            <span className="leading-none">{t.title} (文件已丢失)</span>
           </span>
         );
       } else {
@@ -266,7 +266,7 @@ export function NoteRefText({
         parts.push(
           <span
             key={`file-${t.start}`}
-            className="inline-flex items-center gap-1 my-0.5 px-1.5 py-0.5 rounded bg-stone-100 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 text-stone-800 dark:text-stone-200 font-sans text-xs align-baseline"
+            className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-stone-100 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 text-stone-800 dark:text-stone-200 font-sans text-xs leading-none align-[-1px]"
           >
             <Paperclip className="w-3 h-3 text-stone-400 shrink-0" />
             <button
@@ -278,7 +278,7 @@ export function NoteRefText({
                 });
               }}
               title={`点击预览 ${t.title}`}
-              className="hover:underline text-emerald-700 dark:text-emerald-400 font-medium cursor-pointer"
+              className="hover:underline text-emerald-700 dark:text-emerald-400 font-medium cursor-pointer leading-none"
             >
               {t.title}
             </button>
@@ -291,7 +291,7 @@ export function NoteRefText({
                 });
               }}
               title="在 Finder 中显示"
-              className="p-0.5 text-stone-400 hover:text-stone-600 dark:hover:text-stone-300 rounded cursor-pointer"
+              className="p-0.5 text-stone-400 hover:text-stone-600 dark:hover:text-stone-300 rounded cursor-pointer leading-none inline-flex items-center"
             >
               <ExternalLink className="w-2.5 h-2.5" />
             </button>
