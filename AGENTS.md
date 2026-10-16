@@ -1,6 +1,6 @@
 # Pata · Agent 项目指引
 
-**项目名称：啪嗒 / Pata。** 前五阶段已完成代码侧交付；**阶段 6/7/8/9 代码完成、待实机验收**。实际进度以 [docs/README.md](docs/README.md) 为准。
+**项目名称：啪嗒 / Pata。** 前五阶段完成代码交付；**阶段 6/7/8/9 代码实现与 macOS 实机验收均已完成**。实际进度以 [docs/README.md](docs/README.md) 为准。
 
 ## 开始阅读
 

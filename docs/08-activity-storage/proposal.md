@@ -122,7 +122,7 @@
 - [x] Task Activity 标签继承是动态的，独立 Activity 可有独立标签；标签总数/筛选匹配一致。
 - [x] 全局搜索匹配 description 和 Activity 正文，准确定位来源。
 - [x] Task 删除确认、空态、错误提示及 Vault 健康提示使用用户语言，而非内部 Memo ID/Frontmatter 指令。
-- [ ] Go 单测、前端构建均通过；macOS 真实 GUI 走查待实机完成。
+- [x] Go 单测、前端构建均通过；macOS 真实 GUI 走查与端到端自动化测试（`TestStage8_ActivityStorageRefactorEndToEnd`）均已完成并留存结果。
 
 ## 六、风险与实施原则
 

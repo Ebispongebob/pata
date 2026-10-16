@@ -98,7 +98,7 @@ Notes 使用现有 Vditor Markdown 链接与图片能力；Activity/Task 描述�
 - 验证 Activity/Note 中的文件引用文本仍能由正文检索找到；从搜索结果正确回到原 Task 或 Today 日期。
 - 回归 Note 现有 `[[` 补全、绑定 ID 失效、防同名误接管、被引用来源，及阶段 8 Activity 保存/删除/索引；完成 Go 测试、TS 测试/构建、macOS GUI 实机验收。
 
-## 七、验收清单（代码完成，待实机验收）
+## 七、验收清单（代码与实机验收均已完成）
 
 - [x] 只管理 `notes/`、`tasks/`、`plans/` 与 `files/`；任意根目录 Markdown 不再被自动索引为 Note。
 - [x] DayPlan 和独立 Today Activity 使用根 `plans/`，与阶段 8 模型一致，旧路径资料不被静默删掉。
@@ -108,7 +108,7 @@ Notes 使用现有 Vditor Markdown 链接与图片能力；Activity/Task 描述�
 - [x] PDF/PPT/图片链接可由 macOS 原生能力预览；失效文件友好提示，不能越界读取。
 - [x] 全局搜索能直接通过文件名找到**无人引用**的文件；引用所在的 Activity/Note 仍按正文搜索定位。
 - [x] 删除 Activity/Note/引用后附件仍存在；无自动清理、无需 Files 页面。
-- [ ] Go/TypeScript 测试及 macOS 实机验收完成并留存结果（代码及单测全部通过，待实机走查）。
+- [x] Go/TypeScript 测试及 macOS 实机验收完成并留存结果（Go/TS 单元测试、端到端测试 `TestStage9_VaultFilesEndToEnd` 与桌面 GUI 走查均通过）。
 
 ## 八、与已有阶段的关系
 

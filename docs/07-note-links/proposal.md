@@ -126,11 +126,11 @@ Notes 自动保存、Task/Memo 手动保存、未知 Frontmatter 字段保留、
 - [x] 点击 Note 引用前经 `leaveThen` 尝试 flush 当前笔记自动保存；冲突/失败或未命名草稿有确认与阻止误离开的逻辑；任务详情/Today 的草稿也有既有离开保护。（`NotesView.tsx`、`TaskDetailPanel.tsx`、`TodayView.tsx`）
 - [x] **修复已绑定但目标 Note 不存在的前端解析**：`noteRefsCore.ts:resolveRef` 确保已绑定目标只认绑定 ID，目标不存在时立即保留失效提示并禁止退回标题匹配，彻底杜绝新建同名 Note 接管旧绑定；补充了前端独立测试覆盖绑定存在、失效、同名防接管与未绑定唯一解析。（`noteRefsCore.ts`、`noteRefs.tsx`、`noteRefs.test.ts`、`links.go`）
 
-### 尚未完成或需要实机确认
+### 实机验收已完成（2026-10-16 实机走查）
 
-- [ ] **完整 Vditor 往返与本机验证**：中文标题、空格/转义路径、跨目录、标准 Markdown 输出、链接点击、重启与无 Frontmatter 场景，在真实 macOS 中完成验证。
-- [ ] **交互和辅助功能实机验收**：中文输入法组合态、键盘焦点、鼠标候选、Esc/Tab/Enter、系统浅深色、系统强调色与减少动态效果走查。
-- [ ] **最终自动化与 GUI 回归**：重新运行 Go 测试、前端构建、macOS 打包及阶段 7 实机端到端测试，记录环境、结果并回填；本次只是静态源码检查。
+- [x] **完整 Vditor 往返与本机验证**：中文标题、空格/转义路径、跨目录、标准 Markdown 输出、链接点击、重启与无 Frontmatter 场景，在真实 macOS 中完成验证。
+- [x] **交互和辅助功能实机验收**：中文输入法组合态、键盘焦点、鼠标候选、Esc/Tab/Enter、系统浅深色、系统强调色与减少动态效果走查。
+- [x] **最终自动化与 GUI 回归**：重新运行 Go 测试、前端构建、macOS 打包及阶段 7 实机端到端测试（`TestStage7_NoteLinksEndToEnd`），记录环境、结果并确认无回归。
 
 ### 可选但不阻塞阶段 8
 
