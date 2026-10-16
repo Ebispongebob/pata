@@ -540,36 +540,6 @@ export default function App() {
 
       {/* Main Content Area */}
       <main className="flex-1 flex flex-col min-w-0 overflow-hidden rounded-2xl border border-stone-200/70 dark:border-stone-800/70 shadow-xs bg-stone-50 dark:bg-stone-900 mt-2 mr-2 mb-2">
-        {/* Top Header / Draggable Toolbar: 仅在标签视图展示，Today / Tasks / Notes 主视图已移除顶部冗余标题 */}
-        {activeNav === 'tag' && (
-          <header className="h-12 border-b border-stone-200 dark:border-stone-800 flex items-center justify-between px-4 drag-region select-none shrink-0">
-            <div className="flex items-center space-x-3">
-              <h1 className="text-sm font-semibold text-stone-800 dark:text-stone-200">
-                #{selectedTag || '标签视图'}
-              </h1>
-            </div>
-
-            <div className="flex items-center space-x-2 no-drag-region">
-              {hasHealthIssues && (
-                <button
-                  onClick={() => {
-                    healthTriggerRef.current = document.activeElement as HTMLElement | null;
-                    setShowHealthModal(true);
-                  }}
-                  className="flex items-center space-x-1.5 px-2.5 py-1 rounded-md text-xs font-medium bg-amber-100 dark:bg-amber-950/70 text-amber-900 dark:text-amber-200 border border-amber-300 dark:border-amber-800/80 hover:bg-amber-200/80 dark:hover:bg-amber-900/60 transition cursor-pointer"
-                  title="Vault 健康异常提示"
-                >
-                  <AlertTriangle className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 shrink-0" />
-                  <span>
-                    {parseErrorCount > 0 && `${parseErrorCount} 个文件未识别`}
-                    {parseErrorCount > 0 && danglingRefCount > 0 && ' · '}
-                    {danglingRefCount > 0 && `${danglingRefCount} 个引用悬空`}
-                  </span>
-                </button>
-              )}
-            </div>
-          </header>
-        )}
 
         {/* Content Body */}
         <div
