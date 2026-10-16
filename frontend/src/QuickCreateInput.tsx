@@ -160,9 +160,12 @@ export function QuickCreateInput({ placeholder, submitLabel, tagNames, onSubmit,
         </div>
         <button
           type="button"
+          onMouseDown={(e) => {
+            e.preventDefault();
+          }}
           onClick={() => void submit()}
           disabled={busy || disabled || !value.trim()}
-          className="flex items-center space-x-1 px-3 py-2 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-medium transition disabled:opacity-40 shadow-2xs shrink-0"
+          className="flex items-center space-x-1 px-3 py-2 h-[34px] rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-medium transition disabled:opacity-40 shadow-2xs shrink-0"
         >
           <Plus className="w-3.5 h-3.5" />
           <span>{busy ? '创建中' : submitLabel}</span>

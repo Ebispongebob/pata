@@ -814,14 +814,17 @@ export function TodayView({
                     placeholder="记录一句话（输入 [[ 引用笔记，⌘+Enter 发送）…"
                     rows={1}
                     disabled={creatingActivity}
-                    className="w-full px-3 py-2 text-xs rounded-lg border border-stone-200 dark:border-stone-800 bg-white dark:bg-stone-950 text-stone-900 dark:text-stone-100 placeholder-stone-400 quick-entry shadow-2xs resize-none max-h-32 leading-4"
+                    className="block w-full px-3 py-2 text-xs rounded-lg border border-stone-200 dark:border-stone-800 bg-white dark:bg-stone-950 text-stone-900 dark:text-stone-100 placeholder-stone-400 quick-entry shadow-2xs resize-none max-h-32 leading-4"
                   />
                 </div>
                 <button
                   type="button"
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                  }}
                   onClick={() => void handleCreateQuickActivity()}
                   disabled={creatingActivity || !quickActivityBody.trim()}
-                  className="flex items-center space-x-1 px-3 py-2 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-medium transition disabled:opacity-40 shadow-2xs shrink-0"
+                  className="flex items-center space-x-1 px-3 py-2 h-[34px] rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-medium transition disabled:opacity-40 shadow-2xs shrink-0"
                   title="发送 (⌘+Enter)"
                 >
                   <Send className="w-3.5 h-3.5" />
