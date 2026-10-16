@@ -17,6 +17,10 @@ type EntityRef struct {
 	Title     string     `json:"title,omitempty"`
 	Path      string     `json:"path"`
 	Inherited bool       `json:"inherited,omitempty"` // true if matched via parent task tag
+	Time      time.Time  `json:"time"`
+	Status    TaskStatus `json:"status,omitempty"`
+	Snippet   string     `json:"snippet,omitempty"`
+	TaskID    string     `json:"task_id,omitempty"`
 }
 
 // DanglingRef represents an explainable degraded reference to a missing entity.
@@ -325,11 +329,18 @@ func (idx *MemoryIndex) FindByTag(tag string) []EntityRef {
 	// Search Tasks
 	for id, t := range idx.tasks {
 		if hasTag(t.Tags, targetTag) {
+			tTime := t.UpdatedAt
+			if tTime.IsZero() {
+				tTime = t.CreatedAt
+			}
 			results = append(results, EntityRef{
-				Type:  EntityTypeTask,
-				ID:    id,
-				Title: t.Title,
-				Path:  idx.idToFile[id],
+				Type:    EntityTypeTask,
+				ID:      id,
+				Title:   t.Title,
+				Path:    idx.idToFile[id],
+				Time:    tTime,
+				Status:  t.Status,
+				Snippet: t.Description,
 			})
 		}
 	}
@@ -337,11 +348,21 @@ func (idx *MemoryIndex) FindByTag(tag string) []EntityRef {
 	// Search Notes
 	for id, n := range idx.notes {
 		if hasTag(n.Tags, targetTag) {
+			nTime := n.UpdatedAt
+			if nTime.IsZero() {
+				nTime = n.CreatedAt
+			}
+			snippet := strings.TrimSpace(n.Body)
+			if len(snippet) > 200 {
+				snippet = snippet[:200]
+			}
 			results = append(results, EntityRef{
-				Type:  EntityTypeNote,
-				ID:    id,
-				Title: n.Title,
-				Path:  idx.idToFile[id],
+				Type:    EntityTypeNote,
+				ID:      id,
+				Title:   n.Title,
+				Path:    idx.idToFile[id],
+				Time:    nTime,
+				Snippet: snippet,
 			})
 		}
 	}
@@ -352,10 +373,13 @@ func (idx *MemoryIndex) FindByTag(tag string) []EntityRef {
 			ownMatch := hasTag(act.Tags, targetTag)
 			if ownMatch {
 				results = append(results, EntityRef{
-					Type:  EntityTypeActivity,
-					ID:    act.ID,
-					Title: t.Title,
-					Path:  idx.idToFile[t.ID],
+					Type:    EntityTypeActivity,
+					ID:      act.ID,
+					Title:   t.Title,
+					Path:    idx.idToFile[t.ID],
+					Time:    act.At,
+					Snippet: act.Body,
+					TaskID:  t.ID,
 				})
 			} else if hasTag(t.Tags, targetTag) {
 				// Inherited from parent task
@@ -365,6 +389,9 @@ func (idx *MemoryIndex) FindByTag(tag string) []EntityRef {
 					Title:     t.Title,
 					Path:      idx.idToFile[t.ID],
 					Inherited: true,
+					Time:      act.At,
+					Snippet:   act.Body,
+					TaskID:    t.ID,
 				})
 			}
 		}
@@ -373,10 +400,12 @@ func (idx *MemoryIndex) FindByTag(tag string) []EntityRef {
 		for _, act := range p.Activities {
 			if hasTag(act.Tags, targetTag) {
 				results = append(results, EntityRef{
-					Type:  EntityTypeActivity,
-					ID:    act.ID,
-					Title: p.Date,
-					Path:  idx.idToFile[p.Date],
+					Type:    EntityTypeActivity,
+					ID:      act.ID,
+					Title:   p.Date,
+					Path:    idx.idToFile[p.Date],
+					Time:    act.At,
+					Snippet: act.Body,
 				})
 			}
 		}

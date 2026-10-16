@@ -108,9 +108,10 @@ export default function App() {
   };
 
   // 从任务详情打开笔记时记录来源，笔记页「返回」回到该任务
-  const [noteOrigin, setNoteOrigin] = useState<{ nav: 'today' | 'tasks'; taskId: string } | null>(null);
+  const [noteOrigin, setNoteOrigin] = useState<{ nav: 'today' | 'tasks' | 'tag'; taskId: string } | null>(null);
   const [todayTaskId, setTodayTaskId] = useState<string | null>(null);
   const [todayDate, setTodayDate] = useState<string | null>(null);
+  const [tagTaskId, setTagTaskId] = useState<string | null>(null);
 
   const handleOpenTodayDate = (date: string) => {
     void guarded(() => {
@@ -122,7 +123,7 @@ export default function App() {
 
   const handleOpenNote = (noteID: string, fromTaskId?: string) => {
     void guarded(() => {
-      setNoteOrigin(fromTaskId && (activeNav === 'today' || activeNav === 'tasks') ? { nav: activeNav, taskId: fromTaskId } : null);
+      setNoteOrigin(fromTaskId && (activeNav === 'today' || activeNav === 'tasks' || activeNav === 'tag') ? { nav: activeNav, taskId: fromTaskId } : null);
       setActiveNav('notes');
       setFocusNoteId(noteID);
     });
@@ -131,7 +132,8 @@ export default function App() {
     if (!noteOrigin) return;
     setActiveNav(noteOrigin.nav);
     if (noteOrigin.nav === 'tasks') setFocusTaskId(noteOrigin.taskId);
-    else setTodayTaskId(noteOrigin.taskId);
+    else if (noteOrigin.nav === 'today') setTodayTaskId(noteOrigin.taskId);
+    else if (noteOrigin.nav === 'tag') setTagTaskId(noteOrigin.taskId);
     setNoteOrigin(null);
   };
 
@@ -544,7 +546,7 @@ export default function App() {
         {/* Content Body */}
         <div
           className={
-            activeNav === 'today' || activeNav === 'tasks' || (activeNav === 'notes' && isEditingNote)
+            activeNav === 'today' || activeNav === 'tasks' || activeNav === 'tag' || (activeNav === 'notes' && isEditingNote)
               ? 'flex-1 min-h-0 overflow-hidden' // 三栏或编辑页：内部自适应高度
               : 'flex-1 overflow-y-auto p-6'
           }
@@ -596,8 +598,12 @@ export default function App() {
           {activeNav === 'tag' && (
             <TagView
               selectedTag={selectedTag}
-              onOpenTask={handleOpenTask}
               onOpenNote={handleOpenNote}
+              initialTaskId={tagTaskId}
+              onInitialTaskConsumed={() => setTagTaskId(null)}
+              tagNames={tagNames}
+              onVaultDataChanged={refreshVault}
+              leaveGuardRef={leaveGuardRef}
             />
           )}
         </div>

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Events } from '@wailsio/runtime';
 import {
   Hash,
@@ -11,39 +11,76 @@ import {
   ExternalLink,
 } from 'lucide-react';
 import * as VaultService from '../bindings/pata/vaultservice';
-import { EntityRef, Activity } from '../bindings/pata/internal/storage/markdown/models';
+import { EntityRef } from '../bindings/pata/internal/storage/markdown/models';
+import { DetailSplit, useDetailOrigin } from './DetailSplit';
+import { TaskDetailPanel, TaskDetailHandle } from './TaskDetailPanel';
 
 interface TagViewProps {
   selectedTag: string | null;
-  onOpenTask: (taskId: string) => void;
-  onOpenNote: (noteId: string) => void;
+  onOpenNote: (noteId: string, fromTaskId?: string) => void;
+  initialTaskId?: string | null;
+  onInitialTaskConsumed?: () => void;
+  tagNames: string[];
+  onVaultDataChanged: () => void;
+  leaveGuardRef: React.MutableRefObject<(() => Promise<boolean>) | null>;
 }
 
-function formatActivityTime(isoString?: string): string {
+function formatItemTime(isoString?: string): string {
   if (!isoString) return '';
   try {
     const d = new Date(isoString);
     if (isNaN(d.getTime())) return '';
+    const now = new Date();
     const pad = (n: number) => n.toString().padStart(2, '0');
-    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    const isToday =
+      d.getFullYear() === now.getFullYear() &&
+      d.getMonth() === now.getMonth() &&
+      d.getDate() === now.getDate();
+    const timeStr = `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    if (isToday) {
+      return `今天 ${timeStr}`;
+    }
+    const isThisYear = d.getFullYear() === now.getFullYear();
+    const dateStr = isThisYear
+      ? `${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+      : `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+    return `${dateStr} ${timeStr}`;
   } catch {
     return '';
   }
 }
 
-export function TagView({ selectedTag, onOpenTask, onOpenNote }: TagViewProps) {
+export function TagView({
+  selectedTag,
+  onOpenNote,
+  initialTaskId,
+  onInitialTaskConsumed,
+  tagNames,
+  onVaultDataChanged,
+  leaveGuardRef,
+}: TagViewProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [items, setItems] = useState<EntityRef[]>([]);
-  const [activities, setActivities] = useState<Record<string, Activity>>({});
+  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
+
+  const panelRef = useRef<TaskDetailHandle>(null);
+  const origin = useDetailOrigin();
   const seqRef = useRef(0);
+
+  // Consume initialTaskId if passed (e.g. when returning from a note)
+  useEffect(() => {
+    if (initialTaskId) {
+      setSelectedTaskId(initialTaskId);
+      onInitialTaskConsumed?.();
+    }
+  }, [initialTaskId, onInitialTaskConsumed]);
 
   const loadTagData = useCallback(async (tag: string | null) => {
     const seq = ++seqRef.current;
 
     if (!tag || !tag.trim()) {
       setItems([]);
-      setActivities({});
       return;
     }
 
@@ -55,28 +92,6 @@ export function TagView({ selectedTag, onOpenTask, onOpenNote }: TagViewProps) {
 
       const refs = (rawRefs || []).filter((r): r is EntityRef => r !== null);
       setItems(refs);
-
-      // Fetch activity content in parallel
-      const activityRefs = refs.filter((r) => r.type === 'activity');
-      if (activityRefs.length > 0) {
-        const fetchedActivities: Record<string, Activity> = {};
-        await Promise.all(
-          activityRefs.map(async (ar) => {
-            try {
-              const act = await VaultService.GetActivity(ar.id);
-              if (act) {
-                fetchedActivities[ar.id] = act;
-              }
-            } catch (err) {
-              console.warn(`Failed to fetch activity details for ${ar.id}:`, err);
-            }
-          })
-        );
-        if (seq !== seqRef.current) return;
-        setActivities(fetchedActivities);
-      } else {
-        setActivities({});
-      }
     } catch (err: any) {
       if (seq !== seqRef.current) return;
       console.error('Failed to load entities for tag:', err);
@@ -106,10 +121,58 @@ export function TagView({ selectedTag, onOpenTask, onOpenNote }: TagViewProps) {
     };
   }, [selectedTag, loadTagData]);
 
-  // Group items by type: Task -> Note -> Activity (ui.md §05 order)
-  const taskItems = useMemo(() => items.filter((it) => it.type === 'task'), [items]);
-  const noteItems = useMemo(() => items.filter((it) => it.type === 'note'), [items]);
-  const activityItems = useMemo(() => items.filter((it) => it.type === 'activity'), [items]);
+  // Panel management
+  const closePanel = useCallback(async () => {
+    if (panelRef.current && !(await panelRef.current.confirmLeave())) return;
+    setSelectedTaskId(null);
+    origin.restore();
+  }, [origin]);
+
+  const openTask = useCallback(
+    async (id: string) => {
+      if (id === selectedTaskId) return;
+      if (panelRef.current && !(await panelRef.current.confirmLeave())) return;
+      origin.capture();
+      setSelectedTaskId(id);
+    },
+    [selectedTaskId, origin]
+  );
+
+  const refreshAll = useCallback(() => {
+    void loadTagData(selectedTag);
+    onVaultDataChanged();
+  }, [loadTagData, selectedTag, onVaultDataChanged]);
+
+  // Protect unsaved draft in panel before leaving
+  useEffect(() => {
+    leaveGuardRef.current = async () => {
+      if (!selectedTaskId) return true;
+      if (!panelRef.current) return true;
+      return panelRef.current.confirmLeave();
+    };
+    return () => {
+      leaveGuardRef.current = null;
+    };
+  }, [selectedTaskId, leaveGuardRef]);
+
+  // Category counts
+  const taskCount = useMemo(() => items.filter((it) => it.type === 'task').length, [items]);
+  const noteCount = useMemo(() => items.filter((it) => it.type === 'note').length, [items]);
+  const activityCount = useMemo(() => items.filter((it) => it.type === 'activity').length, [items]);
+
+  const panel = selectedTaskId ? (
+    <TaskDetailPanel
+      key={selectedTaskId}
+      ref={panelRef}
+      taskId={selectedTaskId}
+      closeLabel="关闭详情"
+      tagNames={tagNames}
+      onClose={closePanel}
+      onChanged={refreshAll}
+      onDeleted={closePanel}
+      onOpenNote={(noteId) => onOpenNote(noteId, selectedTaskId)}
+    />
+  ) : null;
 
   if (!selectedTag) {
     return (
@@ -139,155 +202,195 @@ export function TagView({ selectedTag, onOpenTask, onOpenNote }: TagViewProps) {
   }
 
   return (
-    <div className="max-w-[900px] mx-auto space-y-6 pb-16">
-      {/* View Header Info */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 border-b border-stone-200/80 dark:border-stone-800 pb-3">
-        <div className="flex items-center space-x-2">
-          <div className="flex items-center space-x-1.5 px-2.5 py-1 rounded-md bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-200/60 dark:border-emerald-800/60 text-emerald-800 dark:text-emerald-300 font-medium text-sm">
-            <Hash className="w-4 h-4" />
-            <span>{selectedTag}</span>
+    <DetailSplit panel={panel}>
+      <div className="space-y-4">
+        {/* Header with Tag Chip & Counts */}
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 border-b border-stone-200/80 dark:border-stone-800 pb-3">
+          <div className="flex items-center space-x-2">
+            <div className="flex items-center space-x-1.5 px-2.5 py-1 rounded-md bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-200/60 dark:border-emerald-800/60 text-emerald-800 dark:text-emerald-300 font-medium text-sm">
+              <Hash className="w-4 h-4" />
+              <span>{selectedTag}</span>
+            </div>
+            <span className="text-xs text-stone-400">
+              共 {items.length} 项（任务 {taskCount} · 笔记 {noteCount} · 记录 {activityCount}）
+            </span>
           </div>
-          <span className="text-xs text-stone-400">
-            共 {items.length} 项（任务 {taskItems.length} · 笔记 {noteItems.length} · 记录 {activityItems.length}）
-          </span>
         </div>
-      </div>
 
-      {/* Global empty state when tag has 0 items */}
-      {items.length === 0 ? (
-        <div className="py-16 flex flex-col items-center justify-center text-stone-400 text-xs bg-white dark:bg-stone-900/60 rounded-xl border border-stone-200/80 dark:border-stone-800">
-          <Hash className="w-8 h-8 mb-2 opacity-30 text-stone-400" />
-          <p>未找到包含标签 #{selectedTag} 的任务、笔记或记录</p>
-        </div>
-      ) : (
-        <div className="space-y-6">
-          {/* Section 1: Tasks */}
-          <section className="space-y-2">
-            <div className="flex items-center space-x-2 text-xs font-semibold text-stone-500 uppercase tracking-wider px-1">
-              <CheckSquare className="w-3.5 h-3.5" />
-              <span>任务 · {taskItems.length}</span>
-            </div>
-            {taskItems.length === 0 ? (
-              <div className="text-xs text-stone-400 py-3 px-4 rounded-lg border border-dashed border-stone-200 dark:border-stone-800 text-center">
-                无相关任务
-              </div>
-            ) : (
-              <div className="space-y-1.5">
-                {taskItems.map((task) => (
-                  <button
-                    key={task.id}
-                    onClick={() => onOpenTask(task.id)}
-                    className="w-full flex items-center justify-between p-3 rounded-lg border border-stone-200/80 dark:border-stone-800 bg-white dark:bg-stone-900/90 hover:border-emerald-500/50 hover:bg-stone-50/80 dark:hover:bg-stone-800/50 transition cursor-pointer min-h-[36px] group text-left"
-                    title={`打开任务: ${task.title || task.id}`}
+        {/* Chronological Timeline Feed */}
+        {items.length === 0 ? (
+          <div className="py-16 flex flex-col items-center justify-center text-stone-400 text-xs bg-white dark:bg-stone-900/60 rounded-xl border border-stone-200/80 dark:border-stone-800">
+            <Hash className="w-8 h-8 mb-2 opacity-30 text-stone-400" />
+            <p>未找到包含标签 #{selectedTag} 的任务、笔记或记录</p>
+          </div>
+        ) : (
+          <div className="space-y-2.5">
+            {items.map((item) => {
+              if (item.type === 'task') {
+                const isSelected = selectedTaskId === item.id;
+                return (
+                  <div
+                    key={`task-${item.id}`}
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => void openTask(item.id)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        void openTask(item.id);
+                      }
+                    }}
+                    className={`w-full p-3.5 rounded-xl border transition text-left cursor-pointer group bg-white dark:bg-stone-900/90 ${
+                      isSelected
+                        ? 'border-emerald-500 ring-1 ring-emerald-500/30'
+                        : 'border-stone-200/80 dark:border-stone-800 hover:border-emerald-500/50 hover:bg-stone-50/80 dark:hover:bg-stone-800/50'
+                    }`}
+                    title={`在右栏查看任务: ${item.title || item.id}`}
                   >
-                    <div className="flex items-center space-x-2.5 truncate mr-3">
-                      <CheckSquare className="w-4 h-4 text-emerald-600 dark:text-emerald-500 shrink-0" />
-                      <span className="text-xs font-medium text-stone-800 dark:text-stone-200 truncate group-hover:text-emerald-700 dark:group-hover:text-emerald-400">
-                        {task.title || task.id}
-                      </span>
-                    </div>
-                    <span className="text-[11px] text-stone-400 font-mono flex items-center space-x-1 shrink-0">
-                      <span>查看任务</span>
-                      <ChevronRight className="w-3.5 h-3.5" />
-                    </span>
-                  </button>
-                ))}
-              </div>
-            )}
-          </section>
-
-          {/* Section 2: Notes */}
-          <section className="space-y-2">
-            <div className="flex items-center space-x-2 text-xs font-semibold text-stone-500 uppercase tracking-wider px-1">
-              <FileText className="w-3.5 h-3.5" />
-              <span>笔记 · {noteItems.length}</span>
-            </div>
-            {noteItems.length === 0 ? (
-              <div className="text-xs text-stone-400 py-3 px-4 rounded-lg border border-dashed border-stone-200 dark:border-stone-800 text-center">
-                无相关笔记
-              </div>
-            ) : (
-              <div className="space-y-1.5">
-                {noteItems.map((note) => (
-                  <button
-                    key={note.id}
-                    onClick={() => onOpenNote(note.id)}
-                    className="w-full flex items-center justify-between p-3 rounded-lg border border-stone-200/80 dark:border-stone-800 bg-white dark:bg-stone-900/90 hover:border-blue-500/50 hover:bg-stone-50/80 dark:hover:bg-stone-800/50 transition cursor-pointer min-h-[36px] group text-left"
-                    title={`打开笔记: ${note.title || note.id}`}
-                  >
-                    <div className="flex items-center space-x-2.5 truncate mr-3">
-                      <FileText className="w-4 h-4 text-blue-600 dark:text-blue-500 shrink-0" />
-                      <span className="text-xs font-medium text-stone-800 dark:text-stone-200 truncate group-hover:text-blue-700 dark:group-hover:text-blue-400">
-                        {note.title || note.id}
-                      </span>
-                    </div>
-                    <span className="text-[11px] text-stone-400 font-mono flex items-center space-x-1 shrink-0">
-                      <span>查看笔记</span>
-                      <ChevronRight className="w-3.5 h-3.5" />
-                    </span>
-                  </button>
-                ))}
-              </div>
-            )}
-          </section>
-
-          {/* Section 3: Activities */}
-          <section className="space-y-2">
-            <div className="flex items-center space-x-2 text-xs font-semibold text-stone-500 uppercase tracking-wider px-1">
-              <MessageSquare className="w-3.5 h-3.5" />
-              <span>记录 · {activityItems.length}</span>
-            </div>
-            {activityItems.length === 0 ? (
-              <div className="text-xs text-stone-400 py-3 px-4 rounded-lg border border-dashed border-stone-200 dark:border-stone-800 text-center">
-                无相关记录
-              </div>
-            ) : (
-              <div className="space-y-2">
-                {activityItems.map((actRef) => {
-                  const actData = activities[actRef.id];
-                  const actText = actData?.body?.trim() || '（无正文内容）';
-
-                  return (
-                    <div
-                      key={actRef.id}
-                      className="p-3.5 rounded-lg border border-stone-200/80 dark:border-stone-800 bg-white dark:bg-stone-900/90 space-y-2"
-                    >
-                      <div className="flex items-center justify-between text-xs">
-                        <div className="flex items-center space-x-2">
-                          <MessageSquare className="w-3.5 h-3.5 text-stone-400 shrink-0" />
-                          <span className="text-[11px] text-stone-400 font-mono">
-                            {formatActivityTime(actData?.at)}
+                    <div className="flex items-center justify-between text-xs mb-1.5">
+                      <div className="flex items-center space-x-1.5">
+                        <span className="inline-flex items-center space-x-1 text-[10px] px-1.5 py-0.5 rounded bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 border border-emerald-200/60 dark:border-emerald-800/60 font-medium">
+                          <CheckSquare className="w-3 h-3" />
+                          <span>任务</span>
+                        </span>
+                        {item.status === 'done' && (
+                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-stone-100 dark:bg-stone-800 text-stone-500 font-medium">
+                            已完成
                           </span>
-                          {actRef.inherited && (
-                            <span className="inline-flex items-center text-[10px] px-1.5 py-0.5 rounded bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-400 border border-amber-200/60 dark:border-amber-800/60 font-medium">
-                              经父任务
-                            </span>
-                          )}
-                        </div>
-
-                        {actData?.task_id && (
-                          <button
-                            onClick={() => onOpenTask(actData.task_id!)}
-                            className="text-[11px] text-stone-500 hover:text-emerald-700 dark:hover:text-emerald-400 flex items-center space-x-1 transition min-h-[32px] px-1 cursor-pointer"
-                            title="前往对应任务"
-                          >
-                            <span>前往任务</span>
-                            <ExternalLink className="w-3 h-3" />
-                          </button>
                         )}
                       </div>
-
-                      <p className="text-xs text-stone-700 dark:text-stone-300 leading-relaxed whitespace-pre-wrap line-clamp-3">
-                        {actText}
-                      </p>
+                      <span className="text-[11px] text-stone-400 font-mono">
+                        {formatItemTime(item.time)}
+                      </span>
                     </div>
-                  );
-                })}
-              </div>
-            )}
-          </section>
-        </div>
-      )}
-    </div>
+
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="min-w-0 flex-1">
+                        <div className="text-xs font-medium text-stone-800 dark:text-stone-200 group-hover:text-emerald-700 dark:group-hover:text-emerald-400 truncate">
+                          {item.title || item.id}
+                        </div>
+                        {item.snippet && (
+                          <p className="text-[11px] text-stone-500 dark:text-stone-400 line-clamp-2 mt-1">
+                            {item.snippet}
+                          </p>
+                        )}
+                      </div>
+                      <span className="text-[10px] text-stone-400 flex items-center space-x-0.5 shrink-0 group-hover:text-emerald-600 transition">
+                        <span>查看任务</span>
+                        <ChevronRight className="w-3.5 h-3.5" />
+                      </span>
+                    </div>
+                  </div>
+                );
+              }
+
+              if (item.type === 'note') {
+                return (
+                  <div
+                    key={`note-${item.id}`}
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => onOpenNote(item.id)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        onOpenNote(item.id);
+                      }
+                    }}
+                    className="w-full p-3.5 rounded-xl border border-stone-200/80 dark:border-stone-800 bg-white dark:bg-stone-900/90 hover:border-blue-500/50 hover:bg-stone-50/80 dark:hover:bg-stone-800/50 transition text-left cursor-pointer group"
+                    title={`打开笔记: ${item.title || item.id}`}
+                  >
+                    <div className="flex items-center justify-between text-xs mb-1.5">
+                      <div className="flex items-center space-x-1.5">
+                        <span className="inline-flex items-center space-x-1 text-[10px] px-1.5 py-0.5 rounded bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-400 border border-blue-200/60 dark:border-blue-800/60 font-medium">
+                          <FileText className="w-3 h-3" />
+                          <span>笔记</span>
+                        </span>
+                      </div>
+                      <span className="text-[11px] text-stone-400 font-mono">
+                        {formatItemTime(item.time)}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="min-w-0 flex-1">
+                        <div className="text-xs font-medium text-stone-800 dark:text-stone-200 group-hover:text-blue-700 dark:group-hover:text-blue-400 truncate">
+                          {item.title || item.id}
+                        </div>
+                        {item.snippet && (
+                          <p className="text-[11px] text-stone-500 dark:text-stone-400 line-clamp-2 mt-1">
+                            {item.snippet}
+                          </p>
+                        )}
+                      </div>
+                      <span className="text-[10px] text-stone-400 flex items-center space-x-0.5 shrink-0 group-hover:text-blue-600 transition">
+                        <span>打开笔记</span>
+                        <ChevronRight className="w-3.5 h-3.5" />
+                      </span>
+                    </div>
+                  </div>
+                );
+              }
+
+              // Activity
+              const isTaskSelected = !!item.task_id && selectedTaskId === item.task_id;
+              return (
+                <div
+                  key={`activity-${item.id}`}
+                  className={`w-full p-3.5 rounded-xl border transition text-left bg-white dark:bg-stone-900/90 space-y-2 ${
+                    isTaskSelected
+                      ? 'border-emerald-500/70 ring-1 ring-emerald-500/20'
+                      : 'border-stone-200/80 dark:border-stone-800'
+                  }`}
+                >
+                  <div className="flex items-center justify-between text-xs">
+                    <div className="flex items-center space-x-2 truncate mr-2">
+                      <span className="inline-flex items-center space-x-1 text-[10px] px-1.5 py-0.5 rounded bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-400 border border-amber-200/60 dark:border-amber-800/60 font-medium shrink-0">
+                        <MessageSquare className="w-3 h-3" />
+                        <span>记录</span>
+                      </span>
+                      {item.inherited && (
+                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-100/70 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-900 font-medium shrink-0">
+                          经父任务
+                        </span>
+                      )}
+                      {item.task_id ? (
+                        <span className="text-[11px] text-stone-500 dark:text-stone-400 truncate">
+                          所属任务: {item.title}
+                        </span>
+                      ) : (
+                        <span className="text-[11px] text-stone-500 dark:text-stone-400 truncate">
+                          今日计划: {item.title}
+                        </span>
+                      )}
+                    </div>
+                    <span className="text-[11px] text-stone-400 font-mono shrink-0">
+                      {formatItemTime(item.time)}
+                    </span>
+                  </div>
+
+                  <p className="text-xs text-stone-700 dark:text-stone-300 leading-relaxed whitespace-pre-wrap line-clamp-3">
+                    {item.snippet?.trim() || '（无正文内容）'}
+                  </p>
+
+                  {item.task_id && (
+                    <div className="pt-1.5 border-t border-stone-100 dark:border-stone-800/60 flex justify-end">
+                      <button
+                        onClick={() => void openTask(item.task_id!)}
+                        className="text-[11px] text-stone-500 hover:text-emerald-700 dark:hover:text-emerald-400 flex items-center space-x-1 transition min-h-[28px] px-1 cursor-pointer"
+                        title="在右栏查看任务详情"
+                      >
+                        <span>查看任务</span>
+                        <ExternalLink className="w-3 h-3" />
+                      </button>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </DetailSplit>
   );
 }

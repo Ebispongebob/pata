@@ -53,6 +53,10 @@ export interface EntityRef {
      * true if matched via parent task tag
      */
     "inherited"?: boolean;
+    "time": string;
+    "status"?: TaskStatus;
+    "snippet"?: string;
+    "task_id"?: string;
 }
 
 /**

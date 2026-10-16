@@ -1212,20 +1212,11 @@ func (s *VaultService) ListByTag(tag string) ([]markdown.EntityRef, error) {
 	copy(result, refs)
 
 	sort.SliceStable(result, func(i, j int) bool {
+		if !result[i].Time.Equal(result[j].Time) {
+			return result[i].Time.After(result[j].Time)
+		}
 		if result[i].Type != result[j].Type {
-			typeRank := func(t markdown.EntityType) int {
-				switch t {
-				case markdown.EntityTypeTask:
-					return 1
-				case markdown.EntityTypeNote:
-					return 2
-				case markdown.EntityTypeActivity:
-					return 3
-				default:
-					return 4
-				}
-			}
-			return typeRank(result[i].Type) < typeRank(result[j].Type)
+			return result[i].Type < result[j].Type
 		}
 		return result[i].ID < result[j].ID
 	})
