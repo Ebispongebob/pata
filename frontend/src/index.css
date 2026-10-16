@@ -34,12 +34,8 @@ button, input, textarea, select, a, [role="button"], .vditor {
   outline: none;
 }
 
-.quick-entry:focus-visible,
-.quick-entry-group:has(textarea:focus-visible) {
-  outline: none;
-}
-
-.quick-entry-group textarea:focus {
+.quick-entry:focus,
+.quick-entry:focus-visible {
   outline: none;
 }
 

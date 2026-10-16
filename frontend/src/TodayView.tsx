@@ -796,30 +796,32 @@ export function TodayView({
             </div>
 
             <div className="space-y-1.5">
-              <div className="quick-entry-group flex items-center gap-2 px-1.5 rounded-lg border border-stone-200 dark:border-stone-800 bg-white dark:bg-stone-950">
-                <NoteRefTextarea
-                  value={quickActivityBody}
-                  onChange={setQuickActivityBody}
-                  refs={quickActivityRefs}
-                  onRefsChange={setQuickActivityRefs}
-                  notes={noteRefs}
-                  aria-label="今日记录"
-                  onKeyDown={(e) => {
-                    if ((e.metaKey || e.ctrlKey) && e.key === 'Enter' && !e.nativeEvent.isComposing && e.keyCode !== 229) {
-                      e.preventDefault();
-                      void handleCreateQuickActivity();
-                    }
-                  }}
-                  placeholder="记录一句话（输入 [[ 引用笔记，⌘+Enter 发送）…"
-                  rows={1}
-                  disabled={creatingActivity}
-                  className="flex-1 min-w-0 px-1.5 py-2 text-xs bg-transparent text-stone-900 dark:text-stone-100 placeholder-stone-400 resize-none max-h-32 leading-4"
-                />
+              <div className="flex items-center space-x-2">
+                <div className="relative flex-1 min-w-0">
+                  <NoteRefTextarea
+                    value={quickActivityBody}
+                    onChange={setQuickActivityBody}
+                    refs={quickActivityRefs}
+                    onRefsChange={setQuickActivityRefs}
+                    notes={noteRefs}
+                    aria-label="今日记录"
+                    onKeyDown={(e) => {
+                      if ((e.metaKey || e.ctrlKey) && e.key === 'Enter' && !e.nativeEvent.isComposing && e.keyCode !== 229) {
+                        e.preventDefault();
+                        void handleCreateQuickActivity();
+                      }
+                    }}
+                    placeholder="记录一句话（输入 [[ 引用笔记，⌘+Enter 发送）…"
+                    rows={1}
+                    disabled={creatingActivity}
+                    className="w-full px-3 py-2 text-xs rounded-lg border border-stone-200 dark:border-stone-800 bg-white dark:bg-stone-950 text-stone-900 dark:text-stone-100 placeholder-stone-400 quick-entry shadow-2xs resize-none max-h-32 leading-4"
+                  />
+                </div>
                 <button
                   type="button"
                   onClick={() => void handleCreateQuickActivity()}
                   disabled={creatingActivity || !quickActivityBody.trim()}
-                  className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-medium transition disabled:opacity-40 shrink-0"
+                  className="flex items-center space-x-1 px-3 py-2 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-medium transition disabled:opacity-40 shadow-2xs shrink-0"
                   title="发送 (⌘+Enter)"
                 >
                   <Send className="w-3.5 h-3.5" />
