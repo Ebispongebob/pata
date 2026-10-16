@@ -174,9 +174,9 @@ export function relativePath(fromPath: string, toPath: string): string {
   return rel.startsWith('..') ? rel : `./${rel}`;
 }
 
-/** 链接目标里只转义会破坏 Markdown 语法的字符（空格、括号、%），中文保持可读。 */
+/** 链接目标里转义会破坏 Markdown 语法或 URI 解析的字符（空格、括号、%、#、?），中文保持可读。 */
 export function escapeLinkPath(p: string): string {
-  return p.replace(/[ ()%]/g, (c) => '%' + c.charCodeAt(0).toString(16).toUpperCase());
+  return p.replace(/[ ()%#?]/g, (c) => '%' + c.charCodeAt(0).toString(16).toUpperCase());
 }
 
 /** 把编辑器里点击的 href 解析为 Vault 内的 Note；非相对 .md 链接返回 undefined。 */

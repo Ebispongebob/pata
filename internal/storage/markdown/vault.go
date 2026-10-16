@@ -388,6 +388,34 @@ func (v *Vault) handleFSEvent(event fsnotify.Event) {
 			return
 		}
 
+		// Ensure entity matches its folder boundary (consistent with ScanVault)
+		var typeMismatchErr error
+		if isTaskDir && entity.GetType() != EntityTypeTask {
+			typeMismatchErr = fmt.Errorf("file in tasks/ has invalid entity type '%s' (expected task)", entity.GetType())
+		} else if isNoteDir && entity.GetType() != EntityTypeNote {
+			typeMismatchErr = fmt.Errorf("file in notes/ has invalid entity type '%s' (expected note)", entity.GetType())
+		} else if isPlanDir && entity.GetType() != EntityTypeDayPlan {
+			typeMismatchErr = fmt.Errorf("file in plans/ has invalid entity type '%s' (expected day_plan)", entity.GetType())
+		}
+
+		if typeMismatchErr != nil {
+			v.Index.RemoveFile(path)
+			v.Index.mu.Lock()
+			v.Index.parseErrors = append(v.Index.parseErrors, ParseError{
+				Path:   path,
+				Reason: typeMismatchErr.Error(),
+				Err:    typeMismatchErr,
+			})
+			v.Index.mu.Unlock()
+
+			v.dispatch(VaultEvent{
+				Op:   ChangeOpError,
+				Path: path,
+				Err:  typeMismatchErr,
+			})
+			return
+		}
+
 		baseline := FileBaseline{
 			Path:    path,
 			Hash:    hash,

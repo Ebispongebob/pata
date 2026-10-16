@@ -310,17 +310,50 @@ func SafeResolveVaultPath(vaultRoot, targetPath string) (absPath string, relPath
 		return "", "", fmt.Errorf("path escapes vault: %s", targetPath)
 	}
 
-	// If the file exists, check symlinks to prevent symlink escape
-	if fi, err := os.Lstat(candidate); err == nil {
-		if fi.Mode()&os.ModeSymlink != 0 {
-			evalTarget, err := filepath.EvalSymlinks(candidate)
-			if err != nil {
-				return "", "", fmt.Errorf("failed to evaluate symlink: %w", err)
+	realRoot, err := filepath.EvalSymlinks(absRoot)
+	if err != nil {
+		realRoot = absRoot
+	}
+
+	// Verify symlinks to prevent symlink escape (both terminal and ancestor directories)
+	if _, err := os.Stat(candidate); err == nil {
+		evalTarget, err := filepath.EvalSymlinks(candidate)
+		if err != nil {
+			return "", "", fmt.Errorf("failed to evaluate symlink: %w", err)
+		}
+		evalRel, err := filepath.Rel(realRoot, evalTarget)
+		if err != nil || strings.HasPrefix(evalRel, "..") || filepath.IsAbs(evalRel) {
+			return "", "", fmt.Errorf("path escapes vault via symlink: %s", targetPath)
+		}
+	} else if fi, err := os.Lstat(candidate); err == nil && fi.Mode()&os.ModeSymlink != 0 {
+		// Terminal broken symlink
+		evalTarget, err := filepath.EvalSymlinks(candidate)
+		if err != nil {
+			return "", "", fmt.Errorf("failed to evaluate broken symlink: %w", err)
+		}
+		evalRel, err := filepath.Rel(realRoot, evalTarget)
+		if err != nil || strings.HasPrefix(evalRel, "..") || filepath.IsAbs(evalRel) {
+			return "", "", fmt.Errorf("symlink target escapes vault: %s", targetPath)
+		}
+	} else {
+		// Target does not exist yet; check nearest existing ancestor directory
+		checkDir := filepath.Dir(candidate)
+		for {
+			if _, err := os.Stat(checkDir); err == nil {
+				evalDir, err := filepath.EvalSymlinks(checkDir)
+				if err == nil {
+					evalRel, err := filepath.Rel(realRoot, evalDir)
+					if err != nil || strings.HasPrefix(evalRel, "..") || filepath.IsAbs(evalRel) {
+						return "", "", fmt.Errorf("path escapes vault via ancestor symlink: %s", targetPath)
+					}
+				}
+				break
 			}
-			evalRel, err := filepath.Rel(absRoot, evalTarget)
-			if err != nil || strings.HasPrefix(evalRel, "..") || filepath.IsAbs(evalRel) {
-				return "", "", fmt.Errorf("symlink target escapes vault: %s", targetPath)
+			parent := filepath.Dir(checkDir)
+			if parent == checkDir {
+				break
 			}
+			checkDir = parent
 		}
 	}
 

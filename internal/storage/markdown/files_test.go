@@ -137,4 +137,34 @@ func TestSafeResolveVaultPath(t *testing.T) {
 	if err == nil {
 		t.Fatalf("expected error for nested path escape, got nil")
 	}
+
+	// Symlink escape attempt
+	outsideDir, err := os.MkdirTemp("", "pata-outside-*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(outsideDir)
+
+	secretFile := filepath.Join(outsideDir, "secret.txt")
+	_ = os.WriteFile(secretFile, []byte("secret"), 0644)
+	linkToFile := filepath.Join(filesDir, "leak.txt")
+	_ = os.Symlink(secretFile, linkToFile)
+
+	if _, _, err := SafeResolveVaultPath(tmpDir, "files/leak.txt"); err == nil {
+		t.Fatalf("expected error on symlinked file to outside, got nil")
+	}
+
+	// Ancestor symlink escape: vault/files/outside_dir -> outsideDir/
+	linkToDir := filepath.Join(filesDir, "outside_dir")
+	_ = os.Symlink(outsideDir, linkToDir)
+
+	// Existing file inside outsideDir reached via ancestor symlink
+	if _, _, err := SafeResolveVaultPath(tmpDir, "files/outside_dir/secret.txt"); err == nil {
+		t.Fatalf("expected error on ancestor symlink resolving to outside file, got nil")
+	}
+
+	// Non-existing file inside outsideDir reached via ancestor symlink
+	if _, _, err := SafeResolveVaultPath(tmpDir, "files/outside_dir/new_file.txt"); err == nil {
+		t.Fatalf("expected error on ancestor symlink for new file, got nil")
+	}
 }

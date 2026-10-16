@@ -262,6 +262,7 @@ export function NoteRefText({
           </span>
         );
       } else {
+        const targetPath = fileTarget?.path || (t.href.includes('files/') ? t.href.slice(t.href.indexOf('files/')) : t.href);
         parts.push(
           <span
             key={`file-${t.start}`}
@@ -272,7 +273,7 @@ export function NoteRefText({
               type="button"
               onClick={(e) => {
                 e.stopPropagation();
-                VaultService.PreviewFile(t.href).catch((err) => {
+                VaultService.PreviewFile(targetPath).catch((err) => {
                   console.warn('Preview file error:', err);
                 });
               }}
@@ -285,7 +286,7 @@ export function NoteRefText({
               type="button"
               onClick={(e) => {
                 e.stopPropagation();
-                VaultService.RevealInFinder(t.href).catch((err) => {
+                VaultService.RevealInFinder(targetPath).catch((err) => {
                   console.warn('Reveal in finder error:', err);
                 });
               }}

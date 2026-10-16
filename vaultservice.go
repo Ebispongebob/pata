@@ -1409,6 +1409,16 @@ func (s *VaultService) resolveSafeFilePath(filePath string) (string, error) {
 	return absPath, nil
 }
 
+func startAndReap(cmd *exec.Cmd) error {
+	if err := cmd.Start(); err != nil {
+		return err
+	}
+	go func() {
+		_ = cmd.Wait()
+	}()
+	return nil
+}
+
 // PreviewFile invokes the macOS Quick Look preview or system preview for a file in the vault.
 func (s *VaultService) PreviewFile(filePath string) error {
 	absPath, err := s.resolveSafeFilePath(filePath)
@@ -1418,7 +1428,7 @@ func (s *VaultService) PreviewFile(filePath string) error {
 
 	if runtime.GOOS == "darwin" {
 		cmd := exec.Command("qlmanage", "-p", absPath)
-		if err := cmd.Start(); err == nil {
+		if err := startAndReap(cmd); err == nil {
 			return nil
 		}
 	}
@@ -1433,14 +1443,17 @@ func (s *VaultService) OpenFile(filePath string) error {
 		return err
 	}
 
+	var cmd *exec.Cmd
 	switch runtime.GOOS {
 	case "darwin":
-		return exec.Command("open", absPath).Start()
+		cmd = exec.Command("open", absPath)
 	case "windows":
-		return exec.Command("cmd", "/c", "start", "", absPath).Start()
+		cmd = exec.Command("cmd", "/c", "start", "", absPath)
 	default:
-		return exec.Command("xdg-open", absPath).Start()
+		cmd = exec.Command("xdg-open", absPath)
 	}
+
+	return startAndReap(cmd)
 }
 
 // RevealInFinder reveals a file inside Finder (or Explorer on Windows).
@@ -1450,14 +1463,17 @@ func (s *VaultService) RevealInFinder(filePath string) error {
 		return err
 	}
 
+	var cmd *exec.Cmd
 	switch runtime.GOOS {
 	case "darwin":
-		return exec.Command("open", "-R", absPath).Start()
+		cmd = exec.Command("open", "-R", absPath)
 	case "windows":
-		return exec.Command("explorer", "/select,", absPath).Start()
+		cmd = exec.Command("explorer", "/select,", absPath)
 	default:
-		return exec.Command("xdg-open", filepath.Dir(absPath)).Start()
+		cmd = exec.Command("xdg-open", filepath.Dir(absPath))
 	}
+
+	return startAndReap(cmd)
 }
 
 // GetVaultHealth returns the current health status of the vault, including parse errors and dangling references.

@@ -556,3 +556,54 @@ updated_at: 2026-10-14T10:00:00+08:00
 		t.Fatalf("serialized markdown missing completed_at: %s", string(bytes))
 	}
 }
+
+func TestWatcher_FolderEntityTypeEnforcement(t *testing.T) {
+	vaultDir := t.TempDir()
+	vault, err := NewVault(vaultDir)
+	if err != nil {
+		t.Fatalf("NewVault failed: %v", err)
+	}
+
+	notesDir := filepath.Join(vaultDir, "notes")
+	_ = os.MkdirAll(notesDir, 0755)
+
+	// An external file created in notes/ with type: task
+	mismatchFile := filepath.Join(notesDir, "fake_task.md")
+	content := `---
+type: task
+id: t-mismatch-01
+title: 误入笔记目录的任务
+status: todo
+created_at: 2026-10-16T12:00:00+08:00
+updated_at: 2026-10-16T12:00:00+08:00
+---
+`
+	if err := os.WriteFile(mismatchFile, []byte(content), 0644); err != nil {
+		t.Fatalf("failed to write test file: %v", err)
+	}
+
+	// Trigger watcher event
+	vault.handleFSEvent(fsnotify.Event{
+		Name: mismatchFile,
+		Op:   fsnotify.Create,
+	})
+
+	// Must NOT be indexed as a task
+	if _, ok := vault.Index.GetTask("t-mismatch-01"); ok {
+		t.Fatalf("task with folder type mismatch was unexpectedly indexed")
+	}
+
+	// Must record a parse error
+	parseErrs := vault.Index.ListParseErrors()
+	found := false
+	for _, pe := range parseErrs {
+		if pe.Path == mismatchFile {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("expected parse error for folder type mismatch, got: %+v", parseErrs)
+	}
+}
+

@@ -13,6 +13,7 @@ import {
   filterCandidates,
   resolveFileHref,
   isVaultFileLink,
+  escapeLinkPath,
 } from './noteRefsCore.ts';
 
 test('resolveRef: 已绑定目标存在时成功解析', () => {
@@ -209,4 +210,17 @@ test('resolveFileHref: 相对路径定位 Vault 文件资源', () => {
   const notFound = resolveFileHref('notes/a.md', '../files/missing.pdf', files);
   assert.strictEqual(notFound, undefined);
 });
+
+test('escapeLinkPath & resolveFileHref: 支持包含 # 和 ? 的特殊文件名', () => {
+  const original = '../files/report #1?draft.pdf';
+  const escaped = escapeLinkPath(original);
+  assert.strictEqual(escaped, '../files/report%20%231%3Fdraft.pdf');
+
+  const files: FileRef[] = [
+    { name: 'report #1?draft.pdf', path: 'files/report #1?draft.pdf', ext: '.pdf', size: 1024, mod_time: '' },
+  ];
+  const found = resolveFileHref('notes/a.md', escaped, files);
+  assert.strictEqual(found?.name, 'report #1?draft.pdf');
+});
+
 
