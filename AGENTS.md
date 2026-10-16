@@ -1,13 +1,13 @@
 # Pata · Agent 项目指引
 
-**项目名称：啪嗒 / Pata。** 前五阶段已完成代码侧交付；**阶段 6/7 代码完成、待实机验收**；阶段 8（Activity 归属式存储重构）与阶段 9（专属 Vault/文件资源引用）已完成设计、待实施。实际进度以 [docs/README.md](docs/README.md) 为准。
+**项目名称：啪嗒 / Pata。** 前五阶段已完成代码侧交付；**阶段 6/7/8 代码完成、待实机验收**；阶段 9（专属 Vault/文件资源引用）已完成设计、待实施。实际进度以 [docs/README.md](docs/README.md) 为准。
 
 ## 开始阅读
 
 1. 阅读 [docs/README.md](docs/README.md)，按 01 → 09 的顺序了解开发计划。
 2. 阅读 [阶段 1 产品提案](docs/01-validate/proposal.md)、[已确认的取舍](docs/01-validate/decisions.md)、[UI 规范](docs/01-validate/ui.md)。
    - macOS 原生窗口细节和 Magpie 源码参考见 [macos-native.md](docs/01-validate/macos-native.md)；浏览器原型不等于真实 Liquid Glass 验证。
-3. 数据 Schema 的**单一来源**为 [阶段 2 schema.md](docs/02-foundation/schema.md)（目前是阶段 8 的 V2 目标协议，尚未实施）；旧 `docs/02-foundation/examples/` 为历史测试固件，不是生产数据。
+3. 数据 Schema 的**单一来源**为 [阶段 2 schema.md](docs/02-foundation/schema.md)；旧 `docs/02-foundation/examples/` 为历史测试固件，不是生产数据。
 4. 直接打开 `docs/01-validate/prototype/index.html` 查看静态 UI 原型，无服务依赖。
 
 ## 修改文档/执行计划
@@ -17,7 +17,7 @@
 - 不要把功能当做新阶段单独建目录，除非整个交付计划确实新增一个顺序实施步骤。
 - 保持 Markdown 数据源唯一、文件可恢复读取、不重复建模；Task/Today 源文件是 App 内部协议，用户主要通过 GUI 操作，未来 CLI 调用同一 Core；Notes Markdown 保持面向用户编辑。
 - **本阶段不实现 CLI/MCP/AI 集成**；未来 CLI 依赖运行中的 App Core，IPC/自动启动等在 CLI 需求阶段讨论，禁止私自扩大范围。
-- 阶段 8 的 DayPlan **目标路径**为根 `plans/`（须备份），当前代码可能仍使用 `.pata/plans/`；阶段 9 的 `files/` 亦为用户数据、不可当缓存清理。
+- 阶段 8 的 DayPlan **目标路径**为根 `plans/`（须备份）；阶段 9 的 `files/` 亦为用户数据、不可当缓存清理。
 - 阶段 9 仅在 Today/Task Activity 与 Note 中导入、引用文件，`[[` 候选同时支持 Note 与 File；原生预览、按文件名搜索，不做 Files 导航、File 实体或自动清理。
 
 ## 产品不可破坏的规则
