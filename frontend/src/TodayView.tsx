@@ -36,6 +36,9 @@ interface TodayViewProps {
   /** 从笔记返回时恢复打开的任务详情。 */
   initialTaskId?: string | null;
   onInitialTaskConsumed?: () => void;
+  /** 打开指定日期的日计划 */
+  initialDate?: string | null;
+  onInitialDateConsumed?: () => void;
   tagNames: string[];
   onVaultDataChanged: () => void;
   leaveGuardRef: React.MutableRefObject<(() => Promise<boolean>) | null>;
@@ -105,12 +108,23 @@ export function TodayView({
   onOpenNote,
   initialTaskId,
   onInitialTaskConsumed,
+  initialDate,
+  onInitialDateConsumed,
   tagNames,
   onVaultDataChanged,
   leaveGuardRef,
 }: TodayViewProps) {
   const todayStr = useMemo(() => getLocalDateStr(), []);
-  const [selectedDate, setSelectedDate] = useState<string>(todayStr);
+  const [selectedDate, setSelectedDate] = useState<string>(
+    initialDate && /^\d{4}-\d{2}-\d{2}$/.test(initialDate) ? initialDate : todayStr
+  );
+
+  useEffect(() => {
+    if (initialDate && /^\d{4}-\d{2}-\d{2}$/.test(initialDate)) {
+      setSelectedDate(initialDate);
+      onInitialDateConsumed?.();
+    }
+  }, [initialDate, onInitialDateConsumed]);
 
   const [tasks, setTasks] = useState<Task[]>([]);
   const [dayPlanTaskIds, setDayPlanTaskIds] = useState<string[]>([]);

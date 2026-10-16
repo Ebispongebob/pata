@@ -563,6 +563,7 @@ func (s *VaultService) DeleteTask(id string) error {
 	}
 
 	// Clean up task ID from all DayPlans (cascade cleanup)
+	var cleanupErrors []string
 	for _, dp := range v.Index.ListDayPlans() {
 		newIDs := make([]string, 0, len(dp.TaskIDs))
 		changed := false
@@ -577,8 +578,14 @@ func (s *VaultService) DeleteTask(id string) error {
 			dpClone := dp.Clone().(*markdown.DayPlan)
 			dpClone.TaskIDs = newIDs
 			baseline := dayPlanBaseline(v, dpClone)
-			_, _ = v.SaveEntity(dpClone, baseline)
+			if _, err := v.SaveEntity(dpClone, baseline); err != nil {
+				cleanupErrors = append(cleanupErrors, fmt.Sprintf("%s: %v", dp.Date, err))
+			}
 		}
+	}
+
+	if len(cleanupErrors) > 0 {
+		return fmt.Errorf("任务已删除，但部分日计划引用清理失败: %s", strings.Join(cleanupErrors, "; "))
 	}
 
 	return nil
@@ -606,9 +613,18 @@ func (s *VaultService) CreateActivity(input CreateActivityInput) (*markdown.Acti
 		}
 	}
 
+	taskID := strings.TrimSpace(input.TaskID)
+	date := strings.TrimSpace(input.Date)
+
 	at := time.Now().UTC()
 	if input.At != nil && !input.At.IsZero() {
 		at = input.At.UTC()
+	} else if date != "" && taskID == "" {
+		if d, err := time.ParseInLocation("2006-01-02", date, time.Local); err == nil {
+			now := time.Now().In(time.Local)
+			combined := time.Date(d.Year(), d.Month(), d.Day(), now.Hour(), now.Minute(), now.Second(), now.Nanosecond(), time.Local)
+			at = combined.UTC()
+		}
 	}
 
 	act := markdown.Activity{
@@ -618,9 +634,6 @@ func (s *VaultService) CreateActivity(input CreateActivityInput) (*markdown.Acti
 		NoteRefs: cleanNoteRefs(input.NoteRefs),
 		Body:     input.Body,
 	}
-
-	taskID := strings.TrimSpace(input.TaskID)
-	date := strings.TrimSpace(input.Date)
 
 	// Determine owner: Task vs DayPlan
 	if taskID != "" || input.OwnerType == markdown.EntityTypeTask {

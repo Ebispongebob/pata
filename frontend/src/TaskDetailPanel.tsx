@@ -220,7 +220,7 @@ export const TaskDetailPanel = forwardRef<TaskDetailHandle, TaskDetailPanelProps
     setDetailStatus(t.status);
     setDetailDue(t.due ?? '');
     setDetailTags(t.tags ?? []);
-    setDetailBody(t.body ?? '');
+    setDetailBody(t.description ?? t.body ?? '');
     setDetailRefs(t.note_refs ?? {});
     latestRefsRef.current = t.note_refs ?? {};
   }, []);
@@ -340,6 +340,7 @@ export const TaskDetailPanel = forwardRef<TaskDetailHandle, TaskDetailPanelProps
         const input: UpdateTaskInput = {
           id: taskId,
           title: titleToSave,
+          description: bodyToSave,
           status: statusToSave,
           due: dueToSave,
           tags: dedupeTags(tagsToSave),
@@ -379,8 +380,9 @@ export const TaskDetailPanel = forwardRef<TaskDetailHandle, TaskDetailPanelProps
     const curTags = dedupeTags(detailTags).sort().join(',');
     const taskTags = dedupeTags(task.tags ?? []).sort().join(',');
     if (curTags !== taskTags) return true;
-    if (detailBody !== (task.body ?? '')) return true;
-    if (!sameRefs(pruneRefs(detailBody, detailRefs), pruneRefs(task.body ?? '', task.note_refs ?? {}))) return true;
+    const taskDesc = task.description ?? task.body ?? '';
+    if (detailBody !== taskDesc) return true;
+    if (!sameRefs(pruneRefs(detailBody, detailRefs), pruneRefs(taskDesc, task.note_refs ?? {}))) return true;
     return false;
   }, [task, detailTitle, detailStatus, detailDue, detailTags, detailBody, detailRefs]);
 
@@ -469,7 +471,8 @@ export const TaskDetailPanel = forwardRef<TaskDetailHandle, TaskDetailPanelProps
 
     if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
     debounceTimerRef.current = setTimeout(() => {
-      if (latestTaskRef.current && val !== (latestTaskRef.current.body ?? '')) {
+      const taskDesc = latestTaskRef.current ? (latestTaskRef.current.description ?? latestTaskRef.current.body ?? '') : '';
+      if (val !== taskDesc) {
         void saveTask({ body: val });
       }
     }, 1500);
@@ -480,7 +483,8 @@ export const TaskDetailPanel = forwardRef<TaskDetailHandle, TaskDetailPanelProps
       clearTimeout(debounceTimerRef.current);
       debounceTimerRef.current = null;
     }
-    if (task && detailBody !== (task.body ?? '')) {
+    const taskDesc = task ? (task.description ?? task.body ?? '') : '';
+    if (task && detailBody !== taskDesc) {
       await saveTask({ body: detailBody });
     }
     setIsEditingBody(false);

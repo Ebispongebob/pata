@@ -1073,14 +1073,34 @@ func ScanVault(vaultRoot string) (*MemoryIndex, error) {
 
 		id := entity.GetID()
 		if existingPath, exists := idx.idToFile[id]; exists && existingPath != path {
-			// M2: Duplicate ID detected across different files.
-			// Do not overwrite existing entity; isolate error in parseErrors to align with Invariant 6.
-			parseErrs = append(parseErrs, ParseError{
-				Path:   path,
-				Reason: fmt.Sprintf("duplicate entity ID collision '%s' (already declared in %s); file ignored to prevent silent overwrite", id, existingPath),
-				Err:    fmt.Errorf("duplicate entity ID collision: %s", id),
-			})
-			return nil
+			// Special handling for DayPlan: root plans/YYYY-MM-DD.md supersedes legacy .pata/plans/YYYY-MM-DD.md
+			isDayPlan := entity.GetType() == EntityTypeDayPlan
+			isLegacyCurrent := strings.Contains(path, filepath.Join(".pata", "plans"))
+			isLegacyExisting := strings.Contains(existingPath, filepath.Join(".pata", "plans"))
+
+			if isDayPlan && isLegacyCurrent && !isLegacyExisting {
+				// Current file is legacy and we already scanned the root one: ignore legacy silently
+				return nil
+			} else if isDayPlan && !isLegacyCurrent && isLegacyExisting {
+				// Current file is root and existing one was legacy: root wins! Clean up legacy entry first
+				delete(idx.fileToID, existingPath)
+				delete(idx.baselines, existingPath)
+				if oldPlan, ok := idx.dayPlans[id]; ok {
+					for _, act := range oldPlan.Activities {
+						delete(idx.activityLocs, act.ID)
+					}
+				}
+				delete(idx.dayPlans, id)
+			} else {
+				// M2: Duplicate ID detected across different files.
+				// Do not overwrite existing entity; isolate error in parseErrors to align with Invariant 6.
+				parseErrs = append(parseErrs, ParseError{
+					Path:   path,
+					Reason: fmt.Sprintf("duplicate entity ID collision '%s' (already declared in %s); file ignored to prevent silent overwrite", id, existingPath),
+					Err:    fmt.Errorf("duplicate entity ID collision: %s", id),
+				})
+				return nil
+			}
 		}
 
 		idx.fileToID[path] = id
@@ -1106,9 +1126,6 @@ func ScanVault(vaultRoot string) (*MemoryIndex, error) {
 		case *Note:
 			idx.notes[id] = e
 		case *DayPlan:
-			if _, exists := idx.dayPlans[id]; exists && strings.Contains(path, filepath.Join(".pata", "plans")) {
-				return nil
-			}
 			idx.dayPlans[id] = e
 			for _, act := range e.Activities {
 				if existingLoc, exists := idx.activityLocs[act.ID]; exists && existingLoc.Path != path {

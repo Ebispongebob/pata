@@ -98,6 +98,10 @@ func TestVaultService_ActivityCRUD_TaskHost(t *testing.T) {
 	if err != nil || len(actsAfterDelete) != 0 {
 		t.Fatalf("expected 0 activities after delete, got %d", len(actsAfterDelete))
 	}
+	contentAfterDelete, _ := os.ReadFile(taskPath)
+	if strings.Contains(string(contentAfterDelete), "<!-- pata:activity") {
+		t.Fatalf("expected activity blocks to be cleared from task file, got: %s", string(contentAfterDelete))
+	}
 }
 
 func TestVaultService_ActivityCRUD_DayPlanHost(t *testing.T) {
@@ -148,6 +152,37 @@ func TestVaultService_ActivityCRUD_DayPlanHost(t *testing.T) {
 	}
 	if _, err := s.GetActivity(act.ID); err == nil {
 		t.Fatalf("expected GetActivity to fail after deletion")
+	}
+	contentAfterPlanDelete, _ := os.ReadFile(planPath)
+	if strings.Contains(string(contentAfterPlanDelete), "<!-- pata:activity") {
+		t.Fatalf("expected activity blocks to be cleared from plan file, got: %s", string(contentAfterPlanDelete))
+	}
+}
+
+func TestVaultService_CreateActivity_HistoricalDate(t *testing.T) {
+	tempDir, err := os.MkdirTemp("", "TestVaultService_CreateActivity_HistoricalDate*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	s := &VaultService{}
+	if _, err := s.openVault(tempDir); err != nil {
+		t.Fatalf("OpenVault failed: %v", err)
+	}
+
+	date := "2025-01-01"
+	act, err := s.CreateActivity(CreateActivityInput{
+		Date: date,
+		Body: "历史活动记录",
+	})
+	if err != nil {
+		t.Fatalf("CreateActivity failed: %v", err)
+	}
+
+	localDate := act.At.In(time.Local).Format("2006-01-02")
+	if localDate != date {
+		t.Fatalf("expected activity At in local time to be %s, got %s (UTC: %v)", date, localDate, act.At)
 	}
 }
 

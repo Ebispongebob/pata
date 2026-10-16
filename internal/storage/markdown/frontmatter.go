@@ -296,26 +296,25 @@ func SerializeMarkdown(entity Entity) ([]byte, error) {
 	var err error
 	switch e := entity.(type) {
 	case *Task:
-		if len(e.Activities) > 0 || e.Description != "" {
-			actBody, actErr := FormatActivities(e.Activities)
-			if actErr != nil {
-				return nil, fmt.Errorf("failed to format task activities: %w", actErr)
-			}
-			e.Body = actBody
+		if e.Description == "" && !strings.Contains(e.Body, activityStartTag) && strings.TrimSpace(e.Body) != "" {
+			e.Description = strings.TrimSpace(e.Body)
 		}
+		actBody, actErr := FormatActivities(e.Activities)
+		if actErr != nil {
+			return nil, fmt.Errorf("failed to format task activities: %w", actErr)
+		}
+		e.Body = actBody
 		err = enc.Encode(e)
 	case *Memo:
 		err = enc.Encode(e)
 	case *Note:
 		err = enc.Encode(e)
 	case *DayPlan:
-		if len(e.Activities) > 0 {
-			actBody, actErr := FormatActivities(e.Activities)
-			if actErr != nil {
-				return nil, fmt.Errorf("failed to format day_plan activities: %w", actErr)
-			}
-			e.Body = actBody
+		actBody, actErr := FormatActivities(e.Activities)
+		if actErr != nil {
+			return nil, fmt.Errorf("failed to format day_plan activities: %w", actErr)
 		}
+		e.Body = actBody
 		err = enc.Encode(e)
 	default:
 		err = enc.Encode(entity)

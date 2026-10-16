@@ -353,3 +353,142 @@ Duplicate activity in another task!
 		t.Fatalf("expected duplicate activity collision error, got: %+v", idx.ListParseErrors())
 	}
 }
+
+func TestDayPlan_RootPlansSupersedesLegacyPataPlans(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	legacyDir := filepath.Join(tmpDir, ".pata", "plans")
+	if err := os.MkdirAll(legacyDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	rootDir := filepath.Join(tmpDir, "plans")
+	if err := os.MkdirAll(rootDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	date := "2026-10-15"
+	legacyContent := `---
+type: day_plan
+date: 2026-10-15
+task_ids: []
+created_at: 2026-10-15T08:00:00Z
+updated_at: 2026-10-15T08:00:00Z
+---
+
+<!-- pata:activity
+id: a-legacy
+at: 2026-10-15T08:30:00Z
+-->
+Legacy plan activity
+<!-- /pata:activity -->
+`
+	rootContent := `---
+type: day_plan
+date: 2026-10-15
+task_ids: []
+created_at: 2026-10-15T09:00:00Z
+updated_at: 2026-10-15T09:00:00Z
+---
+
+<!-- pata:activity
+id: a-root
+at: 2026-10-15T09:30:00Z
+-->
+Root plan activity
+<!-- /pata:activity -->
+`
+
+	if err := os.WriteFile(filepath.Join(legacyDir, date+".md"), []byte(legacyContent), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(rootDir, date+".md"), []byte(rootContent), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	idx, err := ScanVault(tmpDir)
+	if err != nil {
+		t.Fatalf("ScanVault failed: %v", err)
+	}
+
+	// Should not report duplicate ID error for day_plan
+	for _, pe := range idx.ListParseErrors() {
+		if strings.Contains(pe.Reason, date) {
+			t.Fatalf("unexpected parse error for date %s: %v", date, pe)
+		}
+	}
+
+	dp, ok := idx.GetDayPlan(date)
+	if !ok {
+		t.Fatalf("expected day plan %s to exist in index", date)
+	}
+	if len(dp.Activities) != 1 || dp.Activities[0].ID != "a-root" {
+		t.Fatalf("expected root plan activity 'a-root', got %+v", dp.Activities)
+	}
+
+	if _, _, ok := idx.GetActivity("a-root"); !ok {
+		t.Fatalf("expected activity 'a-root' to be indexed")
+	}
+	if _, _, ok := idx.GetActivity("a-legacy"); ok {
+		t.Fatalf("expected activity 'a-legacy' to NOT be indexed")
+	}
+}
+
+func TestActivity_DeleteFinalActivityClearsFileBody(t *testing.T) {
+	tmpDir := t.TempDir()
+	vault, err := NewVault(tmpDir)
+	if err != nil {
+		t.Fatalf("NewVault failed: %v", err)
+	}
+
+	// 1. Task host
+	task := &Task{
+		Type:      EntityTypeTask,
+		ID:        "t-clear-test",
+		Title:     "任务活动清除测试",
+		Status:    TaskStatusTodo,
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+		Activities: []Activity{
+			{
+				ID:   "a-single-1",
+				At:   time.Now().UTC(),
+				Body: "唯一的活动",
+			},
+		},
+	}
+	rev, err := vault.SaveEntity(task, nil)
+	if err != nil {
+		t.Fatalf("SaveEntity task failed: %v", err)
+	}
+
+	taskPath := vault.ResolveEntityPath(task)
+	contentBefore, err := os.ReadFile(taskPath)
+	if err != nil || !strings.Contains(string(contentBefore), "<!-- pata:activity") {
+		t.Fatalf("expected activity block in file, got: %s", string(contentBefore))
+	}
+
+	// Delete final activity
+	task.Activities = []Activity{}
+	_, err = vault.SaveEntity(task, rev)
+	if err != nil {
+		t.Fatalf("SaveEntity without activities failed: %v", err)
+	}
+
+	contentAfter, err := os.ReadFile(taskPath)
+	if err != nil {
+		t.Fatalf("ReadFile failed: %v", err)
+	}
+	if strings.Contains(string(contentAfter), "<!-- pata:activity") {
+		t.Fatalf("expected activity blocks to be cleared from disk, but found: %s", string(contentAfter))
+	}
+
+	// Re-parse from disk
+	reparsed, err := ParseMarkdown(taskPath, contentAfter)
+	if err != nil {
+		t.Fatalf("ParseMarkdown failed: %v", err)
+	}
+	if len(reparsed.(*Task).Activities) != 0 {
+		t.Fatalf("expected 0 activities after deletion, got %d", len(reparsed.(*Task).Activities))
+	}
+}
+
