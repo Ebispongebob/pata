@@ -23,7 +23,7 @@
 ## 产品不可破坏的规则
 
 - 仅 Today / Tasks / Notes 三个主导航。Activity 不独立设入口。
-- 目标模型：Task + Note + DayPlan 为顶层 Markdown；Activity 归属于 Task 或 DayPlan 的文件内部（当前源码尚有旧 Memo，阶段 8 改造）。
+- 目标模型：Task + Note + DayPlan 为顶层 Markdown；Activity 归属于 Task 或 DayPlan 的文件内部。
 - 全局标签聚合 Task、Note、Activity；Task 内 Activity 的标签由自身 + Task 动态继承，Today 独立 Activity 仅看自身标签。
 - Today 计划与 Task due 相互独立；不强制下班复盘。
 - Notes 无嵌套三列结构：单列浏览、全主区域编辑。
