@@ -13,9 +13,23 @@ import {
 } from 'lucide-react';
 import Vditor from 'vditor';
 import * as VaultService from '../bindings/pata/vaultservice';
-import { Note, LinkSource, EntityType } from '../bindings/pata/internal/storage/markdown/models';
 import { VaultStatus, CreateNoteInput, UpdateNoteInput } from '../bindings/pata/models';
-import { NotePicker, NoteRef, escapeLinkPath, filterNotes, matchTrigger, pickerKey, relativePath, resolveHref, useNoteRefs } from './noteRefs';
+import { Note, LinkSource, EntityType } from '../bindings/pata/internal/storage/markdown/models';
+import {
+  CandidateItem,
+  FileRef,
+  NotePicker,
+  NoteRef,
+  escapeLinkPath,
+  filterCandidates,
+  matchTrigger,
+  pickerKey,
+  relativePath,
+  resolveFileHref,
+  resolveHref,
+  useFileRefs,
+  useNoteRefs,
+} from './noteRefs';
 
 interface NotesViewProps {
   vaultStatus: VaultStatus | null;
@@ -148,6 +162,9 @@ function NoteEditor({
   const allNotes = useNoteRefs();
   const allNotesRef = useRef<NoteRef[]>([]);
   allNotesRef.current = allNotes;
+  const allFiles = useFileRefs();
+  const allFilesRef = useRef<FileRef[]>([]);
+  allFilesRef.current = allFiles;
   const [backlinks, setBacklinks] = useState<LinkSource[]>([]);
   const [backlinksOpen, setBacklinksOpen] = useState(false);
   // `[[` 笔记候选：node 为正在输入的文本节点
@@ -701,7 +718,7 @@ function NoteEditor({
     }));
   };
 
-  const pickNote = (n: NoteRef) => {
+  const pickNote = (it: CandidateItem | NoteRef) => {
     const vd = vditorRef.current;
     const st = pickerRef.current;
     const sel = window.getSelection();
@@ -717,10 +734,26 @@ function NoteEditor({
     range.deleteContents();
     sel.removeAllRanges();
     sel.addRange(range);
+
     const self = allNotesRef.current.find((x) => x.id === (currentNoteIdRef.current || noteId));
-    const href = escapeLinkPath(self ? relativePath(self.path, n.path) : n.path);
     const esc = (t: string) => t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
-    vd.insertValue(`<a href="${esc(href)}">${esc(n.title)}</a>&nbsp;`);
+    const isCand = 'kind' in it;
+
+    if (isCand && it.kind === 'file') {
+      const f = it.file;
+      const href = escapeLinkPath(self ? relativePath(self.path, f.path) : f.path);
+      const isImg = /\.(png|jpe?g|gif|webp|svg)$/i.test(f.ext);
+      if (isImg) {
+        vd.insertValue(`![${esc(f.name)}](${esc(href)})&nbsp;`);
+      } else {
+        vd.insertValue(`<a href="${esc(href)}">${esc(f.name)}</a>&nbsp;`);
+      }
+    } else {
+      const n = isCand && it.kind === 'note' ? it.note : (it as NoteRef);
+      const href = escapeLinkPath(self ? relativePath(self.path, n.path) : n.path);
+      vd.insertValue(`<a href="${esc(href)}">${esc(n.title)}</a>&nbsp;`);
+    }
+
     setPicker(null);
     vd.focus();
   };
@@ -738,9 +771,24 @@ function NoteEditor({
     const self = allNotesRef.current.find((x) => x.id === (currentNoteIdRef.current || noteId));
     const fromPath = self?.path ?? '';
     const target = resolveHref(fromPath, href, allNotesRef.current);
-    if (target) void leaveThen(() => onOpenNoteRef.current(target.id));
-    else if (/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(href)) window.open(href); // 既有外部链接处理不变
-    else if (href && !href.startsWith('#')) setTitleError('笔记不存在或已移动');
+    if (target) {
+      void leaveThen(() => onOpenNoteRef.current(target.id));
+      return;
+    }
+    const targetFile = resolveFileHref(fromPath, href, allFilesRef.current);
+    if (targetFile) {
+      VaultService.PreviewFile(targetFile.path).catch((err) => {
+        console.warn('Preview file error:', err);
+      });
+      return;
+    }
+    if (/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(href)) {
+      window.open(href);
+      return;
+    }
+    if (href && !href.startsWith('#')) {
+      setTitleError('笔记或文件不存在或已移动');
+    }
   };
 
   // 被引用来源：从文件计算，保存/外部变更后刷新
@@ -775,7 +823,7 @@ function NoteEditor({
     const onKey = (e: KeyboardEvent) => {
       const st = pickerRef.current;
       if (!st) return;
-      const items = filterNotes(allNotesRef.current, st.query);
+      const items = filterCandidates(allNotesRef.current, allFilesRef.current, st.query);
       const used = pickerKey(
         e,
         e.isComposing || e.keyCode === 229,
@@ -1049,6 +1097,49 @@ function NoteEditor({
         ref={vditorContainerRef}
         className="vditor-editor-wrapper flex-1 min-h-0 overflow-hidden border-none outline-hidden bg-transparent"
         style={{ border: 'none', outline: 'none' }}
+        onDragOver={(e) => {
+          if (e.dataTransfer.types.includes('Files')) {
+            e.preventDefault();
+          }
+        }}
+        onDrop={async (e) => {
+          if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+            e.preventDefault();
+            const vd = vditorRef.current;
+            if (!vd) return;
+            const self = allNotesRef.current.find((x) => x.id === (currentNoteIdRef.current || noteId));
+            const fromPath = self?.path ?? 'notes/untitled.md';
+            for (let i = 0; i < e.dataTransfer.files.length; i++) {
+              const file = e.dataTransfer.files[i];
+              try {
+                let imported: FileRef | null = null;
+                if ((file as any).path) {
+                  imported = await VaultService.ImportFile((file as any).path);
+                } else {
+                  const b64 = await new Promise<string>((resolve, reject) => {
+                    const reader = new FileReader();
+                    reader.onload = () => resolve(reader.result as string);
+                    reader.onerror = reject;
+                    reader.readAsDataURL(file);
+                  });
+                  imported = await VaultService.ImportFileData(file.name, b64);
+                }
+                if (imported) {
+                  const href = escapeLinkPath(relativePath(fromPath, imported.path));
+                  const isImg = /\.(png|jpe?g|gif|webp|svg)$/i.test(imported.ext);
+                  const esc = (t: string) => t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
+                  if (isImg) {
+                    vd.insertValue(`![${esc(imported.name)}](${esc(href)}) `);
+                  } else {
+                    vd.insertValue(`[${esc(imported.name)}](${esc(href)}) `);
+                  }
+                }
+              } catch (err) {
+                console.error('Failed to import dropped file in note:', err);
+              }
+            }
+          }
+        }}
         onClick={(e) => {
           const target = e.target as HTMLElement;
           if (
@@ -1064,7 +1155,7 @@ function NoteEditor({
 
       {picker && (
         <NotePicker
-          items={filterNotes(allNotes, picker.query)}
+          items={filterCandidates(allNotes, allFiles, picker.query)}
           allNotes={allNotes}
           index={picker.index}
           left={picker.left}

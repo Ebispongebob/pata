@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 )
@@ -279,3 +280,50 @@ func SafeWrite(targetPath string, data []byte, baseline *FileBaseline, tracker *
 		ModTime: modTime,
 	}, nil
 }
+
+// SafeResolveVaultPath resolves a relative or absolute targetPath against vaultRoot.
+// It verifies that the resulting path is strictly located within vaultRoot and does not
+// escape via ".." or symlinks. Returns the absolute path and slash-separated vault-relative path.
+func SafeResolveVaultPath(vaultRoot, targetPath string) (absPath string, relPath string, err error) {
+	if strings.TrimSpace(vaultRoot) == "" {
+		return "", "", fmt.Errorf("vault root cannot be empty")
+	}
+	cleanTarget := strings.TrimSpace(targetPath)
+	if cleanTarget == "" {
+		return "", "", fmt.Errorf("target path cannot be empty")
+	}
+
+	absRoot, err := filepath.Abs(vaultRoot)
+	if err != nil {
+		return "", "", fmt.Errorf("invalid vault root: %w", err)
+	}
+
+	var candidate string
+	if filepath.IsAbs(cleanTarget) {
+		candidate = filepath.Clean(cleanTarget)
+	} else {
+		candidate = filepath.Clean(filepath.Join(absRoot, filepath.FromSlash(cleanTarget)))
+	}
+
+	rel, err := filepath.Rel(absRoot, candidate)
+	if err != nil || strings.HasPrefix(rel, "..") || filepath.IsAbs(rel) {
+		return "", "", fmt.Errorf("path escapes vault: %s", targetPath)
+	}
+
+	// If the file exists, check symlinks to prevent symlink escape
+	if fi, err := os.Lstat(candidate); err == nil {
+		if fi.Mode()&os.ModeSymlink != 0 {
+			evalTarget, err := filepath.EvalSymlinks(candidate)
+			if err != nil {
+				return "", "", fmt.Errorf("failed to evaluate symlink: %w", err)
+			}
+			evalRel, err := filepath.Rel(absRoot, evalTarget)
+			if err != nil || strings.HasPrefix(evalRel, "..") || filepath.IsAbs(evalRel) {
+				return "", "", fmt.Errorf("symlink target escapes vault: %s", targetPath)
+			}
+		}
+	}
+
+	return candidate, filepath.ToSlash(rel), nil
+}
+

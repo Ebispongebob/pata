@@ -54,6 +54,10 @@ func NewVault(rootPath string) (*Vault, error) {
 		return nil, fmt.Errorf("failed to create vault directory: %w", err)
 	}
 
+	for _, dir := range []string{"tasks", "notes", "plans", "files"} {
+		_ = os.MkdirAll(filepath.Join(absRoot, dir), 0755)
+	}
+
 	index, err := ScanVault(absRoot)
 	if err != nil {
 		return nil, fmt.Errorf("initial vault scan failed: %w", err)
@@ -86,11 +90,14 @@ func (v *Vault) Scan() error {
 	v.Index.memos = newIndex.memos
 	v.Index.notes = newIndex.notes
 	v.Index.dayPlans = newIndex.dayPlans
+	v.Index.files = newIndex.files
 	v.Index.fileToID = newIndex.fileToID
 	v.Index.idToFile = newIndex.idToFile
+	v.Index.activityLocs = newIndex.activityLocs
 	v.Index.baselines = newIndex.baselines
 	v.Index.danglingRefs = newIndex.danglingRefs
 	v.Index.parseErrors = newIndex.parseErrors
+	v.Index.vaultRoot = newIndex.vaultRoot
 	// 注释: Scan 清空 pendingMoves 与 Remove 事件存在竞态窗口(最长 30s 周期重扫闪失、重扫自愈，属已知可接受).
 	v.Index.pendingMoves = make(map[string]pendingMove)
 	newIndex.mu.RUnlock()
@@ -264,6 +271,65 @@ func (v *Vault) handleFSEvent(event fsnotify.Event) {
 			_ = v.watchSubtree(path)
 			return
 		}
+	}
+
+	rel, relErr := filepath.Rel(v.RootPath, path)
+	if relErr != nil {
+		return
+	}
+	relSlash := filepath.ToSlash(rel)
+
+	// Handle files/ directory resources
+	if strings.HasPrefix(relSlash, "files/") {
+		if strings.HasPrefix(base, ".") {
+			return
+		}
+		if event.Has(fsnotify.Remove) || event.Has(fsnotify.Rename) {
+			if _, err := os.Stat(path); os.IsNotExist(err) {
+				v.Index.RemoveFileResource(relSlash)
+				v.dispatch(VaultEvent{
+					Op:       ChangeOpDelete,
+					Path:     path,
+					EntityID: relSlash,
+					Type:     EntityTypeFile,
+				})
+				return
+			}
+		}
+		if event.Has(fsnotify.Create) || event.Has(fsnotify.Write) {
+			fi, err := os.Stat(path)
+			if err == nil && !fi.IsDir() {
+				v.Index.PutFile(FileResource{
+					Path:    relSlash,
+					Name:    base,
+					Ext:     filepath.Ext(base),
+					Size:    fi.Size(),
+					ModTime: fi.ModTime(),
+				})
+				op := ChangeOpUpdate
+				if event.Has(fsnotify.Create) {
+					op = ChangeOpCreate
+				}
+				v.dispatch(VaultEvent{
+					Op:       op,
+					Path:     path,
+					EntityID: relSlash,
+					Type:     EntityTypeFile,
+				})
+			}
+			return
+		}
+		return
+	}
+
+	// Only process business Markdown directories
+	isTaskDir := strings.HasPrefix(relSlash, "tasks/")
+	isNoteDir := strings.HasPrefix(relSlash, "notes/")
+	isPlanDir := strings.HasPrefix(relSlash, "plans/") || strings.HasPrefix(relSlash, ".pata/plans/")
+	isMemoDir := strings.HasPrefix(relSlash, "memos/")
+
+	if !isTaskDir && !isNoteDir && !isPlanDir && !isMemoDir {
+		return
 	}
 
 	// Only process markdown files

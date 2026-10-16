@@ -25,6 +25,29 @@ export function filterNotes(notes: NoteRef[], query: string): NoteRef[] {
   return notes.filter((n) => !q || n.title.toLowerCase().includes(q)).slice(0, 8);
 }
 
+export interface FileRef {
+  name: string;
+  path: string;
+  ext: string;
+  size: number;
+  mod_time?: string;
+}
+
+export type CandidateItem =
+  | { kind: 'note'; note: NoteRef }
+  | { kind: 'file'; file: FileRef };
+
+export function filterCandidates(notes: NoteRef[], files: FileRef[], query: string): CandidateItem[] {
+  const q = query.trim().toLowerCase();
+  const matchedNotes: CandidateItem[] = notes
+    .filter((n) => !q || n.title.toLowerCase().includes(q))
+    .map((note) => ({ kind: 'note', note }));
+  const matchedFiles: CandidateItem[] = files
+    .filter((f) => !q || f.name.toLowerCase().includes(q))
+    .map((file) => ({ kind: 'file', file }));
+  return [...matchedNotes, ...matchedFiles].slice(0, 10);
+}
+
 /** 候选弹层键盘处理；返回 true 表示已消费该按键。组合输入期间不拦截。 */
 export function pickerKey(
   e: { key: string; metaKey: boolean; ctrlKey: boolean; shiftKey: boolean; preventDefault(): void },
@@ -172,3 +195,31 @@ export function resolveHref(fromPath: string, href: string, notes: NoteRef[]): N
     return undefined;
   }
 }
+
+// ---------- 文件链接解析 ----------
+
+export const fileLinkRe = () => /(!?)\[([^\]\n]+)\]\(([^)\s]+)(?:\s+"[^"]*")?\)/g;
+
+/** 判断 destination 是否是 Vault 文件相对路径（指向 files/） */
+export function isVaultFileLink(dest: string): boolean {
+  if (/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(dest) || dest.startsWith('/') || dest.startsWith('#')) return false;
+  return dest.includes('files/');
+}
+
+/** 把相对 href 解析为 Vault 内的 FileRef；解析失败或目标非文件返回 undefined。 */
+export function resolveFileHref(fromPath: string, href: string, files: FileRef[]): FileRef | undefined {
+  if (/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(href) || href.startsWith('/') || href.startsWith('#')) return undefined;
+  try {
+    const clean = decodeURIComponent(href.split(/[#?]/)[0]);
+    const parts: string[] = [];
+    for (const seg of (dirOf(fromPath) + clean).split('/')) {
+      if (seg === '..') parts.pop();
+      else if (seg && seg !== '.') parts.push(seg);
+    }
+    const target = parts.join('/');
+    return files.find((f) => f.path === target);
+  } catch {
+    return undefined;
+  }
+}
+

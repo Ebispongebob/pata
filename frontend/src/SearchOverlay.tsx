@@ -4,6 +4,7 @@ import {
   CheckSquare,
   FileText,
   MessageSquare,
+  Paperclip,
   AlertCircle,
   Loader2,
   X,
@@ -127,20 +128,22 @@ export function SearchOverlay({
     };
   }, [query, isOpen]);
 
-  // Group results by type (Task -> Note -> Memo/Activity)
+  // Group results by type (Task -> Note -> Memo/Activity -> File)
   const tasks = useMemo(() => results.filter((r) => r.type === 'task'), [results]);
   const notes = useMemo(() => results.filter((r) => r.type === 'note'), [results]);
   const memos = useMemo(() => results.filter((r) => r.type === 'memo' || (r.type as string) === 'activity'), [results]);
+  const files = useMemo(() => results.filter((r) => (r.type as string) === 'file'), [results]);
 
   // Truncate displayed items to first 5 per type
   const displayedTasks = useMemo(() => tasks.slice(0, 5), [tasks]);
   const displayedNotes = useMemo(() => notes.slice(0, 5), [notes]);
   const displayedMemos = useMemo(() => memos.slice(0, 5), [memos]);
+  const displayedFiles = useMemo(() => files.slice(0, 5), [files]);
 
   // Flattened displayed items for keyboard navigation index
   const displayedItems = useMemo(
-    () => [...displayedTasks, ...displayedNotes, ...displayedMemos],
-    [displayedTasks, displayedNotes, displayedMemos]
+    () => [...displayedTasks, ...displayedNotes, ...displayedMemos, ...displayedFiles],
+    [displayedTasks, displayedNotes, displayedMemos, displayedFiles]
   );
 
   // Keep selected index within bounds
@@ -181,6 +184,11 @@ export function SearchOverlay({
         } else {
           onClose();
         }
+      } else if ((item.type as string) === 'file') {
+        VaultService.PreviewFile(item.id).catch((err) => {
+          console.warn('Failed to preview file:', err);
+        });
+        onClose();
       }
     },
     [memoTaskMap, onOpenTask, onOpenNote, onOpenTodayDate, onClose]
@@ -479,6 +487,74 @@ export function SearchOverlay({
                               <ExternalLink className="w-2.5 h-2.5" />
                             </span>
                           )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* 4. Files Section */}
+              {displayedFiles.length > 0 && (
+                <div>
+                  <div className="flex items-center justify-between px-3.5 py-1.5 text-[11px] font-semibold text-stone-500 dark:text-stone-400 bg-stone-100/60 dark:bg-stone-800/40">
+                    <div className="flex items-center space-x-1.5">
+                      <Paperclip className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+                      <span>文件资源</span>
+                    </div>
+                    <span className="font-mono text-[10px] text-stone-400">
+                      {files.length > 5 ? `显示前 5 条 / 共 ${files.length} 条` : `共 ${files.length} 条`}
+                    </span>
+                  </div>
+                  <div className="p-1 space-y-0.5">
+                    {displayedFiles.map((file, m) => {
+                      const globalIndex = displayedTasks.length + displayedNotes.length + displayedMemos.length + m;
+                      const isSelected = selectedIndex === globalIndex;
+
+                      return (
+                        <div
+                          key={`file-${file.id}`}
+                          role="option"
+                          aria-selected={isSelected}
+                          tabIndex={-1}
+                          ref={(el) => {
+                            itemRefs.current[globalIndex] = el;
+                          }}
+                          onMouseEnter={() => setSelectedIndex(globalIndex)}
+                          onClick={() => handleItemSelect(file)}
+                          className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-xs cursor-pointer transition-colors ${
+                            isSelected
+                              ? 'bg-stone-200/80 dark:bg-stone-800 text-stone-900 dark:text-stone-50'
+                              : 'text-stone-700 dark:text-stone-300 hover:bg-stone-100 dark:hover:bg-stone-800/50'
+                          }`}
+                        >
+                          <div className="flex items-center space-x-2.5 min-w-0 mr-2 flex-1">
+                            <Paperclip className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400 shrink-0 opacity-80" />
+                            <div className="min-w-0 flex-1">
+                              <div className="font-medium truncate">{file.title}</div>
+                              <div className="text-[11px] text-stone-500 dark:text-stone-400 truncate mt-0.5 opacity-90">
+                                {file.snippet || file.id}
+                              </div>
+                            </div>
+                          </div>
+                          <div className="flex items-center space-x-2 shrink-0">
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                VaultService.RevealInFinder(file.id).catch(() => {});
+                              }}
+                              title="在 Finder 中显示"
+                              className="p-1 text-stone-400 hover:text-stone-600 dark:hover:text-stone-200 rounded cursor-pointer"
+                            >
+                              <ExternalLink className="w-3 h-3" />
+                            </button>
+                            {isSelected && (
+                              <span className="text-[10px] font-mono text-stone-400 dark:text-stone-500">
+                                ↵ 预览
+                              </span>
+                            )}
+                          </div>
                         </div>
                       );
                     })}

@@ -15,7 +15,17 @@ const (
 	EntityTypeNote     EntityType = "note"
 	EntityTypeDayPlan  EntityType = "day_plan"
 	EntityTypeActivity EntityType = "activity"
+	EntityTypeFile     EntityType = "file"
 )
+
+// FileResource represents an ordinary binary or document file in the files/ directory.
+type FileResource struct {
+	Path    string    `json:"path"`     // Vault-relative path with forward slashes (e.g. "files/doc.pdf")
+	Name    string    `json:"name"`     // Base filename (e.g. "doc.pdf")
+	Ext     string    `json:"ext"`      // Extension including dot (e.g. ".pdf")
+	Size    int64     `json:"size"`     // File size in bytes
+	ModTime time.Time `json:"mod_time"` // Last modification time
+}
 
 // Activity represents an embedded activity inside a Task or DayPlan.
 type Activity struct {

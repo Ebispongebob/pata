@@ -44,10 +44,12 @@ type ActivityLocation struct {
 // MemoryIndex maintains an in-memory rebuildable index of all vault entities.
 type MemoryIndex struct {
 	mu           sync.RWMutex
+	vaultRoot    string
 	tasks        map[string]*Task
 	memos        map[string]*Memo
 	notes        map[string]*Note
 	dayPlans     map[string]*DayPlan // key: date YYYY-MM-DD
+	files        map[string]FileResource // key: relative slash path, e.g. "files/doc.pdf"
 	fileToID     map[string]string   // absPath -> entity ID
 	idToFile     map[string]string   // entity ID -> absPath
 	activityLocs map[string]ActivityLocation // activityID -> location
@@ -70,6 +72,7 @@ func NewMemoryIndex() *MemoryIndex {
 		memos:        make(map[string]*Memo),
 		notes:        make(map[string]*Note),
 		dayPlans:     make(map[string]*DayPlan),
+		files:        make(map[string]FileResource),
 		fileToID:     make(map[string]string),
 		idToFile:     make(map[string]string),
 		activityLocs: make(map[string]ActivityLocation),
@@ -83,10 +86,12 @@ func NewMemoryIndex() *MemoryIndex {
 func (idx *MemoryIndex) Clear() {
 	idx.mu.Lock()
 	defer idx.mu.Unlock()
+	idx.vaultRoot = ""
 	idx.tasks = make(map[string]*Task)
 	idx.memos = make(map[string]*Memo)
 	idx.notes = make(map[string]*Note)
 	idx.dayPlans = make(map[string]*DayPlan)
+	idx.files = make(map[string]FileResource)
 	idx.fileToID = make(map[string]string)
 	idx.idToFile = make(map[string]string)
 	idx.activityLocs = make(map[string]ActivityLocation)
@@ -94,6 +99,50 @@ func (idx *MemoryIndex) Clear() {
 	idx.pendingMoves = make(map[string]pendingMove)
 	idx.danglingRefs = nil
 	idx.parseErrors = nil
+}
+
+// ListFiles returns clones of all file resources sorted by Name then Path.
+func (idx *MemoryIndex) ListFiles() []FileResource {
+	idx.mu.RLock()
+	defer idx.mu.RUnlock()
+	res := make([]FileResource, 0, len(idx.files))
+	for _, f := range idx.files {
+		res = append(res, f)
+	}
+	sort.Slice(res, func(i, j int) bool {
+		if res[i].Name != res[j].Name {
+			return res[i].Name < res[j].Name
+		}
+		return res[i].Path < res[j].Path
+	})
+	return res
+}
+
+// GetFile returns a file resource by its vault-relative path.
+func (idx *MemoryIndex) GetFile(relPath string) (FileResource, bool) {
+	idx.mu.RLock()
+	defer idx.mu.RUnlock()
+	f, ok := idx.files[filepath.ToSlash(relPath)]
+	return f, ok
+}
+
+// PutFile inserts or updates a file resource in the index.
+func (idx *MemoryIndex) PutFile(f FileResource) {
+	idx.mu.Lock()
+	defer idx.mu.Unlock()
+	if idx.files == nil {
+		idx.files = make(map[string]FileResource)
+	}
+	idx.files[filepath.ToSlash(f.Path)] = f
+}
+
+// RemoveFileResource removes a file resource by its vault-relative path.
+func (idx *MemoryIndex) RemoveFileResource(relPath string) {
+	idx.mu.Lock()
+	defer idx.mu.Unlock()
+	if idx.files != nil {
+		delete(idx.files, filepath.ToSlash(relPath))
+	}
 }
 
 // GetActivity returns a clone of the activity by ID and its location.
@@ -713,12 +762,37 @@ func (idx *MemoryIndex) SearchAll(query string) []SearchResultItem {
 		actResults = append(actResults, a.item)
 	}
 
-	total := len(taskResults) + len(noteResults) + len(memoResults) + len(actResults)
+	// 5. Files: match name or path
+	var fileResults []SearchResultItem
+	for _, f := range idx.files {
+		if matchCaseInsensitive(f.Name, lowerQ) || matchCaseInsensitive(f.Path, lowerQ) {
+			absPath := ""
+			if idx.vaultRoot != "" {
+				absPath = filepath.Join(idx.vaultRoot, filepath.FromSlash(f.Path))
+			}
+			fileResults = append(fileResults, SearchResultItem{
+				Type:    EntityTypeFile,
+				ID:      f.Path,
+				Title:   f.Name,
+				Snippet: f.Path,
+				Path:    absPath,
+			})
+		}
+	}
+	sort.Slice(fileResults, func(i, j int) bool {
+		if fileResults[i].Title != fileResults[j].Title {
+			return fileResults[i].Title < fileResults[j].Title
+		}
+		return fileResults[i].Path < fileResults[j].Path
+	})
+
+	total := len(taskResults) + len(noteResults) + len(memoResults) + len(actResults) + len(fileResults)
 	results := make([]SearchResultItem, 0, total)
 	results = append(results, taskResults...)
 	results = append(results, noteResults...)
 	results = append(results, memoResults...)
 	results = append(results, actResults...)
+	results = append(results, fileResults...)
 
 	return results
 }
@@ -1020,28 +1094,71 @@ func ScanVault(vaultRoot string) (*MemoryIndex, error) {
 	}
 
 	idx := NewMemoryIndex()
+	idx.vaultRoot = absRoot
 	var parseErrs []ParseError
 
 	err = filepath.Walk(absRoot, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}
+		if path == absRoot {
+			return nil
+		}
+		rel, relErr := filepath.Rel(absRoot, path)
+		if relErr != nil {
+			return nil
+		}
+		relSlash := filepath.ToSlash(rel)
+		base := filepath.Base(path)
+
 		if info.IsDir() {
 			// Skip .git or temporary directories
-			base := filepath.Base(path)
 			if base == ".git" {
+				return filepath.SkipDir
+			}
+			// Only allow business root directories
+			if !strings.Contains(relSlash, "/") {
+				if base != "tasks" && base != "notes" && base != "plans" && base != "files" && base != "memos" && base != ".pata" {
+					return filepath.SkipDir
+				}
+			} else if strings.HasPrefix(relSlash, ".pata/") && relSlash != ".pata/plans" {
 				return filepath.SkipDir
 			}
 			return nil
 		}
 
-		// Only process .md files (including .pata/plans/*.md)
-		if filepath.Ext(path) != ".md" {
+		// Ignore temporary swap/atomic files or hidden files
+		if strings.HasPrefix(base, ".pata_tmp_") || strings.HasSuffix(base, ".tmp") || base == ".DS_Store" {
 			return nil
 		}
 
-		// Ignore temporary swap/atomic files
-		if strings.HasPrefix(filepath.Base(path), ".pata_tmp_") {
+		// Files directory: index as FileResource without frontmatter
+		if strings.HasPrefix(relSlash, "files/") {
+			if strings.HasPrefix(base, ".") {
+				return nil
+			}
+			idx.files[relSlash] = FileResource{
+				Path:    relSlash,
+				Name:    base,
+				Ext:     filepath.Ext(base),
+				Size:    info.Size(),
+				ModTime: info.ModTime(),
+			}
+			return nil
+		}
+
+		// Business entity directories must contain .md files
+		isTaskDir := strings.HasPrefix(relSlash, "tasks/")
+		isNoteDir := strings.HasPrefix(relSlash, "notes/")
+		isPlanDir := strings.HasPrefix(relSlash, "plans/") || strings.HasPrefix(relSlash, ".pata/plans/")
+		isMemoDir := strings.HasPrefix(relSlash, "memos/")
+
+		if !isTaskDir && !isNoteDir && !isPlanDir && !isMemoDir {
+			// Files in root (e.g. README.md) or other folders are not indexed
+			return nil
+		}
+
+		if filepath.Ext(path) != ".md" {
 			return nil
 		}
 
@@ -1061,6 +1178,30 @@ func ScanVault(vaultRoot string) (*MemoryIndex, error) {
 				Path:   path,
 				Reason: "failed to parse markdown entity",
 				Err:    parseErr,
+			})
+			return nil
+		}
+
+		// Ensure entity matches its folder boundary
+		if isTaskDir && entity.GetType() != EntityTypeTask {
+			parseErrs = append(parseErrs, ParseError{
+				Path:   path,
+				Reason: fmt.Sprintf("file in tasks/ has invalid entity type '%s'", entity.GetType()),
+				Err:    fmt.Errorf("expected type task, got %s", entity.GetType()),
+			})
+			return nil
+		} else if isNoteDir && entity.GetType() != EntityTypeNote {
+			parseErrs = append(parseErrs, ParseError{
+				Path:   path,
+				Reason: fmt.Sprintf("file in notes/ has invalid entity type '%s'", entity.GetType()),
+				Err:    fmt.Errorf("expected type note, got %s", entity.GetType()),
+			})
+			return nil
+		} else if isPlanDir && entity.GetType() != EntityTypeDayPlan {
+			parseErrs = append(parseErrs, ParseError{
+				Path:   path,
+				Reason: fmt.Sprintf("file in plans/ has invalid entity type '%s'", entity.GetType()),
+				Err:    fmt.Errorf("expected type day_plan, got %s", entity.GetType()),
 			})
 			return nil
 		}
