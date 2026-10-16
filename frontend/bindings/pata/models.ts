@@ -3,16 +3,12 @@
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import { Create as $Create } from "@wailsio/runtime";
-
-// eslint-disable-next-line @typescript-eslint/ban-ts-comment
-// @ts-ignore: Unused imports
 import * as markdown$0 from "./internal/storage/markdown/models.js";
 
 /**
  * CreateActivityInput defines parameters for creating an Activity.
  */
-export class CreateActivityInput {
+export interface CreateActivityInput {
     /**
      * "task" | "day_plan"
      */
@@ -29,116 +25,41 @@ export class CreateActivityInput {
     "date"?: string;
     "at"?: string | null;
     "body": string;
-    "tags"?: string[];
-    "note_refs"?: { [_ in string]?: string };
-
-    /** Creates a new CreateActivityInput instance. */
-    constructor($$source: Partial<CreateActivityInput> = {}) {
-        if (!("body" in $$source)) {
-            this["body"] = "";
-        }
-
-        Object.assign(this, $$source);
-    }
-
-    /**
-     * Creates a new CreateActivityInput instance from a string or object.
-     */
-    static createFrom($$source: any = {}): CreateActivityInput {
-        const $$createField5_0 = $$createType0;
-        const $$createField6_0 = $$createType1;
-        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
-        if ("tags" in $$parsedSource) {
-            $$parsedSource["tags"] = $$createField5_0($$parsedSource["tags"]);
-        }
-        if ("note_refs" in $$parsedSource) {
-            $$parsedSource["note_refs"] = $$createField6_0($$parsedSource["note_refs"]);
-        }
-        return new CreateActivityInput($$parsedSource as Partial<CreateActivityInput>);
-    }
+    "tags"?: string[] | null;
+    "note_refs"?: { [_ in string]?: string } | null;
 }
 
 /**
  * CreateNoteInput defines parameters for creating a new Note.
  */
-export class CreateNoteInput {
+export interface CreateNoteInput {
     "title": string;
-    "tags"?: string[];
+    "tags"?: string[] | null;
     "body"?: string;
-
-    /** Creates a new CreateNoteInput instance. */
-    constructor($$source: Partial<CreateNoteInput> = {}) {
-        if (!("title" in $$source)) {
-            this["title"] = "";
-        }
-
-        Object.assign(this, $$source);
-    }
-
-    /**
-     * Creates a new CreateNoteInput instance from a string or object.
-     */
-    static createFrom($$source: any = {}): CreateNoteInput {
-        const $$createField1_0 = $$createType0;
-        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
-        if ("tags" in $$parsedSource) {
-            $$parsedSource["tags"] = $$createField1_0($$parsedSource["tags"]);
-        }
-        return new CreateNoteInput($$parsedSource as Partial<CreateNoteInput>);
-    }
 }
 
 /**
  * CreateTaskInput defines parameters for creating a new Task.
  */
-export class CreateTaskInput {
+export interface CreateTaskInput {
     "title": string;
     "description"?: string;
     "status"?: markdown$0.TaskStatus;
     "due"?: string | null;
-    "tags"?: string[];
-    "note_ids"?: string[];
+    "tags"?: string[] | null;
+    "note_ids"?: string[] | null;
     "body"?: string;
 
     /**
      * NoteRefs binds [[名称]] in Description to real Note IDs.
      */
-    "note_refs"?: { [_ in string]?: string };
-
-    /** Creates a new CreateTaskInput instance. */
-    constructor($$source: Partial<CreateTaskInput> = {}) {
-        if (!("title" in $$source)) {
-            this["title"] = "";
-        }
-
-        Object.assign(this, $$source);
-    }
-
-    /**
-     * Creates a new CreateTaskInput instance from a string or object.
-     */
-    static createFrom($$source: any = {}): CreateTaskInput {
-        const $$createField4_0 = $$createType0;
-        const $$createField5_0 = $$createType0;
-        const $$createField7_0 = $$createType1;
-        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
-        if ("tags" in $$parsedSource) {
-            $$parsedSource["tags"] = $$createField4_0($$parsedSource["tags"]);
-        }
-        if ("note_ids" in $$parsedSource) {
-            $$parsedSource["note_ids"] = $$createField5_0($$parsedSource["note_ids"]);
-        }
-        if ("note_refs" in $$parsedSource) {
-            $$parsedSource["note_refs"] = $$createField7_0($$parsedSource["note_refs"]);
-        }
-        return new CreateTaskInput($$parsedSource as Partial<CreateTaskInput>);
-    }
+    "note_refs"?: { [_ in string]?: string } | null;
 }
 
 /**
  * TimelineItem represents an aggregated item in the day timeline (activity or completion).
  */
-export class TimelineItem {
+export interface TimelineItem {
     /**
      * "activity" | "completion" | "reopen"
      */
@@ -147,244 +68,63 @@ export class TimelineItem {
     "activity"?: markdown$0.Activity | null;
     "task_id"?: string;
     "task_title"?: string;
-
-    /** Creates a new TimelineItem instance. */
-    constructor($$source: Partial<TimelineItem> = {}) {
-        if (!("kind" in $$source)) {
-            this["kind"] = "";
-        }
-        if (!("time" in $$source)) {
-            this["time"] = "0001-01-01T00:00:00.000Z";
-        }
-
-        Object.assign(this, $$source);
-    }
-
-    /**
-     * Creates a new TimelineItem instance from a string or object.
-     */
-    static createFrom($$source: any = {}): TimelineItem {
-        const $$createField2_0 = $$createType3;
-        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
-        if ("activity" in $$parsedSource) {
-            $$parsedSource["activity"] = $$createField2_0($$parsedSource["activity"]);
-        }
-        return new TimelineItem($$parsedSource as Partial<TimelineItem>);
-    }
 }
 
 /**
  * UpdateActivityInput defines parameters for updating an existing Activity by its ID.
  */
-export class UpdateActivityInput {
+export interface UpdateActivityInput {
     "id": string;
     "body": string;
-    "tags"?: string[];
-    "note_refs"?: { [_ in string]?: string };
-
-    /** Creates a new UpdateActivityInput instance. */
-    constructor($$source: Partial<UpdateActivityInput> = {}) {
-        if (!("id" in $$source)) {
-            this["id"] = "";
-        }
-        if (!("body" in $$source)) {
-            this["body"] = "";
-        }
-
-        Object.assign(this, $$source);
-    }
-
-    /**
-     * Creates a new UpdateActivityInput instance from a string or object.
-     */
-    static createFrom($$source: any = {}): UpdateActivityInput {
-        const $$createField2_0 = $$createType0;
-        const $$createField3_0 = $$createType1;
-        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
-        if ("tags" in $$parsedSource) {
-            $$parsedSource["tags"] = $$createField2_0($$parsedSource["tags"]);
-        }
-        if ("note_refs" in $$parsedSource) {
-            $$parsedSource["note_refs"] = $$createField3_0($$parsedSource["note_refs"]);
-        }
-        return new UpdateActivityInput($$parsedSource as Partial<UpdateActivityInput>);
-    }
+    "tags"?: string[] | null;
+    "note_refs"?: { [_ in string]?: string } | null;
 }
 
 /**
  * UpdateNoteInput defines parameters for updating an existing Note.
  * Note: tags and body follow full-replacement semantics (not partial patch).
  */
-export class UpdateNoteInput {
+export interface UpdateNoteInput {
     "id": string;
     "title": string;
-    "tags"?: string[];
+    "tags"?: string[] | null;
     "body": string;
-
-    /** Creates a new UpdateNoteInput instance. */
-    constructor($$source: Partial<UpdateNoteInput> = {}) {
-        if (!("id" in $$source)) {
-            this["id"] = "";
-        }
-        if (!("title" in $$source)) {
-            this["title"] = "";
-        }
-        if (!("body" in $$source)) {
-            this["body"] = "";
-        }
-
-        Object.assign(this, $$source);
-    }
-
-    /**
-     * Creates a new UpdateNoteInput instance from a string or object.
-     */
-    static createFrom($$source: any = {}): UpdateNoteInput {
-        const $$createField2_0 = $$createType0;
-        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
-        if ("tags" in $$parsedSource) {
-            $$parsedSource["tags"] = $$createField2_0($$parsedSource["tags"]);
-        }
-        return new UpdateNoteInput($$parsedSource as Partial<UpdateNoteInput>);
-    }
 }
 
 /**
  * UpdateTaskInput defines parameters for updating an existing Task.
  */
-export class UpdateTaskInput {
+export interface UpdateTaskInput {
     "id": string;
     "title": string;
     "description"?: string;
     "status": markdown$0.TaskStatus;
     "due": string | null;
-    "tags"?: string[];
-    "note_ids"?: string[];
+    "tags"?: string[] | null;
+    "note_ids"?: string[] | null;
     "body"?: string;
 
     /**
      * NoteRefs: nil keeps existing bindings; non-nil (even empty) replaces them.
      */
-    "note_refs"?: { [_ in string]?: string };
-
-    /** Creates a new UpdateTaskInput instance. */
-    constructor($$source: Partial<UpdateTaskInput> = {}) {
-        if (!("id" in $$source)) {
-            this["id"] = "";
-        }
-        if (!("title" in $$source)) {
-            this["title"] = "";
-        }
-        if (!("status" in $$source)) {
-            this["status"] = markdown$0.TaskStatus.$zero;
-        }
-        if (!("due" in $$source)) {
-            this["due"] = null;
-        }
-
-        Object.assign(this, $$source);
-    }
-
-    /**
-     * Creates a new UpdateTaskInput instance from a string or object.
-     */
-    static createFrom($$source: any = {}): UpdateTaskInput {
-        const $$createField5_0 = $$createType0;
-        const $$createField6_0 = $$createType0;
-        const $$createField8_0 = $$createType1;
-        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
-        if ("tags" in $$parsedSource) {
-            $$parsedSource["tags"] = $$createField5_0($$parsedSource["tags"]);
-        }
-        if ("note_ids" in $$parsedSource) {
-            $$parsedSource["note_ids"] = $$createField6_0($$parsedSource["note_ids"]);
-        }
-        if ("note_refs" in $$parsedSource) {
-            $$parsedSource["note_refs"] = $$createField8_0($$parsedSource["note_refs"]);
-        }
-        return new UpdateTaskInput($$parsedSource as Partial<UpdateTaskInput>);
-    }
+    "note_refs"?: { [_ in string]?: string } | null;
 }
 
 /**
  * VaultHealth reports vault health status, including parse errors and dangling references.
  */
-export class VaultHealth {
-    "parse_errors": markdown$0.ParseError[];
-    "dangling_refs": markdown$0.DanglingRef[];
-
-    /** Creates a new VaultHealth instance. */
-    constructor($$source: Partial<VaultHealth> = {}) {
-        if (!("parse_errors" in $$source)) {
-            this["parse_errors"] = [];
-        }
-        if (!("dangling_refs" in $$source)) {
-            this["dangling_refs"] = [];
-        }
-
-        Object.assign(this, $$source);
-    }
-
-    /**
-     * Creates a new VaultHealth instance from a string or object.
-     */
-    static createFrom($$source: any = {}): VaultHealth {
-        const $$createField0_0 = $$createType5;
-        const $$createField1_0 = $$createType7;
-        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
-        if ("parse_errors" in $$parsedSource) {
-            $$parsedSource["parse_errors"] = $$createField0_0($$parsedSource["parse_errors"]);
-        }
-        if ("dangling_refs" in $$parsedSource) {
-            $$parsedSource["dangling_refs"] = $$createField1_0($$parsedSource["dangling_refs"]);
-        }
-        return new VaultHealth($$parsedSource as Partial<VaultHealth>);
-    }
+export interface VaultHealth {
+    "parse_errors": markdown$0.ParseError[] | null;
+    "dangling_refs": markdown$0.DanglingRef[] | null;
 }
 
 /**
  * VaultStatus reports whether a vault is configured/open for the UI.
  */
-export class VaultStatus {
+export interface VaultStatus {
     "configured": boolean;
     "path": string;
     "open": boolean;
     "taskCount": number;
     "error"?: string;
-
-    /** Creates a new VaultStatus instance. */
-    constructor($$source: Partial<VaultStatus> = {}) {
-        if (!("configured" in $$source)) {
-            this["configured"] = false;
-        }
-        if (!("path" in $$source)) {
-            this["path"] = "";
-        }
-        if (!("open" in $$source)) {
-            this["open"] = false;
-        }
-        if (!("taskCount" in $$source)) {
-            this["taskCount"] = 0;
-        }
-
-        Object.assign(this, $$source);
-    }
-
-    /**
-     * Creates a new VaultStatus instance from a string or object.
-     */
-    static createFrom($$source: any = {}): VaultStatus {
-        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
-        return new VaultStatus($$parsedSource as Partial<VaultStatus>);
-    }
 }
-
-// Private type creation functions
-const $$createType0 = $Create.Array($Create.Any);
-const $$createType1 = $Create.Map($Create.Any, $Create.Any);
-const $$createType2 = markdown$0.Activity.createFrom;
-const $$createType3 = $Create.Nullable($$createType2);
-const $$createType4 = markdown$0.ParseError.createFrom;
-const $$createType5 = $Create.Array($$createType4);
-const $$createType6 = markdown$0.DanglingRef.createFrom;
-const $$createType7 = $Create.Array($$createType6);

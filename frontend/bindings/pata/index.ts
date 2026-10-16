@@ -6,7 +6,7 @@ export {
     VaultService
 };
 
-export {
+export type {
     CreateActivityInput,
     CreateNoteInput,
     CreateTaskInput,
