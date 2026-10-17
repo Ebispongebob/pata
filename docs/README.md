@@ -1,6 +1,6 @@
 # Pata · 文档与实施路线
 
-**文档按实施阶段组织，而不是按功能模块组织。** 当前路线包含 **11 个顺序阶段**：阶段 1～9 的代码与实机验收已完成；阶段 10 增加主窗口内设置与 Keychain 凭证，阶段 11 增加以普通 Note 为载体的音频逐字稿。**阶段 10/11 已确定设计，尚未实施代码**。只有实际新增一个独立交付阶段时，才新增对应的 `docs/NN-name/` 目录。
+**文档按实施阶段组织，而不是按功能模块组织。** 当前路线包含 **11 个顺序阶段**：阶段 1～9 的代码与实机验收已完成；阶段 10 将主题、Vault 与语音 Keychain 凭证集中到主窗口单页设置，阶段 11 增加以普通 Note 为载体的音频逐字稿。**阶段 10/11 已确定设计，尚未实施代码**。只有实际新增一个独立交付阶段时，才新增对应的 `docs/NN-name/` 目录。
 
 | 顺序 | 目录 / 阶段 | 阶段结束应交付什么 | 核心文档 |
 |---|---|---|---|
@@ -13,7 +13,7 @@
 | 7 | [`07-note-links`](07-note-links/) · 笔记引用闭环 | 笔记正文 / 任务描述 / 活动记录统一 `[[` 引用、点击跳转、自动被引用来源 | [idea](07-note-links/idea.md) · [proposal](07-note-links/proposal.md) |
 | 8 | [`08-activity-storage`](08-activity-storage/) · Activity 归属式存储重构 | 统一内嵌 Activity，Task/DayPlan 新格式、删除生命周期、搜索/时间线/链接回归 | [idea](08-activity-storage/idea.md) · [proposal](08-activity-storage/proposal.md) · [Schema](02-foundation/schema.md) |
 | 9 | [`09-vault-files`](09-vault-files/) · 专属 Vault 与统一资源引用 | Vault 目录边界、拖入文件与 `[[` 复用、文件名搜索和系统预览 | [idea](09-vault-files/idea.md) · [proposal](09-vault-files/proposal.md) |
-| 10 | [`10-settings`](10-settings/) · 应用设置与转写凭证 | 主窗口内设置入口、阿里云百炼北京地域 API Key 的 macOS Keychain 保存与更换 | [idea](10-settings/idea.md) · [proposal](10-settings/proposal.md) |
+| 10 | [`10-settings`](10-settings/) · 统一应用设置 | 主窗口单页「外观 / 存储 / 语音转写」，迁移主题与 Vault 管理，Keychain 保存北京地域 API Key | [idea](10-settings/idea.md) · [proposal](10-settings/proposal.md) |
 | 11 | [`11-audio-transcription`](11-audio-transcription/) · 本地音频转写为 Note | MP3 导入与异步转写、句级毫秒时间戳、音频双向定位、确认后重新转写 | [idea](11-audio-transcription/idea.md) · [proposal](11-audio-transcription/proposal.md) |
 
 阶段 1 的 UI 附加设计： [macOS 27 原生体验与 Magpie 源码参考](01-validate/macos-native.md)，其真实 Wails 验证安排在阶段 2。
@@ -49,6 +49,6 @@
 
 **阶段 9：代码与实机验收完成。** Vault 专属且仅管理约定目录；通过 Activity/Note 拖入文件、复制到 `files/` 并插入标准链接，已有 `[[` 同时搜索 Note 和 File；全局搜索支持按文件名直接找回未引用资源并支持 Quick Look 原生预览。经实机自动化测试（`TestStage9_VaultFilesEndToEnd`）与 live GUI 走查验证通过。详见 [idea](09-vault-files/idea.md)、[proposal](09-vault-files/proposal.md)。
 
-**阶段 10/11：仅文档设计完成，尚未编码或验收。** 阶段 10 在现有主窗口新增设置能力，只配置北京地域阿里云百炼 API Key，保存在 macOS Keychain；不修改现有主题/Vault 入口，不加第四导航。阶段 11 以普通 Markdown Note 承载 MP3 逐字稿，复用 `files/`，支持说话人、毫秒时间戳、顶部播放器、时间戳点击播放、进度拖动结束时定位正文及安全重新转写；不做多供应商、JSON 侧车或会议摘要。详见 [10](10-settings/proposal.md)、[11](11-audio-transcription/proposal.md)。
+**阶段 10/11：仅文档设计完成，尚未编码或验收。** 阶段 10 将侧边栏底部主题切换与 Vault 配置菜单收敛为设置齿轮，并在现有主窗口单页统一「外观 / 存储 / 语音转写」；主题三态持久化，Vault 路径、更换/重扫/Finder 打开迁入设置，首启 Vault 引导和主界面健康告警保留；阿里云百炼北京地域 API Key 存 Keychain，不加第四导航。阶段 11 以普通 Markdown Note 承载 MP3 逐字稿，复用 `files/`，支持说话人、毫秒时间戳、顶部播放器、时间戳点击播放、进度拖动结束时定位正文及安全重新转写；不做多供应商、JSON 侧车或会议摘要。详见 [10](10-settings/proposal.md)、[11](11-audio-transcription/proposal.md)。
 
 阶段 3 新增 Today 体验完善方案：末尾 `#标签` 快速创建、类似 ChatGPT 的左导航 / 中间 Today 或 Tasks / 右任务详情三栏、移除任务优先级、明确移出计划语义、紧凑日期及时间线。右栏按需打开，Notes 仍单列浏览与全主区域编辑。文档已整理，新增完成标准尚未验收，见 [idea](03-daily-loop/idea.md) 与 [proposal](03-daily-loop/proposal.md)；不改变原基础能力的已完成记录，也不新增阶段。
