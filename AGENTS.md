@@ -1,10 +1,10 @@
 # Pata · Agent 项目指引
 
-**项目名称：啪嗒 / Pata。** 前五阶段完成代码交付；**阶段 6/7/8/9 代码实现与 macOS 实机验收均已完成**。实际进度以 [docs/README.md](docs/README.md) 为准。
+**项目名称：啪嗒 / Pata。** 前五阶段完成代码交付；**阶段 6/7/8/9 代码实现与 macOS 实机验收均已完成**；**阶段 10/11 设计完成、待编码与验收**。实际进度以 [docs/README.md](docs/README.md) 为准。
 
 ## 开始阅读
 
-1. 阅读 [docs/README.md](docs/README.md)，按 01 → 09 的顺序了解开发计划。
+1. 阅读 [docs/README.md](docs/README.md)，按 01 → 11 的顺序了解开发计划。
 2. 阅读 [阶段 1 产品提案](docs/01-validate/proposal.md)、[已确认的取舍](docs/01-validate/decisions.md)、[UI 规范](docs/01-validate/ui.md)。
    - macOS 原生窗口细节和 Magpie 源码参考见 [macos-native.md](docs/01-validate/macos-native.md)；浏览器原型不等于真实 Liquid Glass 验证。
 3. 数据 Schema 的**单一来源**为 [阶段 2 schema.md](docs/02-foundation/schema.md)；旧 `docs/02-foundation/examples/` 为历史测试固件，不是生产数据。
@@ -19,6 +19,8 @@
 - **本阶段不实现 CLI/MCP/AI 集成**；未来 CLI 依赖运行中的 App Core，IPC/自动启动等在 CLI 需求阶段讨论，禁止私自扩大范围。
 - 阶段 8 的 DayPlan **目标路径**为根 `plans/`（须备份）；阶段 9 的 `files/` 亦为用户数据、不可当缓存清理。
 - 阶段 9 仅在 Today/Task Activity 与 Note 中导入、引用文件，`[[` 候选同时支持 Note 与 File；原生预览、按文件名搜索，不做 Files 导航、File 实体或自动清理。
+- **阶段 10（待实施）**：在主窗口内增加设置入口和「语音转写」API Key；macOS Keychain 存储，阿里云百炼地域固定北京、模型固定 `qwen-audio-3.1-asr-flash-filetrans`，不做地域/供应商/模型选择，也不迁移现有 Vault、主题控制。文档见 [10 proposal](docs/10-settings/proposal.md)。
+- **阶段 11（待实施）**：在 Notes 从 MP3 创建普通 Markdown Note，原 MP3 存 `files/`，支持毫秒时间戳、说话人、顶部播放器、时间戳点击跳播、拖动结束定位逐字稿、确认后重新转写；不做专用 Transcript 类型、JSON 侧车、自动滚动干扰编辑、会议摘要或多供应商。文档见 [11 proposal](docs/11-audio-transcription/proposal.md)。
 
 ## 产品不可破坏的规则
 
