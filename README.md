@@ -10,7 +10,7 @@
 
 ## 项目推进方式
 
-`docs/` **按交付顺序划分实施阶段，不按功能模块划分**。每阶段以 `idea.md` 和 `proposal.md` 记录目标、实现与验收。阶段 1～9 已完成；第 10 阶段为 [主窗口设置与 Keychain](docs/10-settings/proposal.md)，第 11 阶段为 [MP3 语音转写为普通 Note](docs/11-audio-transcription/proposal.md)。
+`docs/` **按交付顺序划分实施阶段，不按功能模块划分**。每阶段以 `idea.md` 和 `proposal.md` 记录目标、实现与验收。阶段 1～9 已完成；第 10 阶段为 [统一设置（主题、Vault、Keychain）](docs/10-settings/proposal.md)，第 11 阶段为 [MP3 语音转写为普通 Note](docs/11-audio-transcription/proposal.md)。
 
 **完整阶段清单：[docs/README.md](docs/README.md)**
 
