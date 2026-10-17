@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { Events } from '@wailsio/runtime';
 import {
   FileText,
@@ -42,6 +43,7 @@ interface NotesViewProps {
   returnToTask?: { label: string; go: () => void } | null;
   onOpenTask?: (taskId: string) => void;
   onEditingChange?: (isEditing: boolean) => void;
+  leaveGuardRef?: React.MutableRefObject<(() => Promise<boolean>) | null>;
 }
 
 function formatRelativeTime(isoString: string): string {
@@ -117,6 +119,7 @@ interface NoteEditorProps {
   onOpenTask?: (id: string) => void;
   onNoteUpdated: () => void;
   onNoteCreated?: (newId: string) => void;
+  leaveGuardRef?: React.MutableRefObject<(() => Promise<boolean>) | null>;
 }
 
 function NoteEditor({
@@ -128,6 +131,7 @@ function NoteEditor({
   onOpenTask,
   onNoteUpdated,
   onNoteCreated,
+  leaveGuardRef,
 }: NoteEditorProps) {
   const [initialNote, setInitialNote] = useState<Note | null>(null);
   const [loadingNote, setLoadingNote] = useState<boolean>(true);
@@ -173,6 +177,14 @@ function NoteEditor({
   pickerRef.current = picker;
   const pickerDismissedRef = useRef(-1);
   const pendingGoRef = useRef<(() => void) | null>(null);
+  const leavePromptResolverRef = useRef<((proceed: boolean) => void) | null>(null);
+
+  const askUserConfirm = (openDialog: () => void): Promise<boolean> => {
+    return new Promise<boolean>((resolve) => {
+      leavePromptResolverRef.current = resolve;
+      openDialog();
+    });
+  };
 
   const vditorRef = useRef<Vditor | null>(null);
   const vditorContainerRef = useRef<HTMLDivElement | null>(null);
@@ -639,6 +651,7 @@ function NoteEditor({
 
       // 若完全未输入任何内容，直接安全退出，不创建任何磁盘文件
       if (!currentTitle && !currentBody && currentTags.length === 0) {
+        pendingGoRef.current = null;
         go();
         return;
       }
@@ -647,6 +660,7 @@ function NoteEditor({
       if (currentTitle) {
         const saved = await doSave();
         if (saved) {
+          pendingGoRef.current = null;
           go();
         } else {
           setShowSaveFailedConfirm(true);
@@ -665,18 +679,61 @@ function NoteEditor({
     const dirty = isDirty(currentTitle, currentTags, currentBody);
 
     if (!dirty) {
+      pendingGoRef.current = null;
       go();
       return;
     }
 
     const saved = await doSave();
     if (saved) {
+      pendingGoRef.current = null;
       go();
     } else {
       setShowSaveFailedConfirm(true);
     }
   };
   const handleBackClick = () => leaveThen(onBackRef.current);
+
+  useEffect(() => {
+    if (!leaveGuardRef) return;
+    leaveGuardRef.current = async () => {
+      if (hasConflictRef.current) {
+        return askUserConfirm(() => setShowLeaveConflictConfirm(true));
+      }
+
+      if (debounceTimerRef.current) {
+        window.clearTimeout(debounceTimerRef.current);
+        debounceTimerRef.current = null;
+      }
+
+      const currentTitle = editTitleRef.current.trim();
+      const currentTags = parseTags(editTagsRef.current);
+      const currentBody = vditorRef.current ? vditorRef.current.getValue() : (initialNote?.body ?? '');
+      const dirty = isDirty(currentTitle, currentTags, currentBody);
+      if (!dirty) return true;
+
+      if (isNewDraftRef.current && !currentTitle) {
+        if (!currentBody.trim() && currentTags.length === 0) {
+          return true;
+        }
+        return askUserConfirm(() => setShowDraftNoTitleConfirm(true));
+      }
+
+      const saved = await doSave();
+      if (!saved) {
+        return askUserConfirm(() => setShowSaveFailedConfirm(true));
+      }
+      return true;
+    };
+    return () => {
+      leaveGuardRef.current = null;
+      if (leavePromptResolverRef.current) {
+        leavePromptResolverRef.current(false);
+        leavePromptResolverRef.current = null;
+      }
+      pendingGoRef.current = null;
+    };
+  }, [leaveGuardRef, isDirty, doSave, initialNote]);
 
   // ---- `[[` 笔记候选 + 链接点击 ----
   const syncPicker = () => {
@@ -909,7 +966,9 @@ function NoteEditor({
       debounceTimerRef.current = null;
     }
     hasConflictRef.current = false;
-    (pendingGoRef.current ?? onBack)();
+    const go = pendingGoRef.current ?? onBack;
+    pendingGoRef.current = null;
+    go();
   };
 
   if (loadingNote) {
@@ -1239,7 +1298,7 @@ function NoteEditor({
       )}
 
       {/* Confirmation Modal for Leaving During Conflict */}
-      {showLeaveConflictConfirm && (
+      {showLeaveConflictConfirm && createPortal(
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs p-4">
           <div className="w-full max-w-sm rounded-xl border border-stone-200 dark:border-stone-800 bg-white dark:bg-stone-900 p-5 shadow-xl space-y-4">
             <div className="flex items-start space-x-3">
@@ -1258,25 +1317,38 @@ function NoteEditor({
             <div className="flex items-center justify-end space-x-2 pt-2 border-t border-stone-100 dark:border-stone-800">
               <button
                 type="button"
-                onClick={() => setShowLeaveConflictConfirm(false)}
+                onClick={() => {
+                  setShowLeaveConflictConfirm(false);
+                  pendingGoRef.current = null;
+                  const resolve = leavePromptResolverRef.current;
+                  leavePromptResolverRef.current = null;
+                  resolve?.(false);
+                }}
                 className="px-3 py-1.5 rounded-md text-xs font-medium text-stone-600 dark:text-stone-300 hover:bg-stone-100 dark:hover:bg-stone-800 transition"
               >
                 继续编辑
               </button>
               <button
                 type="button"
-                onClick={handleAbandonAndReturn}
+                onClick={() => {
+                  setShowLeaveConflictConfirm(false);
+                  handleAbandonAndReturn();
+                  const resolve = leavePromptResolverRef.current;
+                  leavePromptResolverRef.current = null;
+                  resolve?.(true);
+                }}
                 className="px-3 py-1.5 rounded-md bg-rose-600 hover:bg-rose-700 text-white text-xs font-medium transition shadow-xs"
               >
                 放弃修改并离开
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* Confirmation Modal for Save Failure on Exit (must-fix 3) */}
-      {showSaveFailedConfirm && (
+      {showSaveFailedConfirm && createPortal(
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs p-4">
           <div className="w-full max-w-sm rounded-xl border border-stone-200 dark:border-stone-800 bg-white dark:bg-stone-900 p-5 shadow-xl space-y-4">
             <div className="flex items-start space-x-3">
@@ -1295,7 +1367,13 @@ function NoteEditor({
             <div className="flex items-center justify-end space-x-2 pt-2 border-t border-stone-100 dark:border-stone-800">
               <button
                 type="button"
-                onClick={() => setShowSaveFailedConfirm(false)}
+                onClick={() => {
+                  setShowSaveFailedConfirm(false);
+                  pendingGoRef.current = null;
+                  const resolve = leavePromptResolverRef.current;
+                  leavePromptResolverRef.current = null;
+                  resolve?.(false);
+                }}
                 className="px-3 py-1.5 rounded-md text-xs font-medium text-stone-600 dark:text-stone-300 hover:bg-stone-100 dark:hover:bg-stone-800 transition"
               >
                 留在页面
@@ -1304,7 +1382,16 @@ function NoteEditor({
                 type="button"
                 onClick={() => {
                   setShowSaveFailedConfirm(false);
-                  (pendingGoRef.current ?? onBack)();
+                  if (debounceTimerRef.current) {
+                    window.clearTimeout(debounceTimerRef.current);
+                    debounceTimerRef.current = null;
+                  }
+                  const go = pendingGoRef.current ?? onBack;
+                  pendingGoRef.current = null;
+                  go();
+                  const resolve = leavePromptResolverRef.current;
+                  leavePromptResolverRef.current = null;
+                  resolve?.(true);
                 }}
                 className="px-3 py-1.5 rounded-md bg-rose-600 hover:bg-rose-700 text-white text-xs font-medium transition shadow-xs"
               >
@@ -1312,11 +1399,12 @@ function NoteEditor({
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* Confirmation Modal for Leaving Empty-Title Draft with Content */}
-      {showDraftNoTitleConfirm && (
+      {showDraftNoTitleConfirm && createPortal(
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs p-4">
           <div className="w-full max-w-sm rounded-xl border border-stone-200 dark:border-stone-800 bg-white dark:bg-stone-900 p-5 shadow-xl space-y-4">
             <div className="flex items-start space-x-3">
@@ -1345,7 +1433,13 @@ function NoteEditor({
               <div className="flex items-center space-x-2">
                 <button
                   type="button"
-                  onClick={() => setShowDraftNoTitleConfirm(false)}
+                  onClick={() => {
+                    setShowDraftNoTitleConfirm(false);
+                    pendingGoRef.current = null;
+                    const resolve = leavePromptResolverRef.current;
+                    leavePromptResolverRef.current = null;
+                    resolve?.(false);
+                  }}
                   className="px-3 py-1.5 rounded-md text-xs font-medium bg-emerald-700 hover:bg-emerald-800 text-white transition shadow-xs"
                 >
                   继续编辑
@@ -1354,7 +1448,16 @@ function NoteEditor({
                   type="button"
                   onClick={() => {
                     setShowDraftNoTitleConfirm(false);
-                    (pendingGoRef.current ?? onBack)();
+                    if (debounceTimerRef.current) {
+                      window.clearTimeout(debounceTimerRef.current);
+                      debounceTimerRef.current = null;
+                    }
+                    const go = pendingGoRef.current ?? onBack;
+                    pendingGoRef.current = null;
+                    go();
+                    const resolve = leavePromptResolverRef.current;
+                    leavePromptResolverRef.current = null;
+                    resolve?.(true);
                   }}
                   className="px-2.5 py-1.5 rounded-md border border-stone-200 dark:border-stone-700 text-stone-500 hover:text-stone-800 dark:hover:text-stone-200 text-xs transition"
                 >
@@ -1363,7 +1466,8 @@ function NoteEditor({
               </div>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );
@@ -1379,6 +1483,7 @@ export function NotesView({
   returnToTask,
   onOpenTask,
   onEditingChange,
+  leaveGuardRef,
 }: NotesViewProps) {
   const [notes, setNotes] = useState<Note[]>([]);
   const [loading, setLoading] = useState(false);
@@ -1404,6 +1509,18 @@ export function NotesView({
     }
   }, [focusNoteId, onClearFocusNote]);
 
+  // When vault path changes, reset active note & trail
+  const currentPathRef = useRef(vaultStatus?.path);
+  useEffect(() => {
+    if (currentPathRef.current !== vaultStatus?.path) {
+      currentPathRef.current = vaultStatus?.path;
+      setSelectedNoteId(null);
+      setIsNewDraft(false);
+      setTrail([]);
+      setEditorKey('');
+    }
+  }, [vaultStatus?.path]);
+
   // Scroll position preservation
   const rootRef = useRef<HTMLDivElement | null>(null);
   const scrollTopRef = useRef<number>(0);
@@ -1427,7 +1544,7 @@ export function NotesView({
     } finally {
       setLoading(false);
     }
-  }, [vaultStatus?.open]);
+  }, [vaultStatus?.open, vaultStatus?.path]);
 
   useEffect(() => {
     loadNotes();
@@ -1573,6 +1690,7 @@ export function NotesView({
         onOpenTask={onOpenTask}
         onNoteUpdated={loadNotes}
         onNoteCreated={handleNoteCreated}
+        leaveGuardRef={leaveGuardRef}
       />
     );
   }
