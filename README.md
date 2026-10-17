@@ -4,19 +4,13 @@
 
 一款极简、本地优先、以 Markdown 为唯一业务数据源的 macOS 个人工作工具。
 
-**Today 管当下，Tasks 管进展，Notes 管沉淀，Memo 负责记录，Labels 负责关联。**
+**Today 管当下，Tasks 管进展，Notes 管沉淀，Activity 负责留痕，标签负责关联。**
 
-> 当前仓库只有产品/技术设计与可离线运行的 UI 交互原型；**尚未实现桌面程序和真实文件存储**。
+> **当前状态（2026-10）**：阶段 1～9 的桌面代码与 macOS 实机验收已完成；阶段 10「设置能力」与阶段 11「音频转写」已收敛设计、尚未编码。实际进度以 [docs/README.md](docs/README.md) 为准。
 
 ## 项目推进方式
 
-`docs/` **按计划的实施顺序划分 5 个阶段，而不是按功能模块划分**。每个阶段有 `idea.md`（为什么、交付什么）和 `proposal.md`（怎么做、验收标准），具体技术/UI文档附在对应阶段。
-
-1. [阶段 1 · 确认产品与交互](docs/01-validate/proposal.md)：产品基线、工作流程、UI 设计和原型。
-2. [阶段 2 · 建立数据底座](docs/02-foundation/proposal.md)：Wails/Go、Markdown Schema、Tasks。
-3. [阶段 3 · 每日工作闭环](docs/03-daily-loop/proposal.md)：Memo、Today 和历史回顾。
-4. [阶段 4 · 文档沉淀](docs/04-knowledge-loop/proposal.md)：Notes 编辑与关联。
-5. [阶段 5 · 整合交付](docs/05-release/proposal.md)：全局标签/搜索、稳定性与交付。
+`docs/` **按交付顺序划分实施阶段，不按功能模块划分**。每阶段以 `idea.md` 和 `proposal.md` 记录目标、实现与验收。阶段 1～9 已完成；第 10 阶段为 [主窗口设置与 Keychain](docs/10-settings/proposal.md)，第 11 阶段为 [MP3 语音转写为普通 Note](docs/11-audio-transcription/proposal.md)。
 
 **完整阶段清单：[docs/README.md](docs/README.md)**
 
@@ -32,8 +26,8 @@
 - 标签是跨 Task / Note / Memo 的全局聚合；没有 Projects / Inbox。
 - Notes 采用 Flomo 启发的单列卡片列表，打开后占用整块主内容区编辑。
 - 本地 Markdown + YAML Frontmatter；初期无需独立业务数据库。
-- **CLI、MCP、内置 AI、插件、云同步均不进入 MVP**。
+- **CLI、MCP、内置 AI、插件、云同步均不进入 MVP**；阶段 11 的云端 ASR 仅用于 BYOK 音频转写，不提供内置 AI 整理。
 
-工程选型候选为 Go + Wails v3 + React/TypeScript + Vditor，尚需工程验证。
+当前技术基础为 Go + Wails v3 + React/TypeScript + Vditor，既有 Notes、Vault、Files、Activity 功能在阶段 1～9 已陆续实现。
 
 原生体验目标遵循 macOS 27 HIG；[Magpie 源码实现参考与 macOS 验收约束](docs/01-validate/macos-native.md) 已加入阶段 1，真正的标题栏和系统材质在阶段 2 Wails 实机验证。
