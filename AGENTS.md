@@ -19,7 +19,7 @@
 - **本阶段不实现 CLI/MCP/AI 集成**；未来 CLI 依赖运行中的 App Core，IPC/自动启动等在 CLI 需求阶段讨论，禁止私自扩大范围。
 - 阶段 8 的 DayPlan **目标路径**为根 `plans/`（须备份）；阶段 9 的 `files/` 亦为用户数据、不可当缓存清理。
 - 阶段 9 仅在 Today/Task Activity 与 Note 中导入、引用文件，`[[` 候选同时支持 Note 与 File；原生预览、按文件名搜索，不做 Files 导航、File 实体或自动清理。
-- **阶段 10（待实施）**：在主窗口内增加设置入口和「语音转写」API Key；macOS Keychain 存储，阿里云百炼地域固定北京、模型固定 `qwen-audio-3.1-asr-flash-filetrans`，不做地域/供应商/模型选择，也不迁移现有 Vault、主题控制。文档见 [10 proposal](docs/10-settings/proposal.md)。
+- **阶段 10（待实施）**：主窗口单页设置包含「外观 / 存储 / 语音转写」；侧边栏底部主题三按钮与 Vault 配置菜单收敛为单个设置齿轮。主题三态迁入设置并持久化；Vault 更换/重扫/Finder 打开迁入设置，但首次缺 Vault 仍直接引导、健康异常仍在主界面可见。API Key 存 macOS Keychain，地域固定北京、模型固定 `qwen-audio-3.1-asr-flash-filetrans`；不做地域/供应商/模型选择。文档见 [10 proposal](docs/10-settings/proposal.md)。
 - **阶段 11（待实施）**：在 Notes 从 MP3 创建普通 Markdown Note，原 MP3 存 `files/`，支持毫秒时间戳、说话人、顶部播放器、时间戳点击跳播、拖动结束定位逐字稿、确认后重新转写；不做专用 Transcript 类型、JSON 侧车、自动滚动干扰编辑、会议摘要或多供应商。文档见 [11 proposal](docs/11-audio-transcription/proposal.md)。
 
 ## 产品不可破坏的规则
