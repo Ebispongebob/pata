@@ -47,7 +47,7 @@
 | D42 | 不实施文件自动清理、引用计数、inode/Bookmark 追踪或跨文件自动修复 | 删除 Activity/Note/链接不会删除资源；文件真正整理和删除交给 Finder；外部移动路径可能失效，保守提示 |
 
 | D43 | 阶段 10 在主窗口以单页设置统一外观、存储和语音转写：主题三态切换、Vault 路径/更换/重扫/Finder 打开、阿里云百炼北京地域 API Key（Keychain） | 侧边栏底部原主题按钮与 Vault 配置菜单统一为一个设置齿轮；不新增第四主导航或独立窗口；首启无 Vault 仍直接选择，Vault 健康异常仍在主界面可见；不提供模型/地域/供应商选择；详见 [阶段 10](../10-settings/proposal.md) |
-| D44 | 阶段 11 将本地 MP3 异步转为普通 Markdown Note，固定 Qwen-Audio 3.1 Filetrans；原音频保存在 `files/` | 保留句级毫秒时间戳、说话人、顶部极简播放器、点击时间戳跳播、拖动松开时定位正文及重新转写确认；不建 Transcript 类型/JSON 侧车/多供应商/AI 摘要；详见 [阶段 11](../11-audio-transcription/proposal.md) |
+| D44 | 阶段 11 将本地 MP3 异步转为普通 Markdown Note，固定 Qwen-Audio 3.1 Filetrans；原音频存于 `files/`，导入成功后先创建 Note，再异步写入逐字稿 | 保留句级毫秒时间戳、说话人、顶部极简播放器、点击时间戳跳播、拖动松开时定位正文。失败/退出 App 不丢原 Note 与 MP3，可手动重试；重新转写经确认替换**整个正文**，但保留标题、标签和主音频关联；不重复在正文写一级标题。不建 Transcript 类型/JSON 侧车/多供应商/AI 摘要；时间戳链接与主录音关联的具体 Markdown 语法待确定，详见 [阶段 11](../11-audio-transcription/proposal.md) |
 
 ## 不轻易改变的设计约束
 
