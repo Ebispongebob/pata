@@ -2,6 +2,7 @@ package markdown
 
 import (
 	"fmt"
+	"path/filepath"
 	"strings"
 	"time"
 )
@@ -142,6 +143,23 @@ func validateNote(path string, n *Note) error {
 				Path:   path,
 				Field:  fmt.Sprintf("tags[%d]", i),
 				Reason: fmt.Sprintf("must not contain '#'; got '%s'", tag),
+			}
+		}
+	}
+	if n.AudioTranscript && strings.TrimSpace(n.AudioFile) == "" {
+		return &ValidationError{
+			Path:   path,
+			Field:  "audio_file",
+			Reason: "audio_file must be specified when audio_transcript is true",
+		}
+	}
+	if n.AudioFile != "" {
+		cleaned := filepath.Clean(filepath.ToSlash(n.AudioFile))
+		if strings.HasPrefix(cleaned, "../") || cleaned == ".." || filepath.IsAbs(cleaned) {
+			return &ValidationError{
+				Path:   path,
+				Field:  "audio_file",
+				Reason: fmt.Sprintf("must be a valid vault-relative path; got '%s'", n.AudioFile),
 			}
 		}
 	}

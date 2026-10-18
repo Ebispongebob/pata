@@ -90,3 +90,77 @@ func TestWriteTrackerSuppression(t *testing.T) {
 		t.Fatalf("internal write should have been consumed")
 	}
 }
+
+func TestSafeCopyFile_NoOverwrite(t *testing.T) {
+	tmpDir := t.TempDir()
+	srcPath := filepath.Join(tmpDir, "src.bin")
+	targetPath := filepath.Join(tmpDir, "target.bin")
+
+	_ = os.WriteFile(srcPath, []byte("new source content"), 0644)
+	_ = os.WriteFile(targetPath, []byte("existing target content"), 0644)
+
+	// Attempting to SafeCopyFile to an existing target MUST fail and preserve target
+	_, err := SafeCopyFile(srcPath, targetPath, nil)
+	if err == nil {
+		t.Fatalf("expected error when target file already exists, got nil")
+	}
+	if !errors.Is(err, os.ErrExist) {
+		t.Fatalf("expected os.ErrExist, got %v", err)
+	}
+
+	content, _ := os.ReadFile(targetPath)
+	if string(content) != "existing target content" {
+		t.Fatalf("existing target was overwritten despite error! got %q", string(content))
+	}
+
+	// Copying to non-existent target succeeds
+	newTarget := filepath.Join(tmpDir, "new_target.bin")
+	b, err := SafeCopyFile(srcPath, newTarget, nil)
+	if err != nil {
+		t.Fatalf("SafeCopyFile to new target failed: %v", err)
+	}
+	if b == nil || b.Hash == "" {
+		t.Fatalf("expected valid baseline, got %+v", b)
+	}
+	newContent, _ := os.ReadFile(newTarget)
+	if string(newContent) != "new source content" {
+		t.Fatalf("new target content mismatch, got %q", string(newContent))
+	}
+}
+
+func TestSafeWriteExclusive_NoOverwrite(t *testing.T) {
+	tmpDir := t.TempDir()
+	targetPath := filepath.Join(tmpDir, "exclusive.bin")
+
+	_ = os.WriteFile(targetPath, []byte("existing content"), 0644)
+
+	// Writing to existing file MUST fail with os.ErrExist and keep content intact
+	_, err := SafeWriteExclusive(targetPath, []byte("new content"), nil)
+	if err == nil {
+		t.Fatalf("expected error when target already exists, got nil")
+	}
+	if !errors.Is(err, os.ErrExist) {
+		t.Fatalf("expected os.ErrExist, got %v", err)
+	}
+
+	content, _ := os.ReadFile(targetPath)
+	if string(content) != "existing content" {
+		t.Fatalf("existing file was overwritten! got %q", string(content))
+	}
+
+	// Writing to non-existent target succeeds
+	newTarget := filepath.Join(tmpDir, "new_exclusive.bin")
+	b, err := SafeWriteExclusive(newTarget, []byte("new content"), nil)
+	if err != nil {
+		t.Fatalf("SafeWriteExclusive failed: %v", err)
+	}
+	if b == nil || b.Hash == "" {
+		t.Fatalf("expected valid baseline, got %+v", b)
+	}
+	readBack, _ := os.ReadFile(newTarget)
+	if string(readBack) != "new content" {
+		t.Fatalf("read back content mismatch: got %q, want %q", readBack, "new content")
+	}
+}
+
+

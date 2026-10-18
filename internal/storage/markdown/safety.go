@@ -1,10 +1,12 @@
 package markdown
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -279,6 +281,125 @@ func SafeWrite(targetPath string, data []byte, baseline *FileBaseline, tracker *
 		Hash:    newHash,
 		ModTime: modTime,
 	}, nil
+}
+
+// writeStreamExclusive streams data from r to a temporary file in the target directory,
+// fsyncs it, and links it atomically to targetPath (failing with os.ErrExist if targetPath already exists).
+// If linking fails due to lack of hard link support, it stats and renames.
+func writeStreamExclusive(targetPath string, r io.Reader, tracker *WriteTracker) (*FileBaseline, error) {
+	absTarget, err := filepath.Abs(targetPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to resolve target path: %w", err)
+	}
+	if _, err := os.Stat(absTarget); err == nil {
+		return nil, fmt.Errorf("target file %s already exists: %w", absTarget, os.ErrExist)
+	}
+
+	dir := filepath.Dir(absTarget)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return nil, fmt.Errorf("failed to create target directory %s: %w", dir, err)
+	}
+
+	tmpFile, err := os.CreateTemp(dir, ".pata_tmp_*")
+	if err != nil {
+		return nil, fmt.Errorf("failed to create temporary file in %s: %w", dir, err)
+	}
+	tmpPath := tmpFile.Name()
+
+	success := false
+	defer func() {
+		if !success {
+			_ = tmpFile.Close()
+			_ = os.Remove(tmpPath)
+		}
+	}()
+
+	hasher := sha256.New()
+	mw := io.MultiWriter(tmpFile, hasher)
+	if _, err := io.Copy(mw, r); err != nil {
+		return nil, fmt.Errorf("failed to stream copy data: %w", err)
+	}
+
+	if err := tmpFile.Sync(); err != nil {
+		return nil, fmt.Errorf("failed to sync temp file: %w", err)
+	}
+	if err := tmpFile.Close(); err != nil {
+		return nil, fmt.Errorf("failed to close temp file: %w", err)
+	}
+
+	newHash := hex.EncodeToString(hasher.Sum(nil))
+
+	// Atomically ensure destination does not exist by linking tmpPath to absTarget.
+	// On POSIX (including macOS), link() fails with EEXIST if absTarget already exists,
+	// preventing concurrent imports from silently replacing each other.
+	if err := os.Link(tmpPath, absTarget); err != nil {
+		if os.IsExist(err) {
+			return nil, fmt.Errorf("target file %s already exists: %w", absTarget, os.ErrExist)
+		}
+		// If filesystem does not support hard links (e.g. FAT/exFAT/SMB), exclusively reserve destination atomically
+		destFile, exclErr := os.OpenFile(absTarget, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0644)
+		if exclErr != nil {
+			if os.IsExist(exclErr) {
+				return nil, fmt.Errorf("target file %s already exists: %w", absTarget, os.ErrExist)
+			}
+			return nil, fmt.Errorf("failed to exclusively reserve destination %s: %w", absTarget, exclErr)
+		}
+		_ = destFile.Close()
+		if err := os.Rename(tmpPath, absTarget); err != nil {
+			_ = os.Remove(absTarget)
+			return nil, fmt.Errorf("failed to rename %s to %s: %w", tmpPath, absTarget, err)
+		}
+	} else {
+		_ = os.Remove(tmpPath)
+	}
+
+	if tracker != nil {
+		tracker.MarkInternalWrite(absTarget, newHash)
+	}
+
+	parentDir, err := os.Open(dir)
+	if err == nil {
+		_ = parentDir.Sync()
+		_ = parentDir.Close()
+	}
+
+	success = true
+	fi, err := os.Stat(absTarget)
+	var modTime time.Time
+	if err == nil {
+		modTime = fi.ModTime()
+	} else {
+		modTime = time.Now()
+	}
+
+	return &FileBaseline{
+		Path:    absTarget,
+		Hash:    newHash,
+		ModTime: modTime,
+	}, nil
+}
+
+// SafeCopyFile copies a file from srcPath to targetPath using a streamed copy into a temporary file
+// and atomic link/rename, failing with os.ErrExist if targetPath already exists.
+// It hashes the data while streaming to construct the FileBaseline without buffering the entire file in memory.
+func SafeCopyFile(srcPath string, targetPath string, tracker *WriteTracker) (*FileBaseline, error) {
+	absSrc, err := filepath.Abs(srcPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to resolve source path: %w", err)
+	}
+	srcFile, err := os.Open(absSrc)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open source file: %w", err)
+	}
+	defer srcFile.Close()
+
+	return writeStreamExclusive(targetPath, srcFile, tracker)
+}
+
+// SafeWriteExclusive writes byte data to targetPath exclusively, failing with os.ErrExist if targetPath
+// already exists on disk. It guarantees no concurrent overwriting via atomic link/rename.
+func SafeWriteExclusive(targetPath string, data []byte, tracker *WriteTracker) (*FileBaseline, error) {
+	return writeStreamExclusive(targetPath, bytes.NewReader(data), tracker)
 }
 
 // SafeResolveVaultPath resolves a relative or absolute targetPath against vaultRoot.
