@@ -12,7 +12,6 @@ import {
   AlertTriangle,
   Check,
   Copy,
-  Info,
 } from 'lucide-react';
 import { Browser } from '@wailsio/runtime';
 import * as VaultService from '../bindings/pata/vaultservice';
@@ -196,14 +195,9 @@ export function SettingsView({
           ref={appearanceRef}
           className="rounded-xl border border-stone-200/80 dark:border-stone-800/80 bg-white/70 dark:bg-stone-900/60 p-5 shadow-2xs space-y-4"
         >
-          <div>
-            <h2 className="text-sm font-semibold text-stone-900 dark:text-stone-100">外观</h2>
-            <p className="text-xs text-stone-500 dark:text-stone-400 mt-0.5">
-              自定义应用色彩风格，支持跟随 macOS 系统偏好自动切换
-            </p>
-          </div>
+          <h2 className="text-sm font-semibold text-stone-900 dark:text-stone-100">外观</h2>
 
-          <div className="pt-1">
+          <div>
             <label className="text-xs font-medium text-stone-700 dark:text-stone-300 block mb-2">
               主题模式
             </label>
@@ -255,12 +249,7 @@ export function SettingsView({
           ref={storageRef}
           className="rounded-xl border border-stone-200/80 dark:border-stone-800/80 bg-white/70 dark:bg-stone-900/60 p-5 shadow-2xs space-y-4"
         >
-          <div>
-            <h2 className="text-sm font-semibold text-stone-900 dark:text-stone-100">存储</h2>
-            <p className="text-xs text-stone-500 dark:text-stone-400 mt-0.5">
-              单 Vault 本地 Markdown 工作区，所有任务、笔记与资源均由您完全掌控
-            </p>
-          </div>
+          <h2 className="text-sm font-semibold text-stone-900 dark:text-stone-100">存储</h2>
 
           {/* Current Path */}
           <div className="space-y-1.5">
@@ -381,43 +370,14 @@ export function SettingsView({
           ref={transcriptionRef}
           className="rounded-xl border border-stone-200/80 dark:border-stone-800/80 bg-white/70 dark:bg-stone-900/60 p-5 shadow-2xs space-y-4"
         >
-          <div>
-            <h2 className="text-sm font-semibold text-stone-900 dark:text-stone-100">语音转写</h2>
-            <p className="text-xs text-stone-500 dark:text-stone-400 mt-0.5">
-              配置阿里云百炼音频大模型密钥，用于将音频文件智能转换为文字记录
-            </p>
-          </div>
+          <h2 className="text-sm font-semibold text-stone-900 dark:text-stone-100">语音转写</h2>
 
-          {/* Read-only Model & Region Specs */}
-          <div className="p-3.5 rounded-lg bg-stone-100/70 dark:bg-stone-950/60 border border-stone-200/80 dark:border-stone-800/80 space-y-2 text-xs">
-            <div className="flex items-center space-x-2 text-stone-800 dark:text-stone-200 font-medium">
-              <Info className="w-3.5 h-3.5 text-stone-500 dark:text-stone-400 shrink-0" />
-              <span>固定模型与服务配置</span>
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-1 font-mono text-[11px] text-stone-600 dark:text-stone-400">
-              <div className="p-2 rounded bg-white/80 dark:bg-stone-900/80 border border-stone-200/60 dark:border-stone-800/60">
-                <div className="text-[10px] text-stone-400 uppercase font-sans">云服务商</div>
-                <div className="font-sans font-medium text-stone-800 dark:text-stone-200 mt-0.5">
-                  {asrStatus?.provider || '阿里云百炼'}
-                </div>
-              </div>
-              <div className="p-2 rounded bg-white/80 dark:bg-stone-900/80 border border-stone-200/60 dark:border-stone-800/60">
-                <div className="text-[10px] text-stone-400 uppercase font-sans">转写模型</div>
-                <div className="text-stone-800 dark:text-stone-200 mt-0.5 truncate" title="qwen-audio-3.1-asr-flash-filetrans">
-                  {asrStatus?.model || 'qwen-audio-3.1-asr-flash-filetrans'}
-                </div>
-              </div>
-              <div className="p-2 rounded bg-white/80 dark:bg-stone-900/80 border border-stone-200/60 dark:border-stone-800/60">
-                <div className="text-[10px] text-stone-400 uppercase font-sans">服务地域</div>
-                <div className="font-sans font-medium text-stone-800 dark:text-stone-200 mt-0.5">
-                  {asrStatus?.region || '华北2（北京）'}
-                </div>
-              </div>
-            </div>
-            <p className="text-[11px] text-stone-400 leading-relaxed">
-              服务地域与模型参数已在系统内部固定，您只需配置有效的 API Key 即可。
-            </p>
-          </div>
+          {/* Fixed provider / model / region, one line */}
+          <p className="text-[11px] font-mono text-stone-400 dark:text-stone-500 truncate">
+            {asrStatus?.provider || '阿里云百炼'} ·{' '}
+            {asrStatus?.model || 'qwen-audio-3.1-asr-flash-filetrans'} ·{' '}
+            {asrStatus?.region || '华北2（北京）'}
+          </p>
 
           {/* API Key Configuration Block */}
           <div className="space-y-3 pt-1">
@@ -440,16 +400,11 @@ export function SettingsView({
             ) : asrStatus?.configured && !isReplacingKey ? (
               /* Configured State */
               <div className="flex items-center justify-between p-3 rounded-lg border border-emerald-200 dark:border-emerald-900/60 bg-emerald-50/70 dark:bg-emerald-950/30">
-                <div className="flex items-center space-x-2.5">
+                <div className="flex items-center space-x-2">
                   <ShieldCheck className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
-                  <div>
-                    <div className="text-xs font-medium text-emerald-950 dark:text-emerald-200">
-                      已配置 (安全存储于 macOS Keychain)
-                    </div>
-                    <div className="text-[11px] text-emerald-800/70 dark:text-emerald-400/70 mt-0.5">
-                      系统在转写时自动安全读取，明文密钥不进日志、不存文件
-                    </div>
-                  </div>
+                  <span className="text-xs font-medium text-emerald-950 dark:text-emerald-200">
+                    已配置 · 存于 macOS Keychain
+                  </span>
                 </div>
 
                 <button
@@ -503,8 +458,8 @@ export function SettingsView({
                   )}
                 </div>
 
-                <div className="text-[11px] text-stone-400 leading-relaxed">
-                  密钥将直接写入 macOS Keychain，绝不写入任何 Markdown 文件、本地缓存或日志。
+                <div className="text-[11px] text-stone-400">
+                  写入 macOS Keychain，不落任何文件与日志。
                 </div>
               </form>
             )}
@@ -512,7 +467,7 @@ export function SettingsView({
             {saveSuccessMsg && (
               <div className="p-2.5 rounded-lg bg-emerald-100/70 dark:bg-emerald-950/60 border border-emerald-300 dark:border-emerald-800 text-xs text-emerald-900 dark:text-emerald-200 flex items-center space-x-1.5">
                 <Check className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
-                <span>API Key 已成功安全保存至 macOS Keychain</span>
+                <span>已保存到 macOS Keychain</span>
               </div>
             )}
 
