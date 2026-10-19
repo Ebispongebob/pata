@@ -12,7 +12,7 @@ import {
   AlertCircle,
   RefreshCw,
   Info,
-  ArrowUpRight,
+  Send,
 } from 'lucide-react';
 import * as VaultService from '../bindings/pata/vaultservice';
 import { Task, TaskStatus, Activity } from '../bindings/pata/internal/storage/markdown/models';
@@ -1023,16 +1023,23 @@ export const TaskDetailPanel = forwardRef<TaskDetailHandle, TaskDetailPanelProps
               disabled={submittingActivity}
               className="w-full text-xs text-stone-900 dark:text-stone-100 placeholder-stone-400 bg-transparent resize-none border-0 outline-none focus:outline-none focus:ring-0 leading-relaxed"
             />
-            <div className="flex items-center justify-between pt-1">
-              <span className="text-[10px] text-stone-400 select-none">⌘ Enter 发送</span>
+            <div className="flex items-center justify-end pt-1.5">
               <button
                 type="submit"
                 onMouseDown={(e) => e.preventDefault()}
                 disabled={submittingActivity || !newActivityBody.trim()}
-                className="p-1 rounded-md text-stone-400 hover:text-emerald-700 dark:hover:text-emerald-400 hover:bg-stone-100 dark:hover:bg-stone-800 disabled:opacity-30 disabled:hover:text-stone-400 disabled:hover:bg-transparent transition"
+                className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-medium transition shadow-2xs disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
                 title="发送 (⌘+Enter)"
               >
-                <ArrowUpRight className={`w-4 h-4 ${submittingActivity ? 'animate-spin' : ''}`} />
+                {submittingActivity ? (
+                  <RefreshCw className="w-3.5 h-3.5 animate-spin shrink-0" />
+                ) : (
+                  <Send className="w-3.5 h-3.5 shrink-0" />
+                )}
+                <span>{submittingActivity ? '发送中' : '发送'}</span>
+                {!submittingActivity && (
+                  <span className="text-[11px] font-mono opacity-60 select-none">⌘↵</span>
+                )}
               </button>
             </div>
           </div>
