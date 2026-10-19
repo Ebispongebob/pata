@@ -1034,8 +1034,46 @@ func TestManager_ResetAndRestartSameNotePreservesNewTaskCancel(t *testing.T) {
 	}
 }
 
+func TestManager_CancelAndClear(t *testing.T) {
+	mgr := NewManager(nil, nil)
+	noteID := "n-clear-test"
 
+	// 1. Pending candidate state is cleared
+	mgr.SetTaskStatusForTest(noteID, StatePendingConfirmation, "等待确认", "这是候选逐字稿")
+	if mgr.GetStatus(noteID).CandidateTranscript == "" {
+		t.Fatalf("expected candidate transcript to be set")
+	}
 
+	mgr.CancelAndClear(noteID)
 
+	st := mgr.GetStatus(noteID)
+	if st.State != StateIdle || st.CandidateTranscript != "" {
+		t.Fatalf("expected StateIdle and empty candidate transcript after CancelAndClear, got: %+v", st)
+	}
 
+	// 2. Active cancel function is called
+	cancelled := false
+	mgr.mu.Lock()
+	mgr.cancels[noteID] = func() {
+		cancelled = true
+	}
+	mgr.taskGenerations[noteID] = 1
+	mgr.tasks[noteID] = &ASRTaskStatus{NoteID: noteID, State: StateTranscribing}
+	mgr.mu.Unlock()
 
+	mgr.CancelAndClear(noteID)
+
+	if !cancelled {
+		t.Fatalf("expected CancelAndClear to invoke active cancel func")
+	}
+
+	mgr.mu.Lock()
+	_, hasCancel := mgr.cancels[noteID]
+	_, hasGen := mgr.taskGenerations[noteID]
+	_, hasTask := mgr.tasks[noteID]
+	mgr.mu.Unlock()
+
+	if hasCancel || hasGen || hasTask {
+		t.Fatalf("expected all maps to have noteID deleted")
+	}
+}

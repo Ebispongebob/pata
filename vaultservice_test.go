@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"pata/internal/asr"
 	"pata/internal/storage/markdown"
 )
 
@@ -1140,6 +1141,9 @@ func TestVaultService_NoteCRUDAndValidation(t *testing.T) {
 	if _, err := sClosed.UpdateNote(UpdateNoteInput{ID: "n-1", Title: "标题"}); err == nil {
 		t.Fatalf("expected error on closed vault for UpdateNote")
 	}
+	if err := sClosed.DeleteNote("n-1"); err == nil {
+		t.Fatalf("expected error on closed vault for DeleteNote")
+	}
 
 	vaultDir := t.TempDir()
 	s := &VaultService{}
@@ -1248,6 +1252,64 @@ func TestVaultService_NoteCRUDAndValidation(t *testing.T) {
 	restartedList, err := s2.ListNotes()
 	if err != nil || len(restartedList) != 1 || restartedList[0].ID != created.ID {
 		t.Fatalf("restarted ListNotes mismatch: %v, list=%+v", err, restartedList)
+	}
+
+	// 8. DeleteNote validation and execution
+	if err := s2.DeleteNote("   "); err == nil {
+		t.Fatalf("expected error for empty ID on DeleteNote")
+	}
+	if err := s2.DeleteNote("n-ghost-nonexistent"); err == nil || !strings.Contains(err.Error(), "笔记不存在: n-ghost-nonexistent") {
+		t.Fatalf("expected '笔记不存在: n-ghost-nonexistent', got: %v", err)
+	}
+
+	// Set pending ASR candidate and transcriptRecord to verify cleanup on delete
+	s2.getASRManager().SetTaskStatusForTest(created.ID, asr.StatePendingConfirmation, "等待确认", "待确认候选")
+	s2.mu.Lock()
+	if s2.transcriptRecords == nil {
+		s2.transcriptRecords = make(map[string]*transcriptRecord)
+	}
+	s2.transcriptRecords[created.ID] = &transcriptRecord{expectedBody: "test"}
+	s2.mu.Unlock()
+
+	if err := s2.DeleteNote(created.ID); err != nil {
+		t.Fatalf("DeleteNote failed: %v", err)
+	}
+
+	// Verify transcriptRecord cleaned up
+	s2.mu.Lock()
+	if _, exists := s2.transcriptRecords[created.ID]; exists {
+		s2.mu.Unlock()
+		t.Fatalf("expected transcriptRecord to be cleared on DeleteNote")
+	}
+	s2.mu.Unlock()
+
+	// Verify ASR task status cleared
+	asrSt := s2.getASRManager().GetStatus(created.ID)
+	if asrSt.State != asr.StateIdle || asrSt.CandidateTranscript != "" {
+		t.Fatalf("expected ASR task to be cleared on DeleteNote, got %+v", asrSt)
+	}
+
+	// Verify file deleted from disk
+	if _, err := os.Stat(notePath); !os.IsNotExist(err) {
+		t.Fatalf("expected note file to be removed from disk, stat err=%v", err)
+	}
+
+	// Verify index updated
+	if _, err := s2.GetNote(created.ID); err == nil {
+		t.Fatalf("expected GetNote to fail after deletion")
+	}
+	afterDelList, err := s2.ListNotes()
+	if err != nil || len(afterDelList) != 0 {
+		t.Fatalf("expected 0 notes after deletion, got %v", afterDelList)
+	}
+
+	// Verify rescan keeps it deleted
+	if err := s2.RescanVault(); err != nil {
+		t.Fatalf("RescanVault failed: %v", err)
+	}
+	afterRescanList, err := s2.ListNotes()
+	if err != nil || len(afterRescanList) != 0 {
+		t.Fatalf("expected 0 notes after rescan, got %v", afterRescanList)
 	}
 }
 

@@ -13,6 +13,8 @@ import {
   Copy,
   Volume2,
   ChevronDown,
+  MoreHorizontal,
+  Trash2,
 } from 'lucide-react';
 import Vditor from 'vditor';
 import * as VaultService from '../bindings/pata/vaultservice';
@@ -174,6 +176,23 @@ function NoteEditor({
   const tagsInputRef = useRef<HTMLInputElement | null>(null);
   const titleInputRef = useRef<HTMLInputElement | null>(null);
 
+  const [moreMenuOpen, setMoreMenuOpen] = useState<boolean>(false);
+  const moreMenuRef = useRef<HTMLDivElement | null>(null);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState<boolean>(false);
+  const [isDeleting, setIsDeleting] = useState<boolean>(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!moreMenuOpen) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      if (moreMenuRef.current && !moreMenuRef.current.contains(e.target as Node)) {
+        setMoreMenuOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [moreMenuOpen]);
+
   useEffect(() => {
     if (isNew) {
       titleInputRef.current?.focus();
@@ -213,6 +232,7 @@ function NoteEditor({
   const debounceTimerRef = useRef<number | null>(null);
   const hasConflictRef = useRef<boolean>(false);
   const isSavingRef = useRef<boolean>(false);
+  const isDeletedRef = useRef<boolean>(false);
 
   const editTitleRef = useRef<string>('');
   const editTagsRef = useRef<string>('');
@@ -251,6 +271,10 @@ function NoteEditor({
 
   // Save implementation (D19)
   const doSave = useCallback(async (force: boolean = false): Promise<boolean> => {
+    if (isDeletedRef.current) {
+      return false;
+    }
+
     if (hasConflictRef.current && !force) {
       return false;
     }
@@ -416,7 +440,7 @@ function NoteEditor({
 
   // Debounced auto-save (0.5s as per D19)
   const triggerDebouncedSave = useCallback(() => {
-    if (hasConflictRef.current) return;
+    if (isDeletedRef.current || hasConflictRef.current) return;
     setSaveStatus('unsaved');
     if (debounceTimerRef.current) {
       window.clearTimeout(debounceTimerRef.current);
@@ -746,6 +770,7 @@ function NoteEditor({
     const handleBeforeUnload = () => {
       // shortcut: 导航切走时 best-effort flush,关窗/极速切换仍可能丢 ≤0.5s 输入,实机走查评估
       // 注：beforeunload 异步 IPC 关窗由于浏览器生命周期与 IPC 异步性亦可能丢失未保存数据，接受现状，不实现 Go 退出钩子
+      if (isDeletedRef.current) return;
       if (debounceTimerRef.current) {
         window.clearTimeout(debounceTimerRef.current);
         debounceTimerRef.current = null;
@@ -761,6 +786,7 @@ function NoteEditor({
     return () => {
       // shortcut: 导航切走时 best-effort flush,关窗/极速切换仍可能丢 ≤0.5s 输入,实机走查评估
       // 注：beforeunload 异步 IPC 关窗由于浏览器生命周期与 IPC 异步性亦可能丢失未保存数据，接受现状，不实现 Go 退出钩子
+      if (isDeletedRef.current) return;
       if (debounceTimerRef.current) {
         window.clearTimeout(debounceTimerRef.current);
         debounceTimerRef.current = null;
@@ -774,6 +800,7 @@ function NoteEditor({
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === 's') {
         e.preventDefault();
+        if (isDeletedRef.current) return;
         if (debounceTimerRef.current) {
           window.clearTimeout(debounceTimerRef.current);
           debounceTimerRef.current = null;
@@ -851,6 +878,10 @@ function NoteEditor({
   useEffect(() => {
     if (!leaveGuardRef) return;
     leaveGuardRef.current = async () => {
+      if (isDeletedRef.current) {
+        return true;
+      }
+
       if (hasConflictRef.current) {
         return askUserConfirm(() => setShowLeaveConflictConfirm(true));
       }
@@ -1127,6 +1158,34 @@ function NoteEditor({
     go();
   };
 
+  // Confirm delete note handler
+  const handleConfirmDelete = async () => {
+    if (debounceTimerRef.current) {
+      window.clearTimeout(debounceTimerRef.current);
+      debounceTimerRef.current = null;
+    }
+    if (isNewDraftRef.current) {
+      isDeletedRef.current = true;
+      setShowDeleteConfirm(false);
+      onBackRef.current();
+      return;
+    }
+    setIsDeleting(true);
+    setDeleteError(null);
+    try {
+      await VaultService.DeleteNote(currentNoteIdRef.current || noteId);
+      isDeletedRef.current = true;
+      setShowDeleteConfirm(false);
+      onNoteUpdatedRef.current();
+      onBackRef.current();
+    } catch (err: any) {
+      console.error('DeleteNote failed:', err);
+      setDeleteError(`删除失败: ${err?.message || err}`);
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
   if (loadingNote) {
     return (
       <div className="flex items-center justify-center py-24 text-xs text-stone-400">
@@ -1189,6 +1248,33 @@ function NoteEditor({
               <span>保存冲突</span>
             </span>
           )}
+
+          {/* More Actions Menu */}
+          <div className="relative" ref={moreMenuRef}>
+            <button
+              type="button"
+              onClick={() => setMoreMenuOpen((v) => !v)}
+              className="p-1 rounded-md text-stone-400 hover:text-stone-600 dark:hover:text-stone-300 hover:bg-stone-100 dark:hover:bg-stone-800/60 transition cursor-pointer"
+              title="更多操作"
+            >
+              <MoreHorizontal className="w-4 h-4" />
+            </button>
+            {moreMenuOpen && (
+              <div className="absolute right-0 top-full mt-1 w-32 rounded-lg border border-stone-200 dark:border-stone-800 bg-white dark:bg-stone-900 shadow-lg py-1 z-30">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMoreMenuOpen(false);
+                    setShowDeleteConfirm(true);
+                  }}
+                  className="w-full flex items-center space-x-2 px-3 py-1.5 text-xs text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition text-left cursor-pointer"
+                >
+                  <Trash2 className="w-3.5 h-3.5 shrink-0" />
+                  <span>删除笔记</span>
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
@@ -1704,6 +1790,56 @@ function NoteEditor({
         </div>,
         document.body
       )}
+
+      {/* Confirmation Modal for Deleting Note */}
+      {showDeleteConfirm && createPortal(
+        <div className="pata-fade fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs p-4">
+          <div className="w-full max-w-sm rounded-xl border border-stone-200 dark:border-stone-800 bg-white dark:bg-stone-900 p-5 shadow-xl space-y-4">
+            <div className="flex items-start space-x-3">
+              <div className="p-2 rounded-full bg-rose-100 dark:bg-rose-950/60 text-rose-600 shrink-0">
+                <AlertCircle className="w-5 h-5" />
+              </div>
+              <div className="space-y-1">
+                <h3 className="text-sm font-semibold text-stone-900 dark:text-stone-100">
+                  确认删除笔记？
+                </h3>
+                <p className="text-xs text-stone-500 leading-relaxed">
+                  {isNewDraftRef.current
+                    ? '当前为未保存的新建草稿，确认丢弃当前输入的内容吗？'
+                    : `笔记「${editTitle || initialNote?.title || '未命名'}」的文件将从 Vault 中永久删除，此操作不可撤销。`}
+                </p>
+                {deleteError && (
+                  <p className="text-xs text-rose-600 dark:text-rose-400 font-medium pt-1">
+                    {deleteError}
+                  </p>
+                )}
+              </div>
+            </div>
+            <div className="flex items-center justify-end space-x-2 pt-2 border-t border-stone-100 dark:border-stone-800">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowDeleteConfirm(false);
+                  setDeleteError(null);
+                }}
+                disabled={isDeleting}
+                className="px-3 py-1.5 rounded-md text-xs font-medium text-stone-600 dark:text-stone-300 hover:bg-stone-100 dark:hover:bg-stone-800 transition cursor-pointer"
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmDelete}
+                disabled={isDeleting}
+                className="px-3 py-1.5 rounded-md bg-rose-600 hover:bg-rose-700 text-white text-xs font-medium transition shadow-xs disabled:opacity-50 cursor-pointer"
+              >
+                {isDeleting ? '删除中...' : '确认删除'}
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
     </div>
   );
 }
@@ -1747,6 +1883,50 @@ export function NotesView({
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [createMenuOpen]);
+
+  // Context menu for note cards in list view
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; note: Note } | null>(null);
+  const contextMenuRef = useRef<HTMLDivElement | null>(null);
+  const [noteToDelete, setNoteToDelete] = useState<Note | null>(null);
+  const [isDeletingFromList, setIsDeletingFromList] = useState(false);
+  const [deleteListError, setDeleteListError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!contextMenu) return;
+    const handleClose = (e: Event) => {
+      if (contextMenuRef.current && e.target instanceof Node && contextMenuRef.current.contains(e.target)) {
+        return;
+      }
+      setContextMenu(null);
+    };
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setContextMenu(null);
+    };
+    window.addEventListener('mousedown', handleClose);
+    window.addEventListener('scroll', handleClose, true);
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('mousedown', handleClose);
+      window.removeEventListener('scroll', handleClose, true);
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [contextMenu]);
+
+  const handleConfirmDeleteFromList = async () => {
+    if (!noteToDelete) return;
+    setIsDeletingFromList(true);
+    setDeleteListError(null);
+    try {
+      await VaultService.DeleteNote(noteToDelete.id);
+      setNoteToDelete(null);
+      await loadNotes();
+    } catch (err: any) {
+      console.error('DeleteNote failed:', err);
+      setDeleteListError(`删除失败: ${err?.message || err}`);
+    } finally {
+      setIsDeletingFromList(false);
+    }
+  };
 
   const handleStartCreateAudioNote = async () => {
     setCreateAudioNoteError(null);
@@ -2113,6 +2293,14 @@ export function NotesView({
               <div
                 key={n.id}
                 onClick={() => handleSelectNote(n.id)}
+                onContextMenu={(e) => {
+                  e.preventDefault();
+                  setContextMenu({
+                    x: e.clientX,
+                    y: e.clientY,
+                    note: n,
+                  });
+                }}
                 className="group p-4 rounded-xl border border-stone-200 dark:border-stone-800 bg-white dark:bg-stone-950 hover:border-emerald-500/60 dark:hover:border-emerald-600/60 hover:shadow-2xs transition cursor-pointer select-none space-y-2"
               >
                 <div className="flex items-start justify-between gap-3">
@@ -2207,6 +2395,83 @@ export function NotesView({
           <div className="rounded-xl border border-stone-200 dark:border-stone-800 bg-white dark:bg-stone-900 px-6 py-4 shadow-xl flex items-center space-x-3 text-xs font-medium text-stone-700 dark:text-stone-200">
             <Loader2 className="w-4 h-4 animate-spin text-emerald-600" />
             <span>正在导入音频并创建逐字稿笔记...</span>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* Context Menu for Note Card in List */}
+      {contextMenu && createPortal(
+        <div
+          ref={contextMenuRef}
+          className="pata-fade fixed z-50 rounded-lg border border-stone-200 dark:border-stone-800 bg-white dark:bg-stone-900 shadow-xl py-1 min-w-[130px]"
+          style={{
+            left: `${Math.min(contextMenu.x, window.innerWidth - 140)}px`,
+            top: `${Math.min(contextMenu.y, window.innerHeight - 50)}px`,
+          }}
+          onMouseDown={(e) => e.stopPropagation()}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              const note = contextMenu.note;
+              setContextMenu(null);
+              setNoteToDelete(note);
+            }}
+            className="w-full flex items-center space-x-2 px-3 py-1.5 text-xs text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition text-left cursor-pointer"
+          >
+            <Trash2 className="w-3.5 h-3.5 shrink-0" />
+            <span>删除笔记</span>
+          </button>
+        </div>,
+        document.body
+      )}
+
+      {/* Confirmation Modal for Deleting Note from List */}
+      {noteToDelete && createPortal(
+        <div className="pata-fade fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs p-4">
+          <div className="w-full max-w-sm rounded-xl border border-stone-200 dark:border-stone-800 bg-white dark:bg-stone-900 p-5 shadow-xl space-y-4">
+            <div className="flex items-start space-x-3">
+              <div className="p-2 rounded-full bg-rose-100 dark:bg-rose-950/60 text-rose-600 shrink-0">
+                <AlertCircle className="w-5 h-5" />
+              </div>
+              <div className="space-y-1">
+                <h3 className="text-sm font-semibold text-stone-900 dark:text-stone-100">
+                  确认删除笔记？
+                </h3>
+                <p className="text-xs text-stone-500 leading-relaxed">
+                  笔记「{noteToDelete.title}」的文件将从 Vault 中永久删除，此操作不可撤销。
+                </p>
+                {deleteListError && (
+                  <p className="text-xs text-rose-600 dark:text-rose-400 font-medium pt-1">
+                    {deleteListError}
+                  </p>
+                )}
+              </div>
+            </div>
+            <div className="flex items-center justify-end space-x-2 pt-2 border-t border-stone-100 dark:border-stone-800">
+              <button
+                type="button"
+                onClick={() => {
+                  setNoteToDelete(null);
+                  setDeleteListError(null);
+                }}
+                disabled={isDeletingFromList}
+                className="px-3 py-1.5 rounded-md text-xs font-medium text-stone-600 dark:text-stone-300 hover:bg-stone-100 dark:hover:bg-stone-800 transition cursor-pointer"
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmDeleteFromList}
+                disabled={isDeletingFromList}
+                className="px-3 py-1.5 rounded-md bg-rose-600 hover:bg-rose-700 text-white text-xs font-medium transition shadow-xs disabled:opacity-50 cursor-pointer"
+              >
+                {isDeletingFromList ? '删除中...' : '确认删除'}
+              </button>
+            </div>
           </div>
         </div>,
         document.body

@@ -73,6 +73,13 @@ export function DeleteActivity(id: string): $CancellablePromise<void> {
 }
 
 /**
+ * DeleteNote deletes a note from disk and cleans up its index entry.
+ */
+export function DeleteNote(id: string): $CancellablePromise<void> {
+    return $Call.ByID(2663015250, id);
+}
+
+/**
  * DeleteTask deletes a task from disk and updates the index, cascading deletion to all its embedded activities
  * and removing references to this task from all day plans.
  */

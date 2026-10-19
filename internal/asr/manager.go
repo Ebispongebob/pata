@@ -532,6 +532,19 @@ func (m *Manager) DiscardCandidate(noteID string) {
 	})
 }
 
+// CancelAndClear aborts any active transcription task for the note and removes all task state from memory.
+func (m *Manager) CancelAndClear(noteID string) {
+	m.mu.Lock()
+	if cancel, ok := m.cancels[noteID]; ok && cancel != nil {
+		cancel()
+		delete(m.cancels, noteID)
+	}
+	delete(m.tasks, noteID)
+	delete(m.taskGenerations, noteID)
+	m.mu.Unlock()
+}
+
+
 // SetTaskFailed marks a note's transcription task as failed with the given stage message and error.
 func (m *Manager) SetTaskFailed(noteID string, stageMsg string, errMsg string) {
 	m.mu.Lock()

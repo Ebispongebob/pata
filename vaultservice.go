@@ -1040,6 +1040,42 @@ func (s *VaultService) UpdateNote(input UpdateNoteInput) (*markdown.Note, error)
 	return existing, nil
 }
 
+// DeleteNote deletes a note from disk and cleans up its index entry.
+func (s *VaultService) DeleteNote(id string) error {
+	s.mu.Lock()
+	v := s.vault
+	s.mu.Unlock()
+	if v == nil {
+		return fmt.Errorf("尚未打开 Vault")
+	}
+
+	trimmedID := strings.TrimSpace(id)
+	if trimmedID == "" {
+		return fmt.Errorf("笔记 ID 不能为空")
+	}
+
+	if _, ok := v.Index.GetNote(trimmedID); !ok {
+		return fmt.Errorf("笔记不存在: %s", trimmedID)
+	}
+
+	if err := v.DeleteEntity(trimmedID); err != nil {
+		return err
+	}
+
+	s.mu.Lock()
+	if s.transcriptRecords != nil {
+		delete(s.transcriptRecords, trimmedID)
+	}
+	asrMgr := s.asrManager
+	s.mu.Unlock()
+
+	if asrMgr != nil {
+		asrMgr.CancelAndClear(trimmedID)
+	}
+
+	return nil
+}
+
 // noteBaseline looks up the baseline for a note directly from the memory index.
 func noteBaseline(v *markdown.Vault, note *markdown.Note) *markdown.FileBaseline {
 	path := v.ResolveEntityPath(note)
