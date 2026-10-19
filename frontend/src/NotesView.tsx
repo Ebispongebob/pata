@@ -1995,7 +1995,7 @@ export function NotesView({
         </div>
 
         {/* Split Button: New Note / New Audio Note */}
-        <div className="relative inline-flex items-center rounded-lg shadow-2xs" ref={createMenuRef}>
+        <div className="relative inline-flex items-stretch rounded-lg shadow-2xs" ref={createMenuRef}>
           <button
             type="button"
             onClick={handleStartCreateNote}
@@ -2007,7 +2007,7 @@ export function NotesView({
           <button
             type="button"
             onClick={() => setCreateMenuOpen((v) => !v)}
-            className="px-1.5 py-1.5 rounded-r-lg bg-emerald-700 hover:bg-emerald-800 border-l border-emerald-600 text-white text-xs transition cursor-pointer"
+            className="flex items-center justify-center px-1.5 py-1.5 rounded-r-lg bg-emerald-700 hover:bg-emerald-800 border-l border-emerald-600 text-white text-xs transition cursor-pointer"
             title="更多新建选项"
           >
             <ChevronDown className="w-3.5 h-3.5" />
