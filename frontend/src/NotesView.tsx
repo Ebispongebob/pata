@@ -2080,7 +2080,7 @@ export function NotesView({
                 Vault 中暂无笔记
               </div>
               <div className="text-[11px] text-stone-400 max-w-xs mx-auto">
-                写下第一篇长文或记录吧，也可以直接从 MP3 音频导入生成逐字稿
+                写下第一篇长文或记录吧，也可以直接从 MP3 / M4A 音频导入生成逐字稿
               </div>
               <div className="flex items-center justify-center space-x-2 pt-2">
                 <button
@@ -2097,7 +2097,7 @@ export function NotesView({
                   className="inline-flex items-center space-x-1 px-3 py-1.5 rounded-lg border border-stone-200 dark:border-stone-700 bg-white dark:bg-stone-900 text-stone-700 dark:text-stone-300 hover:bg-stone-50 dark:hover:bg-stone-800 text-xs font-medium transition shadow-2xs cursor-pointer"
                 >
                   <Volume2 className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />
-                  <span>从音频创建 (MP3)</span>
+                  <span>从音频创建 (MP3 / M4A)</span>
                 </button>
               </div>
             </>

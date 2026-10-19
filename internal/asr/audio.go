@@ -3,6 +3,7 @@ package asr
 import (
 	"bytes"
 	"context"
+	"encoding/binary"
 	"fmt"
 	"io"
 	"os"
@@ -53,13 +54,13 @@ type AudioInfo struct {
 	DurationSec float64
 }
 
-// InspectAudio inspects an MP3 audio file. It first checks via afinfo (on Darwin),
-// and falls back to pure Go MP3 frame header parsing.
+// InspectAudio inspects an audio file (MP3 / M4A). It first checks via afinfo (on Darwin),
+// and falls back to pure Go frame/atom header parsing.
 func InspectAudio(filePath string) (AudioInfo, error) {
 	return InspectAudioContext(context.Background(), filePath)
 }
 
-// InspectAudioContext inspects an MP3 audio file with a cancellation context.
+// InspectAudioContext inspects an audio file (MP3 / M4A) with a cancellation context.
 func InspectAudioContext(ctx context.Context, filePath string) (AudioInfo, error) {
 	info := AudioInfo{Channels: 2, DurationSec: 0}
 
@@ -87,7 +88,17 @@ func InspectAudioContext(ctx context.Context, filePath string) (AudioInfo, error
 		}
 	}
 
-	// 2. Pure Go MP3 header inspection fallback (bounded read to avoid large memory allocations)
+	// 2. Pure Go header inspection fallback (bounded read to avoid large memory allocations)
+	ext := strings.ToLower(filepath.Ext(filePath))
+	if ext == ".m4a" {
+		channels, err := inspectM4AFileChannels(filePath)
+		if err != nil {
+			return info, err
+		}
+		info.Channels = channels
+		return info, nil
+	}
+
 	channels, err := inspectMP3FileChannels(filePath)
 	if err != nil {
 		return info, err
@@ -175,6 +186,58 @@ func inspectMP3Channels(data []byte) (int, error) {
 	}
 
 	return 2, nil // default assumption if no sync found
+}
+
+// shortcut: reads only the first 64KB; un-optimized M4A files with moov at the end fall back to 2 channels.
+// inspectM4AFileChannels reads a bounded prefix of the file to determine channel count.
+func inspectM4AFileChannels(filePath string) (int, error) {
+	f, err := os.Open(filePath)
+	if err != nil {
+		return 2, err
+	}
+	defer f.Close()
+
+	fi, err := f.Stat()
+	if err != nil {
+		return 2, err
+	}
+	if fi.Size() == 0 {
+		return 2, nil
+	}
+
+	buf := make([]byte, 64*1024)
+	bytesRead, err := io.ReadFull(f, buf)
+	if err != nil && err != io.ErrUnexpectedEOF && err != io.EOF {
+		return 2, err
+	}
+	if bytesRead < 8 {
+		return 2, nil
+	}
+
+	return inspectM4AChannels(buf[:bytesRead])
+}
+
+// inspectM4AChannels reads MP4/M4A atom headers to determine channel count.
+func inspectM4AChannels(data []byte) (int, error) {
+	mp4aIdx := bytes.Index(data, []byte("mp4a"))
+	if mp4aIdx == -1 {
+		return 2, nil
+	}
+	// In the mp4a audio sample entry:
+	// 4 bytes: "mp4a"
+	// 6 bytes: reserved
+	// 2 bytes: data reference index
+	// 8 bytes: reserved / version
+	// 2 bytes: channel count (uint16 big endian)
+	channelOffset := mp4aIdx + 4 + 6 + 2 + 8
+	if channelOffset+2 > len(data) {
+		return 2, nil
+	}
+	channels := int(binary.BigEndian.Uint16(data[channelOffset : channelOffset+2]))
+	if channels < 1 || channels > 8 {
+		return 2, nil
+	}
+	return channels, nil
 }
 
 // PrepareAudioForDiarization ensures that the audio submitted to speaker diarization is mono.

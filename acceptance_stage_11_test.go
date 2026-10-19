@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -742,6 +743,109 @@ func TestVaultService_VaultSwitchResetsASRTaskState(t *testing.T) {
 	err = svc.saveTranscriptBody(v1, noteID, "test transcript")
 	if err == nil {
 		t.Fatalf("expected saveTranscriptBody with mismatched vault to fail, but succeeded")
+	}
+}
+
+// createTestM4A creates a minimal synthetic M4A file with ftyp and moov/stsd/mp4a atoms.
+func createTestM4A(t *testing.T, path string, mono bool) {
+	mp4aPrefix := []byte{'m', 'p', '4', 'a'}
+	reserved16 := make([]byte, 16)
+	chanBytes := []byte{0x00, 0x02}
+	if mono {
+		chanBytes = []byte{0x00, 0x01}
+	}
+	content := append([]byte("....ftypM4A ....moov....stsd...."), append(append(mp4aPrefix, reserved16...), chanBytes...)...)
+	if err := os.WriteFile(path, content, 0644); err != nil {
+		t.Fatalf("failed to create test M4A: %v", err)
+	}
+}
+
+func TestStage11_M4AAudioSupport(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "pata-m4a-*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	configPath := filepath.Join(tmpDir, "config", "vault.json")
+	vaultDir := filepath.Join(tmpDir, "vault")
+	_ = os.MkdirAll(vaultDir, 0755)
+
+	svc := &VaultService{
+		configPath: configPath,
+		keychain:   keychain.NewMemoryStore(),
+	}
+	if _, err := svc.openVault(vaultDir); err != nil {
+		t.Fatalf("openVault failed: %v", err)
+	}
+
+	// 1. Create an M4A file outside vault
+	srcM4A := filepath.Join(tmpDir, "interview.m4a")
+	createTestM4A(t, srcM4A, true)
+
+	// 2. Create audio note from M4A file
+	note, err := svc.CreateAudioNote(srcM4A)
+	if err != nil {
+		t.Fatalf("CreateAudioNote with .m4a failed: %v", err)
+	}
+	if note == nil {
+		t.Fatalf("expected note to be non-nil")
+	}
+	if note.Title != "interview" {
+		t.Errorf("expected title 'interview', got %q", note.Title)
+	}
+	if !note.AudioTranscript {
+		t.Errorf("expected AudioTranscript == true")
+	}
+	if !strings.HasPrefix(note.AudioFile, "files/interview") || !strings.HasSuffix(note.AudioFile, ".m4a") {
+		t.Errorf("expected AudioFile 'files/interview*.m4a', got %q", note.AudioFile)
+	}
+
+	// 3. Verify original file preserved and file copied into files/
+	if _, err := os.Stat(srcM4A); err != nil {
+		t.Errorf("source M4A file must remain intact: %v", err)
+	}
+	copiedPath := filepath.Join(vaultDir, note.AudioFile)
+	if _, err := os.Stat(copiedPath); err != nil {
+		t.Errorf("copied M4A file does not exist in vault: %v", err)
+	}
+
+	// 4. Verify GetAudioURL and GetAudioData with audio/mp4 MIME type
+	audioURL, err := svc.GetAudioURL(note.AudioFile)
+	if err != nil {
+		t.Fatalf("GetAudioURL failed: %v", err)
+	}
+	if !strings.HasPrefix(audioURL, "/vault-audio/files/interview") {
+		t.Errorf("expected /vault-audio/files/interview..., got %q", audioURL)
+	}
+
+	dataURI, err := svc.GetAudioData(note.AudioFile)
+	if err != nil {
+		t.Fatalf("GetAudioData failed: %v", err)
+	}
+	if !strings.HasPrefix(dataURI, "data:audio/mp4;base64,") {
+		prefix := dataURI
+		if len(prefix) > 30 {
+			prefix = prefix[:30]
+		}
+		t.Errorf("expected data:audio/mp4;base64, prefix for M4A, got %q", prefix)
+	}
+
+	// 5. Verify CreateAudioNoteData with M4A base64 data
+	encoded := base64.StdEncoding.EncodeToString([]byte("fake-m4a-content"))
+	noteData, err := svc.CreateAudioNoteData("lecture.m4a", encoded)
+	if err != nil {
+		t.Fatalf("CreateAudioNoteData with .m4a failed: %v", err)
+	}
+	if noteData.Title != "lecture" {
+		t.Errorf("expected title 'lecture', got %q", noteData.Title)
+	}
+
+	// 6. Non-audio file should be rejected
+	txtPath := filepath.Join(tmpDir, "document.txt")
+	_ = os.WriteFile(txtPath, []byte("plain text"), 0644)
+	if _, err := svc.CreateAudioNote(txtPath); err == nil {
+		t.Errorf("expected error when importing non-audio file (.txt), got nil")
 	}
 }
 

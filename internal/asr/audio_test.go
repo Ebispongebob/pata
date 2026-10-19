@@ -73,6 +73,31 @@ func TestAudio_InspectMP3Channels(t *testing.T) {
 	}
 }
 
+func TestAudio_InspectM4AChannels(t *testing.T) {
+	mp4aPrefix := []byte{'m', 'p', '4', 'a'}
+	reserved16 := make([]byte, 16)
+	monoChan := []byte{0x00, 0x01}
+	stereoChan := []byte{0x00, 0x02}
+
+	monoData := append(append(mp4aPrefix, reserved16...), monoChan...)
+	stereoData := append(append(mp4aPrefix, reserved16...), stereoChan...)
+
+	chMono, err := inspectM4AChannels(monoData)
+	if err != nil || chMono != 1 {
+		t.Errorf("expected 1 channel, got %d, err: %v", chMono, err)
+	}
+
+	chStereo, err := inspectM4AChannels(stereoData)
+	if err != nil || chStereo != 2 {
+		t.Errorf("expected 2 channels, got %d, err: %v", chStereo, err)
+	}
+
+	chDefault, err := inspectM4AChannels([]byte("random-non-m4a-data"))
+	if err != nil || chDefault != 2 {
+		t.Errorf("expected default 2 channels, got %d, err: %v", chDefault, err)
+	}
+}
+
 func TestAudio_PrepareAudioForDiarizationMono(t *testing.T) {
 	tmpDir := t.TempDir()
 	monoPath := filepath.Join(tmpDir, "mono.mp3")
@@ -189,6 +214,56 @@ func TestAudio_InspectMP3FileChannels(t *testing.T) {
 
 	// 3. Non-existent file returns error
 	_, err = inspectMP3FileChannels(filepath.Join(tmpDir, "nonexistent.mp3"))
+	if err == nil {
+		t.Fatalf("expected error for non-existent file")
+	}
+}
+
+func TestAudio_InspectM4AFileChannels(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// 1. Mono M4A file
+	monoPath := filepath.Join(tmpDir, "mono.m4a")
+	mp4aPrefix := []byte{'m', 'p', '4', 'a'}
+	reserved16 := make([]byte, 16)
+	monoChan := []byte{0x00, 0x01}
+	monoContent := append(append(mp4aPrefix, reserved16...), monoChan...)
+	_ = os.WriteFile(monoPath, monoContent, 0644)
+
+	ch, err := inspectM4AFileChannels(monoPath)
+	if err != nil || ch != 1 {
+		t.Fatalf("expected 1 channel, got %d, err: %v", ch, err)
+	}
+
+	// 2. Stereo M4A file
+	stereoPath := filepath.Join(tmpDir, "stereo.m4a")
+	stereoChan := []byte{0x00, 0x02}
+	stereoContent := append(append(mp4aPrefix, reserved16...), stereoChan...)
+	_ = os.WriteFile(stereoPath, stereoContent, 0644)
+
+	ch, err = inspectM4AFileChannels(stereoPath)
+	if err != nil || ch != 2 {
+		t.Fatalf("expected 2 channels, got %d, err: %v", ch, err)
+	}
+
+	// 3. Empty file returns default 2 channels without error
+	emptyPath := filepath.Join(tmpDir, "empty.m4a")
+	_ = os.WriteFile(emptyPath, []byte{}, 0644)
+	ch, err = inspectM4AFileChannels(emptyPath)
+	if err != nil || ch != 2 {
+		t.Fatalf("expected default 2 channels for empty file, got %d, err: %v", ch, err)
+	}
+
+	// 4. Short file (< 8 bytes) returns default 2 channels without error
+	shortPath := filepath.Join(tmpDir, "short.m4a")
+	_ = os.WriteFile(shortPath, []byte("short"), 0644)
+	ch, err = inspectM4AFileChannels(shortPath)
+	if err != nil || ch != 2 {
+		t.Fatalf("expected default 2 channels for short file, got %d, err: %v", ch, err)
+	}
+
+	// 5. Non-existent file returns error
+	_, err = inspectM4AFileChannels(filepath.Join(tmpDir, "nonexistent.m4a"))
 	if err == nil {
 		t.Fatalf("expected error for non-existent file")
 	}

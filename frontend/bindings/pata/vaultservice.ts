@@ -36,7 +36,7 @@ export function CreateActivity(input: $models.CreateActivityInput): $Cancellable
 }
 
 /**
- * CreateAudioNote imports an MP3 audio file into files/, creates an audio transcript Note immediately,
+ * CreateAudioNote imports an audio file (MP3 / M4A) into files/, creates an audio transcript Note immediately,
  * and starts the asynchronous transcription pipeline in the background.
  */
 export function CreateAudioNote(sourcePath: string): $CancellablePromise<markdown$0.Note | null> {
@@ -44,7 +44,7 @@ export function CreateAudioNote(sourcePath: string): $CancellablePromise<markdow
 }
 
 /**
- * CreateAudioNoteData imports base64 MP3 audio data into files/, creates an audio transcript Note immediately,
+ * CreateAudioNoteData imports base64 audio data (MP3 / M4A) into files/, creates an audio transcript Note immediately,
  * and starts the asynchronous transcription pipeline in the background.
  */
 export function CreateAudioNoteData(name: string, base64Data: string): $CancellablePromise<markdown$0.Note | null> {
@@ -294,7 +294,7 @@ export function SearchAll(query: string): $CancellablePromise<markdown$0.SearchR
 }
 
 /**
- * SelectAudioFile opens a native dialog for selecting an MP3 audio file.
+ * SelectAudioFile opens a native dialog for selecting an audio file (MP3 / M4A).
  */
 export function SelectAudioFile(): $CancellablePromise<string> {
     return $Call.ByID(3686725867);

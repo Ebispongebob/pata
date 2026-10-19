@@ -1844,17 +1844,24 @@ func (s *VaultService) getASRKeyInternal() (string, error) {
 	return trimmed, nil
 }
 
-// SelectAudioFile opens a native dialog for selecting an MP3 audio file.
+func isSupportedAudioExt(ext string) bool {
+	ext = strings.ToLower(ext)
+	return ext == ".mp3" || ext == ".m4a"
+}
+
+// SelectAudioFile opens a native dialog for selecting an audio file (MP3 / M4A).
 func (s *VaultService) SelectAudioFile() (string, error) {
 	app := application.Get()
 	if app == nil || app.Dialog == nil {
 		return "", fmt.Errorf("桌面对话框不可用")
 	}
 	dialog := app.Dialog.OpenFile()
-	dialog.SetTitle("选择要转写的 MP3 音频文件")
+	dialog.SetTitle("选择要转写的音频文件")
 	dialog.CanChooseFiles(true)
 	dialog.CanChooseDirectories(false)
+	dialog.AddFilter("音频文件 (*.mp3;*.m4a)", "*.mp3;*.m4a")
 	dialog.AddFilter("MP3 音频 (*.mp3)", "*.mp3")
+	dialog.AddFilter("M4A 音频 (*.m4a)", "*.m4a")
 	path, err := dialog.PromptForSingleSelection()
 	if err != nil {
 		return "", fmt.Errorf("打开文件选择器失败: %w", err)
@@ -1862,16 +1869,16 @@ func (s *VaultService) SelectAudioFile() (string, error) {
 	return path, nil
 }
 
-// CreateAudioNote imports an MP3 audio file into files/, creates an audio transcript Note immediately,
+// CreateAudioNote imports an audio file (MP3 / M4A) into files/, creates an audio transcript Note immediately,
 // and starts the asynchronous transcription pipeline in the background.
 func (s *VaultService) CreateAudioNote(sourcePath string) (*markdown.Note, error) {
 	cleanSrc := filepath.Clean(strings.TrimSpace(sourcePath))
 	ext := strings.ToLower(filepath.Ext(cleanSrc))
-	if ext != ".mp3" {
-		return nil, fmt.Errorf("第一版仅支持导入 MP3 格式音频文件")
+	if !isSupportedAudioExt(ext) {
+		return nil, fmt.Errorf("仅支持导入 MP3 或 M4A 格式音频文件")
 	}
 
-	// Try retrieving API key (if unconfigured, task will report failure, but Note and MP3 are preserved)
+	// Try retrieving API key (if unconfigured, task will report failure, but Note and audio file are preserved)
 	apiKey, _ := s.getASRKeyInternal()
 
 	// 1. Import file to files/ (copies without overwriting)
@@ -1887,7 +1894,7 @@ func (s *VaultService) CreateAudioNote(sourcePath string) (*markdown.Note, error
 		return nil, fmt.Errorf("尚未打开 Vault")
 	}
 
-	// Derive default note title from base name without .mp3
+	// Derive default note title from base name without audio extension
 	title := strings.TrimSuffix(res.Name, filepath.Ext(res.Name))
 	if strings.TrimSpace(title) == "" {
 		title = "音频逐字稿"
@@ -1950,13 +1957,13 @@ func (s *VaultService) CreateAudioNote(sourcePath string) (*markdown.Note, error
 	return note, nil
 }
 
-// CreateAudioNoteData imports base64 MP3 audio data into files/, creates an audio transcript Note immediately,
+// CreateAudioNoteData imports base64 audio data (MP3 / M4A) into files/, creates an audio transcript Note immediately,
 // and starts the asynchronous transcription pipeline in the background.
 func (s *VaultService) CreateAudioNoteData(name string, base64Data string) (*markdown.Note, error) {
 	cleanName := filepath.Base(strings.TrimSpace(name))
 	ext := strings.ToLower(filepath.Ext(cleanName))
-	if ext != ".mp3" {
-		return nil, fmt.Errorf("第一版仅支持导入 MP3 格式音频文件")
+	if !isSupportedAudioExt(ext) {
+		return nil, fmt.Errorf("仅支持导入 MP3 或 M4A 格式音频文件")
 	}
 
 	apiKey, _ := s.getASRKeyInternal()
@@ -2311,5 +2318,10 @@ func (s *VaultService) GetAudioData(filePath string) (string, error) {
 		return "", fmt.Errorf("读取音频文件失败: %w", err)
 	}
 	encoded := base64.StdEncoding.EncodeToString(data)
-	return "data:audio/mpeg;base64," + encoded, nil
+	ext := strings.ToLower(filepath.Ext(absPath))
+	mimeType := "audio/mpeg"
+	if ext == ".m4a" {
+		mimeType = "audio/mp4"
+	}
+	return fmt.Sprintf("data:%s;base64,%s", mimeType, encoded), nil
 }
