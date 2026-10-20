@@ -6,7 +6,7 @@ export interface TranscriptBlock {
   text: string;
 }
 
-export function formatTime(ms: number): string {
+export function formatTime(ms: number, withMillis = false): string {
   if (isNaN(ms) || ms < 0) ms = 0;
   const totalSeconds = Math.floor(ms / 1000);
   const millis = Math.floor(ms % 1000);
@@ -15,7 +15,10 @@ export function formatTime(ms: number): string {
   const seconds = totalSeconds % 60;
 
   const pad = (n: number, z = 2) => n.toString().padStart(z, '0');
-  return `${pad(hours)}:${pad(minutes)}:${pad(seconds)}.${pad(millis, 3)}`;
+  if (withMillis) {
+    return `${pad(hours)}:${pad(minutes)}:${pad(seconds)}.${pad(millis, 3)}`;
+  }
+  return `${pad(hours)}:${pad(minutes)}:${pad(seconds)}`;
 }
 
 export function parseTime(ts: string): number | null {

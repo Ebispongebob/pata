@@ -7,12 +7,18 @@ import {
   findSentenceAtTime,
 } from './audioTranscript.ts';
 
-test('formatTime & parseTime: millisecond precision', () => {
-  assert.equal(formatTime(0), '00:00:00.000');
-  assert.equal(formatTime(123), '00:00:00.123');
-  assert.equal(formatTime(1000), '00:00:01.000');
-  assert.equal(formatTime(65230), '00:01:05.230');
-  assert.equal(formatTime(3661005), '01:01:01.005');
+test('formatTime & parseTime: seconds precision by default, optional millisecond precision', () => {
+  assert.equal(formatTime(0), '00:00:00');
+  assert.equal(formatTime(123), '00:00:00');
+  assert.equal(formatTime(1000), '00:00:01');
+  assert.equal(formatTime(65230), '00:01:05');
+  assert.equal(formatTime(3661005), '01:01:01');
+
+  assert.equal(formatTime(0, true), '00:00:00.000');
+  assert.equal(formatTime(123, true), '00:00:00.123');
+  assert.equal(formatTime(1000, true), '00:00:01.000');
+  assert.equal(formatTime(65230, true), '00:01:05.230');
+  assert.equal(formatTime(3661005, true), '01:01:01.005');
 
   assert.equal(parseTime('00:00:00.000'), 0);
   assert.equal(parseTime('00:01:05.230'), 65230);

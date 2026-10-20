@@ -39,10 +39,12 @@ export function AudioPlayer({
   const [currentTimeMs, setCurrentTimeMs] = useState<number>(0);
   const [durationMs, setDurationMs] = useState<number>(0);
   const [isDragging, setIsDragging] = useState<boolean>(false);
+  const isDraggingRef = useRef<boolean>(false);
   const [previewMs, setPreviewMs] = useState<number | null>(null);
   const [audioLoadError, setAudioLoadError] = useState<string | null>(null);
   const [showMenu, setShowMenu] = useState<boolean>(false);
   const menuRef = useRef<HTMLDivElement | null>(null);
+  const sliderRef = useRef<HTMLInputElement | null>(null);
 
   // Load audio source when audioFile changes
   useEffect(() => {
@@ -104,7 +106,7 @@ export function AudioPlayer({
 
   const handleTimeUpdate = () => {
     const audio = audioRef.current;
-    if (!audio || isDragging) return;
+    if (!audio || isDraggingRef.current) return;
     setCurrentTimeMs(Math.round(audio.currentTime * 1000));
   };
 
@@ -118,10 +120,13 @@ export function AudioPlayer({
 
   const handleSliderChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const val = parseInt(e.target.value, 10);
+    isDraggingRef.current = true;
+    setIsDragging(true);
     setPreviewMs(val);
   };
 
   const handleCommitSeek = (valMs: number) => {
+    isDraggingRef.current = false;
     setIsDragging(false);
     setPreviewMs(null);
     setCurrentTimeMs(valMs);
@@ -132,6 +137,29 @@ export function AudioPlayer({
     }
     onSeekCommitted(valMs);
   };
+
+  // Window-level release listener ensures seek commits even if dragged outside slider
+  useEffect(() => {
+    if (!isDragging) return;
+
+    const handleWindowPointerUp = () => {
+      if (!isDraggingRef.current) return;
+      if (sliderRef.current) {
+        handleCommitSeek(parseInt(sliderRef.current.value, 10));
+      } else {
+        isDraggingRef.current = false;
+        setIsDragging(false);
+        setPreviewMs(null);
+      }
+    };
+
+    window.addEventListener('pointerup', handleWindowPointerUp);
+    window.addEventListener('pointercancel', handleWindowPointerUp);
+    return () => {
+      window.removeEventListener('pointerup', handleWindowPointerUp);
+      window.removeEventListener('pointercancel', handleWindowPointerUp);
+    };
+  }, [isDragging]);
 
   const fileName = audioFile ? audioFile.split('/').pop() : '未命名录音';
 
@@ -287,50 +315,47 @@ export function AudioPlayer({
         {/* Scrubbing slider */}
         <div className="flex-1 flex items-center">
           <input
+            ref={sliderRef}
             type="range"
             min={0}
             max={durationMs > 0 ? durationMs : 100}
             step={10}
             value={previewMs !== null ? previewMs : currentTimeMs}
-            onPointerDown={(e) => {
+            onPointerDown={() => {
+              isDraggingRef.current = true;
               setIsDragging(true);
-              e.currentTarget.setPointerCapture(e.pointerId);
             }}
             onChange={handleSliderChange}
             onPointerUp={(e) => {
-              if (e.currentTarget.hasPointerCapture(e.pointerId)) {
-                e.currentTarget.releasePointerCapture(e.pointerId);
-              }
-              handleCommitSeek(parseInt((e.target as HTMLInputElement).value, 10));
+              handleCommitSeek(parseInt(e.currentTarget.value, 10));
             }}
-            onPointerCancel={(e) => {
-              if (e.currentTarget.hasPointerCapture(e.pointerId)) {
-                e.currentTarget.releasePointerCapture(e.pointerId);
-              }
+            onPointerCancel={() => {
+              isDraggingRef.current = false;
               setIsDragging(false);
               setPreviewMs(null);
             }}
             onKeyDown={(e) => {
               if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End'].includes(e.key)) {
+                isDraggingRef.current = true;
                 setIsDragging(true);
               }
             }}
             onKeyUp={(e) => {
               if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End'].includes(e.key)) {
-                handleCommitSeek(parseInt((e.target as HTMLInputElement).value, 10));
+                handleCommitSeek(parseInt(e.currentTarget.value, 10));
               }
             }}
             onBlur={(e) => {
-              if (previewMs !== null) {
-                handleCommitSeek(parseInt((e.target as HTMLInputElement).value, 10));
+              if (isDraggingRef.current || previewMs !== null) {
+                handleCommitSeek(parseInt(e.currentTarget.value, 10));
               }
             }}
             disabled={!audioSrc || !!audioLoadError}
-            className="w-full h-1.5 bg-stone-200 dark:bg-stone-800 rounded-lg appearance-none cursor-pointer accent-emerald-600 dark:accent-emerald-500 disabled:cursor-not-allowed"
+            className="w-full h-1.5 bg-stone-200 dark:bg-stone-800 rounded-lg appearance-none cursor-pointer accent-emerald-600 dark:accent-emerald-500 disabled:cursor-not-allowed select-none"
           />
         </div>
 
-        {/* Millisecond precision time: 00:01:23.456 / 00:45:00.000 */}
+        {/* Time display (seconds precision): 00:01:23 / 00:45:00 */}
         <div className="font-mono text-[11px] text-stone-500 dark:text-stone-400 shrink-0 select-none">
           <span>{formatTime(previewMs !== null ? previewMs : currentTimeMs)}</span>
           <span className="mx-1 text-stone-300 dark:text-stone-600">/</span>
