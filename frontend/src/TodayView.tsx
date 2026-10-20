@@ -5,10 +5,6 @@ import {
   ChevronRight,
   RotateCcw,
   CheckCircle2,
-  Circle,
-  ArrowUp,
-  ArrowDown,
-  CalendarMinus,
   Plus,
   Search,
   X,
@@ -24,6 +20,7 @@ import { Task, TaskStatus } from '../bindings/pata/internal/storage/markdown/mod
 import { VaultStatus, CreateTaskInput, TimelineItem, CreateActivityInput } from '../bindings/pata/models';
 import { playLogoSuccess } from './logoAnimation';
 import { QuickCreateInput } from './QuickCreateInput';
+import { TodayPlanList } from './TodayPlanList';
 import { TaskDetailPanel, TaskDetailHandle } from './TaskDetailPanel';
 import { DetailSplit, useDetailOrigin } from './DetailSplit';
 import { NoteRefText, NoteRefTextarea, NoteRefMap, pruneRefs, sameRefs, useNoteRefs } from './noteRefs';
@@ -155,6 +152,9 @@ export function TodayView({
 
   // 原地详情
   const [openTaskId, setOpenTaskId] = useState<string | null>(initialTaskId ?? null);
+  const [openTaskDate, setOpenTaskDate] = useState<string>(
+    initialDate && /^\d{4}-\d{2}-\d{2}$/.test(initialDate) ? initialDate : todayStr
+  );
   useEffect(() => {
     if (initialTaskId) onInitialTaskConsumed?.();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -235,11 +235,15 @@ export function TodayView({
 
   const taskMap = useMemo(() => new Map(tasks.map((t) => [t.id, t])), [tasks]);
 
-  const planItems = useMemo(
-    () => dayPlanTaskIds.map((id) => ({ id, task: taskMap.get(id) ?? null })),
+  const validPlanIds = useMemo(
+    () => dayPlanTaskIds.filter((id) => taskMap.has(id)),
     [dayPlanTaskIds, taskMap]
   );
-  const validPlanIds = useMemo(() => planItems.filter((i) => i.task).map((i) => i.id), [planItems]);
+
+  const completedCount = useMemo(
+    () => dayPlanTaskIds.filter((id) => taskMap.get(id)?.status === TaskStatus.TaskStatusDone).length,
+    [dayPlanTaskIds, taskMap]
+  );
 
   const yesterdayCandidates = useMemo(() => {
     if (selectedDate !== todayStr) return [];
@@ -266,6 +270,7 @@ export function TodayView({
     if (openTaskId && openTaskId !== id && !((await panelRef.current?.confirmLeave()) ?? true)) return;
     origin.capture();
     setOpenTaskId(id);
+    setOpenTaskDate(selectedDate);
   };
 
   const closePanel = () => {
@@ -286,19 +291,21 @@ export function TodayView({
     return errStr;
   };
 
-  // 保存当前日期计划；已失效的 ID 一并剔除。成功返回 true。
-  const persistPlan = async (newTaskIds: string[]): Promise<boolean> => {
+  // 保存指定日期的计划；已失效的 ID 一并剔除。成功返回 true。
+  const persistPlanForDate = async (date: string, newTaskIds: string[]): Promise<boolean> => {
     setSaving(true);
     setSaveError(null);
     try {
       const filtered = newTaskIds.filter((id) => taskMap.has(id));
       const dropped = newTaskIds.length - filtered.length;
-      const updated = await VaultService.SaveDayPlan(selectedDate, filtered);
-      setDayPlanTaskIds((updated?.task_ids ?? filtered).filter((id): id is string => typeof id === 'string'));
+      const updated = await VaultService.SaveDayPlan(date, filtered);
+      if (date === selectedDate) {
+        setDayPlanTaskIds((updated?.task_ids ?? filtered).filter((id): id is string => typeof id === 'string'));
+      }
       setNoticeMsg(dropped > 0 ? `已同步移除 ${dropped} 个失效任务占位` : null);
       return true;
     } catch (err: any) {
-      console.error('Failed to save day plan:', err);
+      console.error('Failed to save day plan for date:', date, err);
       reportSaveError(err);
       await loadData();
       return false;
@@ -307,13 +314,35 @@ export function TodayView({
     }
   };
 
-  const handleMove = async (taskId: string, direction: 'up' | 'down') => {
-    const i = validPlanIds.indexOf(taskId);
-    const j = direction === 'up' ? i - 1 : i + 1;
-    if (i === -1 || j < 0 || j >= validPlanIds.length) return;
-    const ids = [...validPlanIds];
-    [ids[i], ids[j]] = [ids[j], ids[i]];
-    await persistPlan(ids);
+  // 保存当前日期计划
+  const persistPlan = (newTaskIds: string[]): Promise<boolean> => persistPlanForDate(selectedDate, newTaskIds);
+
+  // 从指定日期的计划中移出任务（任务详情「更多」调用）
+  const handleRemoveFromDate = async (taskId: string, date: string): Promise<boolean> => {
+    try {
+      const plan = await VaultService.GetDayPlan(date);
+      const existing = (plan?.task_ids ?? []).filter((id): id is string => typeof id === 'string');
+      const nextIds = existing.filter((id) => id !== taskId);
+      const ok = await persistPlanForDate(date, nextIds);
+      if (ok) {
+        await loadData();
+        onVaultDataChanged();
+      }
+      return ok;
+    } catch (err: any) {
+      reportSaveError(err);
+      return false;
+    }
+  };
+
+  const handlePlanReorder = async (nextIds: string[]): Promise<boolean> => {
+    const prevIds = dayPlanTaskIds;
+    setDayPlanTaskIds(nextIds);
+    const ok = await persistPlan(nextIds);
+    if (!ok) {
+      setDayPlanTaskIds(prevIds);
+    }
+    return ok;
   };
 
   const handleRemove = (taskId: string) => persistPlan(dayPlanTaskIds.filter((id) => id !== taskId));
@@ -500,7 +529,6 @@ export function TodayView({
   }
 
   const isToday = selectedDate === todayStr;
-  const completedCount = planItems.filter((i) => i.task?.status === TaskStatus.TaskStatusDone).length;
   const planWord = isToday ? '今日' : '当日';
 
   const taskLink = (taskId: string, title: string) => (
@@ -531,6 +559,15 @@ export function TodayView({
       }}
       onDeleted={closePanel}
       onOpenNote={onOpenNote}
+      planDateContext={
+        openTaskDate === selectedDate && dayPlanTaskIds.includes(openTaskId)
+          ? {
+              date: openTaskDate,
+              isToday: openTaskDate === todayStr,
+              onRemoveFromPlan: (tId, d) => handleRemoveFromDate(tId, d),
+            }
+          : undefined
+      }
     />
   ) : null;
 
@@ -614,7 +651,7 @@ export function TodayView({
               <div className="flex items-baseline gap-2">
                 <h2 className="text-sm font-semibold text-stone-900 dark:text-stone-100">{planWord}计划</h2>
                 <span className="font-mono text-stone-400">
-                  {completedCount} / {planItems.length}
+                  {completedCount} / {dayPlanTaskIds.length}
                 </span>
               </div>
               <button
@@ -661,138 +698,19 @@ export function TodayView({
               </div>
             )}
 
-            {planItems.length === 0 ? (
-              <p className="text-xs text-stone-400 py-1">
-                {isToday ? '今天还没有安排任务。' : '该日期无计划安排。'}输入标题添加，或从已有任务中选择。
-              </p>
-            ) : (
-              <ul className="divide-y divide-stone-200/70 dark:divide-stone-800 rounded-xl border border-stone-200 dark:border-stone-800 bg-white dark:bg-stone-950">
-                {planItems.map(({ id, task }) => {
-                  if (!task) {
-                    return (
-                      <li key={id} className="flex items-center justify-between gap-3 px-3 py-2.5 text-xs bg-rose-50/40 dark:bg-rose-950/20">
-                        <div className="flex items-center gap-2 text-rose-700 dark:text-rose-300 min-w-0">
-                          <AlertCircle className="w-4 h-4 shrink-0" />
-                          <span className="font-mono text-[11px] truncate">[已删除任务: {id}]</span>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => void handleRemove(id)}
-                          disabled={saving}
-                          className="px-2 py-0.5 rounded text-rose-700 dark:text-rose-300 hover:bg-rose-100 dark:hover:bg-rose-900/40 font-medium shrink-0"
-                          title="只清除计划中的失效引用"
-                        >
-                          清除占位
-                        </button>
-                      </li>
-                    );
-                  }
-
-                  const isDone = task.status === TaskStatus.TaskStatusDone;
-                  const idx = validPlanIds.indexOf(task.id);
-                  let dueBadge: React.ReactNode = null;
-                  if (task.due && !isDone) {
-                    dueBadge =
-                      task.due < todayStr ? (
-                        <span className="text-[10px] px-1.5 rounded font-medium bg-rose-100 text-rose-700 dark:bg-rose-950/70 dark:text-rose-300 shrink-0">
-                          逾期 {task.due}
-                        </span>
-                      ) : task.due === todayStr ? (
-                        <span className="text-[10px] px-1.5 rounded font-medium bg-amber-100 text-amber-800 dark:bg-amber-950/70 dark:text-amber-300 shrink-0">
-                          今日到期
-                        </span>
-                      ) : (
-                        <span className="text-[10px] text-stone-400 shrink-0">due {task.due}</span>
-                      );
-                  }
-
-                  return (
-                    <li
-                      key={task.id}
-                      onClick={() => void openTask(task.id)}
-                      onKeyDown={(e) => {
-                        if (e.target === e.currentTarget && (e.key === 'Enter' || e.key === ' ')) {
-                          e.preventDefault();
-                          void openTask(task.id);
-                        }
-                      }}
-                      tabIndex={0}
-                      role="button"
-                      className={`group flex items-center gap-3 px-3 py-2.5 cursor-pointer transition first:rounded-t-xl last:rounded-b-xl hover:bg-stone-50 dark:hover:bg-stone-900/60 focus:outline-none focus:ring-0 ${
-                        task.id === openTaskId ? 'bg-stone-100/80 dark:bg-stone-800/50' : ''
-                      }`}
-                    >
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          void handleToggleStatus(task);
-                        }}
-                        className="p-0.5 rounded shrink-0 focus:outline-none focus:ring-0"
-                        title={isDone ? '点击恢复为待办' : '点击标记为完成'}
-                      >
-                        {isDone ? (
-                          <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                        ) : (
-                          <Circle className="w-4 h-4 text-stone-400 group-hover:text-stone-600" />
-                        )}
-                      </button>
-
-                      <div className="flex items-center gap-2 min-w-0 flex-1 text-xs">
-                        <span
-                          className={`font-medium truncate ${
-                            isDone ? 'line-through text-stone-400 dark:text-stone-500' : 'text-stone-900 dark:text-stone-100'
-                          }`}
-                        >
-                          {task.title}
-                        </span>
-                        {dueBadge}
-                        {(task.tags ?? []).length > 0 && (
-                          <span className="hidden sm:inline-flex items-center gap-1 shrink-0">
-                            {(task.tags ?? []).map((tag) => (
-                              <span key={tag} className="text-[10px] text-stone-400">
-                                #{tag}
-                              </span>
-                            ))}
-                          </span>
-                        )}
-                      </div>
-
-                      <div className="flex items-center gap-0.5 shrink-0" onClick={(e) => e.stopPropagation()}>
-                        <button
-                          type="button"
-                          onClick={() => void handleMove(task.id, 'up')}
-                          disabled={idx <= 0 || saving}
-                          className={iconBtn}
-                          title="上移"
-                        >
-                          <ArrowUp className="w-3.5 h-3.5" />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => void handleMove(task.id, 'down')}
-                          disabled={idx === validPlanIds.length - 1 || saving}
-                          className={iconBtn}
-                          title="下移"
-                        >
-                          <ArrowDown className="w-3.5 h-3.5" />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => void handleRemove(task.id)}
-                          disabled={saving}
-                          className={iconBtn + ' hover:text-amber-700'}
-                          title={`移出${planWord}计划（不删除任务）`}
-                          aria-label={`移出${planWord}计划`}
-                        >
-                          <CalendarMinus className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    </li>
-                  );
-                })}
-              </ul>
-            )}
+            <TodayPlanList
+              taskIds={dayPlanTaskIds}
+              taskMap={taskMap}
+              isToday={isToday}
+              todayStr={todayStr}
+              selectedDate={selectedDate}
+              openTaskId={openTaskId}
+              saving={saving}
+              onOpenTask={(tId) => void openTask(tId)}
+              onToggleStatus={(task) => void handleToggleStatus(task)}
+              onRemoveTask={(tId) => void handleRemove(tId)}
+              onReorder={handlePlanReorder}
+            />
 
             <p className="text-[11px] text-stone-400">
               计划只是当天的执行安排，不改变截止日期（due）。
