@@ -51,6 +51,10 @@ export function CreateAudioNoteData(name: string, base64Data: string): $Cancella
     return $Call.ByID(737116173, name, base64Data);
 }
 
+export function CreateDraft(vaultPath: string): $CancellablePromise<$models.Draft | null> {
+    return $Call.ByID(1447551672, vaultPath);
+}
+
 /**
  * CreateNote creates a new Note, writes it safely as Markdown, and updates the index.
  */
@@ -70,6 +74,13 @@ export function CreateTask(input: $models.CreateTaskInput): $CancellablePromise<
  */
 export function DeleteActivity(id: string): $CancellablePromise<void> {
     return $Call.ByID(359049003, id);
+}
+
+/**
+ * DeleteDraft 检查客户端版本后删除原文；已删除的草稿不会被重复删除或重新创建。
+ */
+export function DeleteDraft(vaultPath: string, id: string, version: string): $CancellablePromise<void> {
+    return $Call.ByID(2491903957, vaultPath, id, version);
 }
 
 /**
@@ -142,6 +153,10 @@ export function GetDayPlan(date: string): $CancellablePromise<markdown$0.DayPlan
  */
 export function GetDayTimeline(date: string): $CancellablePromise<$models.TimelineItem[] | null> {
     return $Call.ByID(2161441604, date);
+}
+
+export function GetDraft(vaultPath: string, id: string): $CancellablePromise<$models.Draft | null> {
+    return $Call.ByID(944747678, vaultPath, id);
 }
 
 /**
@@ -230,6 +245,13 @@ export function ListByTag(tag: string): $CancellablePromise<markdown$0.EntityRef
 }
 
 /**
+ * ListDrafts 仅列出 drafts/ 中由应用管理的文本，不进入 Notes 索引。
+ */
+export function ListDrafts(vaultPath: string): $CancellablePromise<($models.Draft | null)[] | null> {
+    return $Call.ByID(2015021269, vaultPath);
+}
+
+/**
  * ListFiles returns all files in the files/ directory of the vault.
  */
 export function ListFiles(): $CancellablePromise<markdown$0.FileResource[] | null> {
@@ -297,6 +319,13 @@ export function RevealInFinder(filePath: string): $CancellablePromise<void> {
  */
 export function SaveDayPlan(date: string, taskIDs: string[] | null): $CancellablePromise<markdown$0.DayPlan | null> {
     return $Call.ByID(1580712949, date, taskIDs);
+}
+
+/**
+ * SaveDraft 比较客户端读取的版本，避免重扫或另一编辑者更新后覆盖内容。
+ */
+export function SaveDraft(input: $models.SaveDraftInput): $CancellablePromise<$models.Draft | null> {
+    return $Call.ByID(330828823, input);
 }
 
 /**

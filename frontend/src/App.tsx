@@ -9,6 +9,7 @@ import {
   AlertTriangle,
   X,
   Settings,
+  FilePenLine,
 } from 'lucide-react';
 import * as VaultService from '../bindings/pata/vaultservice';
 import { VaultStatus, VaultHealth } from '../bindings/pata/models';
@@ -27,9 +28,12 @@ import { isVirtualAllTag } from './tagAll';
 import { DetailSplit, useDetailOrigin } from './DetailSplit';
 import { TaskDetailPanel, TaskDetailHandle } from './TaskDetailPanel';
 
+import { DraftView } from './DraftView';
+import { draftShortcut, hasBlockingDraftDialog } from './draftEditing';
+
 export default function App() {
   const titlebarLogoRef = useRef<SVGSVGElement | null>(null);
-  const [activeNav, setActiveNav] = useState<'today' | 'tasks' | 'notes' | 'tag'>('today');
+  const [activeNav, setActiveNav] = useState<'today' | 'tasks' | 'notes' | 'draft' | 'tag'>('today');
   const [selectedTag, setSelectedTag] = useState<string | null>(null);
   const [sidebarCollapsed] = useState(false); // 侧栏恒展开，收起功能按走查反馈移除
   const [sidebarWidth, setSidebarWidth] = useState(240);
@@ -59,6 +63,9 @@ export default function App() {
   const detailRef = useRef<TaskDetailHandle>(null);
   const detailOrigin = useDetailOrigin();
   const [focusNoteId, setFocusNoteId] = useState<string | null>(null);
+  const [newDraftRequest, setNewDraftRequest] = useState<number | null>(null);
+  const draftSequenceRef = useRef(0);
+  const newDraftBusyRef = useRef(false);
 
   // Global tags state
   const [tags, setTags] = useState<TagOverviewItem[]>([]);
@@ -96,7 +103,7 @@ export default function App() {
     }
     go();
   };
-  const goNav = (nav: 'today' | 'tasks' | 'notes') => {
+  const goNav = (nav: 'today' | 'tasks' | 'notes' | 'draft') => {
     void guarded(() => {
       setIsSettingsOpen(false);
       if (nav !== activeNav) setActiveNav(nav);
@@ -181,6 +188,29 @@ export default function App() {
       setActiveNav('tag');
     });
   };
+
+  const newDraftRef = useRef<() => Promise<void>>(async () => {});
+  newDraftRef.current = async () => {
+    if (newDraftBusyRef.current || vaultBusy || hasBlockingDraftDialog()) return;
+    newDraftBusyRef.current = true;
+    try {
+      await guarded(() => {
+        setIsSettingsOpen(false);
+        setIsSearchOpen(false);
+        setActiveNav('draft');
+        if (vaultStatus?.open) setNewDraftRequest(++draftSequenceRef.current);
+      });
+    } finally { newDraftBusyRef.current = false; }
+  };
+  useEffect(() => {
+    const handle = (event: KeyboardEvent) => {
+      if (draftShortcut(event) !== 'new-draft') return;
+      event.preventDefault(); event.stopPropagation();
+      if (!event.repeat) void newDraftRef.current();
+    };
+    window.addEventListener('keydown', handle, true);
+    return () => window.removeEventListener('keydown', handle, true);
+  }, []);
 
   const loadTags = useCallback(async () => {
     try {
@@ -525,6 +555,19 @@ export default function App() {
             {!sidebarCollapsed && <span>Notes</span>}
           </button>
 
+          <button
+            onClick={() => goNav('draft')}
+            className={`w-full flex items-center space-x-2.5 px-2.5 py-2 rounded-md text-xs font-medium transition-colors ${
+              activeNav === 'draft'
+                ? 'bg-emerald-700 text-white shadow-xs'
+                : 'text-stone-700 dark:text-stone-300 hover:bg-stone-200/60 dark:hover:bg-stone-800/60'
+            }`}
+            title="Draft"
+          >
+            <FilePenLine className="w-4 h-4 shrink-0" />
+            {!sidebarCollapsed && <span>Draft</span>}
+          </button>
+
           {/* Tags section */}
           {!sidebarCollapsed && (
             <div className="pt-3">
@@ -645,7 +688,7 @@ export default function App() {
           <DetailSplit panel={detailPanel}>
           <div
             className={
-              activeNav === 'today' || activeNav === 'tasks' || activeNav === 'tag' || (activeNav === 'notes' && isEditingNote)
+              activeNav === 'today' || activeNav === 'tasks' || activeNav === 'tag' || activeNav === 'draft' || (activeNav === 'notes' && isEditingNote)
                 ? 'h-full min-h-0 overflow-hidden'
                 : 'h-full overflow-y-auto p-6'
             }
@@ -704,6 +747,12 @@ export default function App() {
                 tagNames={tagNames}
                 onVaultDataChanged={refreshVault}
               />
+            )}
+
+            {activeNav === 'draft' && (
+              <DraftView key={vaultStatus?.path ?? 'draft'} vaultStatus={vaultStatus} onSelectVault={handleSelectVault} vaultBusy={vaultBusy}
+                newDraftRequest={newDraftRequest} onNewDraftRequestConsumed={() => setNewDraftRequest(null)}
+                shortcutsEnabled={!isSettingsOpen && !isSearchOpen && !showHealthModal} leaveGuardRef={leaveGuardRef} />
             )}
 
             {activeNav === 'tag' && (

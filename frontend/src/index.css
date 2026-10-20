@@ -135,6 +135,24 @@ textarea.bg-transparent:focus-visible,
   box-shadow: 0 0 0 2px rgba(5, 150, 105, 0.2);
 }
 
+.draft-editor {
+  --wails-draggable: no-drag;
+  user-select: text;
+  -webkit-user-select: text;
+}
+.draft-editor .cm-content { color: #292524; caret-color: #047857; }
+.dark .draft-editor .cm-content { color: #e7e5e4; caret-color: #34d399; }
+.dark .draft-editor .cm-line > span:not(.draft-search-match):not(.draft-search-current) { color: inherit; }
+.draft-editor .cm-gutters { color: #a8a29e; }
+.draft-editor .cm-cursor, .draft-editor .cm-dropCursor { border-left-color: #047857; }
+.dark .draft-editor .cm-cursor, .dark .draft-editor .cm-dropCursor { border-left-color: #34d399; }
+.draft-editor .cm-selectionBackground { background: #a7f3d088 !important; }
+.dark .draft-editor .cm-selectionBackground { background: #065f46aa !important; }
+.draft-search-match { background: #fef08a; color: #292524; border-radius: 2px; }
+.draft-search-current { background: #fbbf24; color: #292524; border-radius: 2px; }
+.dark .draft-search-match { background: #854d0e; color: #fef9c3; }
+.dark .draft-search-current { background: #f59e0b; color: #1c1917; }
+
 /* 弹出层（菜单/建议/模态）的轻量出现动效；系统开启「减少动态效果」时关闭 */
 @keyframes pata-pop {
   from { opacity: 0; transform: translateY(-4px) scale(0.98); }

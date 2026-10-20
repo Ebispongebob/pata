@@ -153,6 +153,7 @@ type transcriptRecord struct {
 // VaultService owns the single Vault instance; all structured file access goes through it.
 type VaultService struct {
 	mu                sync.Mutex
+	draftMu           sync.Mutex
 	vault             *markdown.Vault
 	stopWatcher       func()
 	configPath        string

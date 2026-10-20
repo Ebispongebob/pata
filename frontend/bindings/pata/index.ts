@@ -11,6 +11,8 @@ export type {
     CreateActivityInput,
     CreateNoteInput,
     CreateTaskInput,
+    Draft,
+    SaveDraftInput,
     TimelineItem,
     UpdateActivityInput,
     UpdateNoteInput,

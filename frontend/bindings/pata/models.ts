@@ -68,6 +68,24 @@ export interface CreateTaskInput {
 }
 
 /**
+ * Draft 为独立文本草稿；磁盘仅保存原文，列表属性从文件名、首行和修改时间得到。
+ */
+export interface Draft {
+    "id": string;
+    "title": string;
+    "body": string;
+    "version": string;
+    "updated_at": string;
+}
+
+export interface SaveDraftInput {
+    "vault_path": string;
+    "id": string;
+    "version": string;
+    "body": string;
+}
+
+/**
  * TimelineItem represents an aggregated item in the day timeline (activity or completion).
  */
 export interface TimelineItem {
