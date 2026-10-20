@@ -12,6 +12,8 @@ import {
   RefreshCw,
   Info,
   Send,
+  CheckCircle2,
+  Undo2,
 } from 'lucide-react';
 import * as VaultService from '../bindings/pata/vaultservice';
 import { Task, TaskStatus, Activity } from '../bindings/pata/internal/storage/markdown/models';
@@ -19,6 +21,11 @@ import { UpdateTaskInput, CreateActivityInput } from '../bindings/pata/models';
 import { playLogoSuccess } from './logoAnimation';
 import { dedupeTags } from './quickCreate';
 import { NoteRefText, NoteRefTextarea, NoteRefMap, pruneRefs, sameRefs, useNoteRefs } from './noteRefs';
+import {
+  buildTaskTimelineItems,
+  formatActivityTimestamp,
+  formatFullLocalTimestamp,
+} from './taskTimeline';
 
 function getPresetDates() {
   const now = new Date();
@@ -62,38 +69,6 @@ function formatDueDisplay(dueStr: string): { text: string; isOverdue: boolean; i
     return { text: `${dueStr} 截止`, isOverdue: false, isToday: false };
   } catch {
     return { text: `${dueStr} 截止`, isOverdue: false, isToday: false };
-  }
-}
-
-function formatActivityTimestamp(isoString: string): string {
-  if (!isoString) return '';
-  try {
-    const d = new Date(isoString);
-    if (isNaN(d.getTime())) return isoString;
-
-    const pad = (n: number) => n.toString().padStart(2, '0');
-    const hours = pad(d.getHours());
-    const minutes = pad(d.getMinutes());
-
-    const now = new Date();
-    const isToday =
-      d.getFullYear() === now.getFullYear() &&
-      d.getMonth() === now.getMonth() &&
-      d.getDate() === now.getDate();
-
-    if (isToday) {
-      return `${hours}:${minutes}`;
-    }
-
-    const year = d.getFullYear();
-    const month = pad(d.getMonth() + 1);
-    const day = pad(d.getDate());
-    if (year === now.getFullYear()) {
-      return `${month}-${day} ${hours}:${minutes}`;
-    }
-    return `${year}-${month}-${day} ${hours}:${minutes}`;
-  } catch {
-    return isoString;
   }
 }
 
@@ -548,6 +523,11 @@ export const TaskDetailPanel = forwardRef<TaskDetailHandle, TaskDetailPanelProps
       .slice(0, 6);
   }, [tagNames, detailTags, tagInput]);
 
+  const timelineItems = useMemo(
+    () => buildTaskTimelineItems(task, taskActivities),
+    [task, taskActivities]
+  );
+
   if (!task) {
     return (
       <div className="h-full flex flex-col min-h-0 p-6 space-y-4 text-xs text-stone-500">
@@ -716,13 +696,6 @@ export const TaskDetailPanel = forwardRef<TaskDetailHandle, TaskDetailPanelProps
               </span>
               <span>{detailStatus === TaskStatus.TaskStatusDone ? '已完成' : '待办'}</span>
             </button>
-
-            {/* Completed Time hint if completed */}
-            {detailStatus === TaskStatus.TaskStatusDone && task?.completed_at && (
-              <span className="text-[11px] text-stone-400 dark:text-stone-500">
-                完成于 {task.completed_at.slice(5, 16).replace('T', ' ')}
-              </span>
-            )}
 
             {/* Due Date Dropdown */}
             <div className="relative" ref={dueRef}>
@@ -941,41 +914,70 @@ export const TaskDetailPanel = forwardRef<TaskDetailHandle, TaskDetailPanelProps
             </div>
           )}
 
-          {taskActivities.length === 0 ? (
+          {timelineItems.length === 0 ? (
             <div className="py-4 text-center text-xs text-stone-400 dark:text-stone-500">
               暂无活动记录
             </div>
           ) : (
             <div className="space-y-3.5">
-              {taskActivities.map((act) => (
-                <div key={act.id} className="space-y-1">
-                  <div
-                    className="text-[11px] font-mono text-stone-400 dark:text-stone-500"
-                    title={act.at ? act.at.replace('T', ' ').slice(0, 19) : ''}
-                  >
-                    {formatActivityTimestamp(act.at)}
-                  </div>
-                  <NoteRefText
-                    text={act.body}
-                    refs={act.note_refs ?? undefined}
-                    notes={noteRefs}
-                    onOpenNote={(id) => onOpenNote?.(id, taskId)}
-                    className="text-xs text-stone-800 dark:text-stone-200 leading-relaxed font-sans whitespace-pre-wrap break-words"
-                  />
-                  {act.tags && act.tags.length > 0 && (
-                    <div className="flex flex-wrap gap-1 pt-0.5">
-                      {act.tags.map((tag) => (
-                        <span
-                          key={tag}
-                          className="inline-flex items-center text-[10px] text-stone-400 font-mono"
-                        >
-                          #{tag}
+              {timelineItems.map((item) => {
+                if (item.kind === 'status_event') {
+                  const isCompleted = item.action === 'completed';
+                  return (
+                    <div key={item.key} className="flex items-start gap-2.5 py-0.5 text-xs">
+                      <span
+                        className="text-[11px] font-mono text-stone-400 dark:text-stone-500 shrink-0 pt-0.5 select-none"
+                        title={formatFullLocalTimestamp(item.at)}
+                      >
+                        {formatActivityTimestamp(item.at)}
+                      </span>
+                      <div className="flex items-center gap-1.5 min-w-0 pt-0.5">
+                        {isCompleted ? (
+                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                        ) : (
+                          <Undo2 className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400 shrink-0" />
+                        )}
+                        <span className="text-stone-600 dark:text-stone-300">
+                          {isCompleted ? '已完成' : '重新打开'}
                         </span>
-                      ))}
+                      </div>
                     </div>
-                  )}
-                </div>
-              ))}
+                  );
+                }
+
+                const act = item.activity;
+                return (
+                  <div key={item.key} className="flex items-start gap-2.5 text-xs">
+                    <span
+                      className="text-[11px] font-mono text-stone-400 dark:text-stone-500 shrink-0 pt-0.5 select-none"
+                      title={formatFullLocalTimestamp(act.at)}
+                    >
+                      {formatActivityTimestamp(act.at)}
+                    </span>
+                    <div className="min-w-0 flex-1 space-y-1">
+                      <NoteRefText
+                        text={act.body}
+                        refs={act.note_refs ?? undefined}
+                        notes={noteRefs}
+                        onOpenNote={(id) => onOpenNote?.(id, taskId)}
+                        className="text-xs text-stone-800 dark:text-stone-200 leading-relaxed font-sans whitespace-pre-wrap break-words"
+                      />
+                      {act.tags && act.tags.length > 0 && (
+                        <div className="flex flex-wrap gap-1 pt-0.5">
+                          {act.tags.map((tag) => (
+                            <span
+                              key={tag}
+                              className="inline-flex items-center text-[10px] text-stone-400 font-mono"
+                            >
+                              #{tag}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           )}
         </div>
@@ -1061,48 +1063,16 @@ export const TaskDetailPanel = forwardRef<TaskDetailHandle, TaskDetailPanelProps
                 <div>
                   <div className="text-[11px] text-stone-400 mb-0.5">创建时间</div>
                   <div className="font-mono text-[11px] text-stone-700 dark:text-stone-300">
-                    {task.created_at?.slice(0, 19).replace('T', ' ') || '-'}
+                    {formatFullLocalTimestamp(task.created_at) || '-'}
                   </div>
                 </div>
                 <div>
                   <div className="text-[11px] text-stone-400 mb-0.5">更新时间</div>
                   <div className="font-mono text-[11px] text-stone-700 dark:text-stone-300">
-                    {task.updated_at?.slice(0, 19).replace('T', ' ') || '-'}
+                    {formatFullLocalTimestamp(task.updated_at) || '-'}
                   </div>
                 </div>
-                {task.completed_at && (
-                  <div className="col-span-2">
-                    <div className="text-[11px] text-stone-400 mb-0.5">完成时间</div>
-                    <div className="font-mono text-[11px] text-emerald-600 dark:text-emerald-400">
-                      {task.completed_at.slice(0, 19).replace('T', ' ')}
-                    </div>
-                  </div>
-                )}
               </div>
-
-              {task.status_events && task.status_events.length > 0 && (
-                <div className="pt-2 border-t border-stone-100 dark:border-stone-800 space-y-1.5">
-                  <div className="text-[11px] text-stone-400">状态流转历史</div>
-                  <div className="space-y-1 max-h-36 overflow-y-auto">
-                    {task.status_events.map((ev, idx) => (
-                      <div key={idx} className="flex items-center justify-between text-[11px] py-0.5">
-                        <span
-                          className={
-                            ev.action === 'completed'
-                              ? 'text-emerald-600 dark:text-emerald-400'
-                              : 'text-blue-600 dark:text-blue-400'
-                          }
-                        >
-                          {ev.action === 'completed' ? '已完成' : '重新打开'}
-                        </span>
-                        <span className="font-mono text-[10px] text-stone-400">
-                          {ev.at?.slice(0, 19).replace('T', ' ')}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
             </div>
 
             <div className="flex justify-end pt-2 border-t border-stone-100 dark:border-stone-800">
