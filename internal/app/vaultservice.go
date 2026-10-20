@@ -47,6 +47,7 @@ type VaultChangeEvent struct {
 type VaultService struct {
 	externalMu        sync.RWMutex
 	mu                sync.Mutex
+	draftMu           sync.Mutex
 	vault             *markdown.Vault
 	stopWatcher       func()
 	configPath        string

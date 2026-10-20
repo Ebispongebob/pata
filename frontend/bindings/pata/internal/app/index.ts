@@ -20,6 +20,8 @@ export type {
     CreateNoteInput,
     CreateTaskInput,
     MCPStatus,
+    Draft,
+    SaveDraftInput,
     TimelineItem,
     UpdateActivityInput,
     UpdateCheckResult,

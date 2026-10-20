@@ -32,12 +32,23 @@
 vault/
   tasks/                         # 每 Task 一个 Markdown，Activity 内嵌
   notes/                         # 每 Note 一个 Markdown，可有子目录
+  drafts/                        # 独立文本草稿，原文无 Frontmatter，须备份
   plans/YYYY-MM-DD.md            # 每日期一个 DayPlan，独立 Activity 内嵌
   files/                         # 原始 PDF、Office、图片等，无 Frontmatter
   .pata/                         # 内部状态，可重建；不保存唯一业务数据
 ~~~
 
 `memos/YYYY/MM/*.md` 不再是业务写入路径，不做自动兼容迁移，不得静默删除旧文件。DayPlan 使用根 `plans/`；该目录与 `files/` 都是用户数据，不能当缓存清理。
+
+## Draft 文本草稿
+
+Draft 是与 Notes 同级的独立文本工作区，不作为 Task、Note、DayPlan 的结构化实体，也不进入既有索引。每篇保存为 `drafts/d-<小写 ULID>.md`，文件内容只有 UTF-8 原文，允许空白，不添加 YAML Frontmatter 或 JSON 侧车。该目录和其中空白草稿均是用户数据，不能按缓存清理。
+
+列表名称取首个非空文本行（最多 60 个字符），空白显示「未命名草稿」；修改时间取文件修改时间，文件名是稳定身份。读取时返回正文的 SHA-256 版本，更新必须提交读取时的版本；版本不符、文件被删除或 Vault 已更换时，不得静默覆盖或重建。写入复用同目录原子替换；应用内草稿操作串行化。拒绝非法 ID 及草稿目录/文件的符号链接。
+
+Draft 不改变 Notes 的 Frontmatter、标签、引用或编辑协议。应用无需预先创建 `drafts/`；首次新建草稿时创建该目录。现阶段不自动迁移普通 Note，也不自动清理草稿。
+
+用户确认删除后，仅移除对应草稿文件，操作不可撤销。删除须提交当前读取的内容版本；外部改动时拒绝删除并保留文件，已不存在的文件重复删除视为成功。编辑页删除先等待自动保存完成，删除后取消保存与离开时的补写，避免草稿再次出现。
 
 ## Task
 

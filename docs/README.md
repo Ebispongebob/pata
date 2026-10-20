@@ -34,8 +34,8 @@
 
 ## 当前产品约束
 
-- 仅 **Today / Tasks / Notes** 三个主导航；Activity 不是第四个入口，也不单独建立 Files 页面。
-- Vault 使用 `notes/`、`tasks/`、`plans/` 和 `files/`。Markdown 是业务数据源；原始附件在 `files/` 中长期保留，不因引用删除自动清理。
+- **Today / Tasks / Notes / Draft** 四个主导航；Activity 不独立设入口，也不单独建立 Files 页面。
+- Vault 使用 `notes/`、`tasks/`、`plans/`、`drafts/` 和 `files/`。Markdown 是业务数据源；原始附件在 `files/` 中长期保留，不因引用删除自动清理。
 - Task 和 DayPlan 分别拥有自身的 Activity；Today 计划与任务到期日独立，标签跨 Task、Note、Activity 聚合。
 - 音频转写使用自备 API Key 调用阿里云百炼，并将逐字稿保存在普通 Markdown Note 中。
 - 可选的**本机 MCP 已交付**，不是未实现的未来规划；通过 Pata Core 操作当前 Vault。具体工具和安全限制见 [MCP 说明](10-settings/proposal.md#mcp)。
@@ -50,3 +50,5 @@
 - 本机 MCP 服务已合并：[PR #12](https://github.com/yukange/pata/pull/12)。
 
 具体实现、测试与验收仍以对应阶段的 `proposal.md`、测试源码和 PR 为准；这里不重复维护逐项完成日志。
+
+- Draft 草稿的实现与验收见 [阶段 4](04-knowledge-loop/proposal.md#验收)。
