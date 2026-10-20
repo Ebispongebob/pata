@@ -3,8 +3,7 @@ import { Events } from '@wailsio/runtime';
 import {
   ArrowLeft,
   MoreHorizontal,
-  Circle,
-  CheckCircle2,
+  Check,
   Calendar,
   Plus,
   X,
@@ -148,7 +147,6 @@ export const TaskDetailPanel = forwardRef<TaskDetailHandle, TaskDetailPanelProps
 
   // Popover / Menu dropdown states
   const [menuOpen, setMenuOpen] = useState(false);
-  const [statusOpen, setStatusOpen] = useState(false);
   const [dueOpen, setDueOpen] = useState(false);
   const [tagOpen, setTagOpen] = useState(false);
   const [tagInput, setTagInput] = useState('');
@@ -174,7 +172,6 @@ export const TaskDetailPanel = forwardRef<TaskDetailHandle, TaskDetailPanelProps
 
   // Popover refs for outside click detection
   const menuRef = useRef<HTMLDivElement>(null);
-  const statusRef = useRef<HTMLDivElement>(null);
   const dueRef = useRef<HTMLDivElement>(null);
   const tagRef = useRef<HTMLDivElement>(null);
 
@@ -263,9 +260,6 @@ export const TaskDetailPanel = forwardRef<TaskDetailHandle, TaskDetailPanelProps
       if (menuRef.current && !menuRef.current.contains(target)) {
         setMenuOpen(false);
       }
-      if (statusRef.current && !statusRef.current.contains(target)) {
-        setStatusOpen(false);
-      }
       if (dueRef.current && !dueRef.current.contains(target)) {
         setDueOpen(false);
       }
@@ -282,7 +276,6 @@ export const TaskDetailPanel = forwardRef<TaskDetailHandle, TaskDetailPanelProps
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         setMenuOpen(false);
-        setStatusOpen(false);
         setDueOpen(false);
         setTagOpen(false);
       }
@@ -416,14 +409,16 @@ export const TaskDetailPanel = forwardRef<TaskDetailHandle, TaskDetailPanelProps
     if (await confirmLeave()) onClose();
   };
 
-  const handleStatusChange = async (newStatus: TaskStatus) => {
-    setStatusOpen(false);
-    if (newStatus === detailStatus) return;
-    setDetailStatus(newStatus);
-    if (newStatus === TaskStatus.TaskStatusDone) {
+  const handleToggleStatus = async () => {
+    const nextStatus =
+      detailStatus === TaskStatus.TaskStatusDone
+        ? TaskStatus.TaskStatusTodo
+        : TaskStatus.TaskStatusDone;
+    setDetailStatus(nextStatus);
+    if (nextStatus === TaskStatus.TaskStatusDone) {
       playLogoSuccess();
     }
-    await saveTask({ status: newStatus });
+    await saveTask({ status: nextStatus });
   };
 
   const handleDueChange = async (newDue: string | null) => {
@@ -695,48 +690,32 @@ export const TaskDetailPanel = forwardRef<TaskDetailHandle, TaskDetailPanelProps
         <div className="space-y-2 pt-1">
           {/* Row 1: Status & Due Date */}
           <div className="flex flex-wrap items-center gap-2">
-            {/* Status Dropdown */}
-            <div className="relative" ref={statusRef}>
-              <button
-                type="button"
-                onClick={() => setStatusOpen((v) => !v)}
-                className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium transition ${
+            {/* Status Checkbox */}
+            <button
+              type="button"
+              role="checkbox"
+              aria-checked={detailStatus === TaskStatus.TaskStatusDone}
+              onClick={() => void handleToggleStatus()}
+              className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium transition cursor-pointer select-none ${
+                detailStatus === TaskStatus.TaskStatusDone
+                  ? 'text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 hover:bg-emerald-100/70 dark:hover:bg-emerald-900/50'
+                  : 'text-stone-700 dark:text-stone-300 hover:bg-stone-200/60 dark:hover:bg-stone-800/60'
+              }`}
+              title={detailStatus === TaskStatus.TaskStatusDone ? '点击恢复为待办' : '点击标记为完成'}
+            >
+              <span
+                className={`w-3.5 h-3.5 rounded border flex items-center justify-center transition-colors ${
                   detailStatus === TaskStatus.TaskStatusDone
-                    ? 'text-emerald-700 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/40'
-                    : 'text-stone-700 dark:text-stone-300 hover:bg-stone-200/60 dark:hover:bg-stone-800/60'
+                    ? 'bg-emerald-600 border-emerald-600 text-white'
+                    : 'border-stone-400 dark:border-stone-500 bg-transparent'
                 }`}
               >
-                {detailStatus === TaskStatus.TaskStatusDone ? (
-                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
-                ) : (
-                  <Circle className="w-3.5 h-3.5 text-stone-400 dark:text-stone-500 shrink-0" />
+                {detailStatus === TaskStatus.TaskStatusDone && (
+                  <Check className="w-2.5 h-2.5 stroke-[3]" />
                 )}
-                <span>
-                  {detailStatus === TaskStatus.TaskStatusDone ? '已完成' : '待办'}
-                </span>
-              </button>
-
-              {statusOpen && (
-                <div className="absolute left-0 top-full mt-1 w-28 rounded-lg border border-stone-200 dark:border-stone-800 bg-white dark:bg-stone-900 shadow-lg py-1 z-30">
-                  <button
-                    type="button"
-                    onClick={() => void handleStatusChange(TaskStatus.TaskStatusTodo)}
-                    className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-stone-800 dark:text-stone-200 hover:bg-stone-100 dark:hover:bg-stone-800 transition text-left"
-                  >
-                    <Circle className="w-3.5 h-3.5 text-stone-400 shrink-0" />
-                    <span>待办</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => void handleStatusChange(TaskStatus.TaskStatusDone)}
-                    className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-stone-800 dark:text-stone-200 hover:bg-stone-100 dark:hover:bg-stone-800 transition text-left"
-                  >
-                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                    <span>已完成</span>
-                  </button>
-                </div>
-              )}
-            </div>
+              </span>
+              <span>{detailStatus === TaskStatus.TaskStatusDone ? '已完成' : '待办'}</span>
+            </button>
 
             {/* Completed Time hint if completed */}
             {detailStatus === TaskStatus.TaskStatusDone && task?.completed_at && (
