@@ -494,7 +494,7 @@ func TestVaultService_ValidationErrors(t *testing.T) {
 	}
 
 	// 4. Invalid tag containing '#'
-	if _, err := s.CreateTask(CreateTaskInput{Title: "T", Tags: []string{"#invalid"}}); err == nil {
+	if _, err := s.CreateTask(CreateTaskInput{Title: "T", Tags: []string{"in#valid"}}); err == nil {
 		t.Fatalf("expected error for tag containing '#'")
 	}
 
@@ -1744,6 +1744,9 @@ func TestVaultService_TagOverviewAndSearch(t *testing.T) {
 	if _, err := closedService.ListByTag("tag"); err == nil {
 		t.Fatalf("expected error on ListByTag when vault is closed")
 	}
+	if _, err := closedService.ListAllEntities(); err == nil {
+		t.Fatalf("expected error on ListAllEntities when vault is closed")
+	}
 	if _, err := closedService.SearchAll("query"); err == nil {
 		t.Fatalf("expected error on SearchAll when vault is closed")
 	}
@@ -1891,6 +1894,29 @@ func TestVaultService_TagOverviewAndSearch(t *testing.T) {
 	}
 	if len(tuneRefs) != 1 || tuneRefs[0].ID != act2.ID || tuneRefs[0].Inherited {
 		t.Fatalf("expected non-inherited act2 for '调优', got %+v", tuneRefs)
+	}
+
+	// 5b. Test ListAllEntities
+	allEntities, err := s.ListAllEntities()
+	if err != nil {
+		t.Fatalf("ListAllEntities failed: %v", err)
+	}
+	if len(allEntities) < 5 {
+		t.Fatalf("expected at least 5 entities in ListAllEntities, got %d: %+v", len(allEntities), allEntities)
+	}
+	for i := 1; i < len(allEntities); i++ {
+		if allEntities[i-1].Time.Before(allEntities[i].Time) {
+			t.Fatalf("entities not sorted chronologically descending: [%d]=%s (%v) before [%d]=%s (%v)",
+				i-1, allEntities[i-1].ID, allEntities[i-1].Time, i, allEntities[i].ID, allEntities[i].Time)
+		}
+	}
+	// Verify that literal "全部" is not treated as a magic tag in ListByTag
+	literalAll, err := s.ListByTag("全部")
+	if err != nil {
+		t.Fatalf("ListByTag('全部') failed: %v", err)
+	}
+	if len(literalAll) != 0 {
+		t.Fatalf("expected 0 matches for literal tag '全部', got %d: %+v", len(literalAll), literalAll)
 	}
 
 	// 6. Test SearchAll
@@ -2152,5 +2178,153 @@ func TestVaultService_UpdateTask_BaselineConflictAndRescanResolution(t *testing.
 	}
 	if updated.Title != "解决冲突后的正常更新" {
 		t.Fatalf("unexpected title: %s", updated.Title)
+	}
+}
+
+func TestVaultService_Stage4FollowupTagUnification(t *testing.T) {
+	vaultDir := t.TempDir()
+	s := NewVaultService()
+	if _, err := s.openVault(vaultDir); err != nil {
+		t.Fatalf("openVault failed: %v", err)
+	}
+
+	// 1. Task tag deduplication: "#Pata", "pata", and "##Pata" deduplicate to "Pata"
+	// Comma in tag: "研发,平台" stays a single tag
+	task, err := s.CreateTask(CreateTaskInput{
+		Title: "测试标签去重与逗号任务",
+		Tags:  []string{"#Pata", "pata", "##Pata", "研发,平台"},
+	})
+	if err != nil {
+		t.Fatalf("CreateTask failed: %v", err)
+	}
+	if len(task.Tags) != 2 || task.Tags[0] != "Pata" || task.Tags[1] != "研发,平台" {
+		t.Fatalf("expected task tags [Pata, 研发,平台], got: %v", task.Tags)
+	}
+
+	// 1b. Activity tag normalization & deduplication
+	act, err := s.CreateActivity(CreateActivityInput{
+		OwnerType: markdown.EntityTypeTask,
+		TaskID:    task.ID,
+		Body:      "活动正文",
+		Tags:      []string{"#设计", "设计", "##架构"},
+	})
+	if err != nil {
+		t.Fatalf("CreateActivity failed: %v", err)
+	}
+	if len(act.Tags) != 2 || act.Tags[0] != "设计" || act.Tags[1] != "架构" {
+		t.Fatalf("expected activity tags [设计, 架构], got: %v", act.Tags)
+	}
+
+	// 2. Note tag normalization & deduplication: "#Pata", "pata", "数据，治理"
+	note, err := s.CreateNote(CreateNoteInput{
+		Title: "测试标签去重与逗号笔记",
+		Tags:  []string{"#Pata", "pata", "数据，治理"},
+		Body:  "正文内容",
+	})
+	if err != nil {
+		t.Fatalf("CreateNote failed: %v", err)
+	}
+	if len(note.Tags) != 2 || note.Tags[0] != "Pata" || note.Tags[1] != "数据，治理" {
+		t.Fatalf("expected note tags [Pata, 数据，治理], got: %v", note.Tags)
+	}
+
+	// 3. Edit Note body: tags should remain a single tag with comma
+	updatedNote, err := s.UpdateNote(UpdateNoteInput{
+		ID:    note.ID,
+		Title: note.Title,
+		Tags:  note.Tags,
+		Body:  "更新后的正文内容",
+	})
+	if err != nil {
+		t.Fatalf("UpdateNote failed: %v", err)
+	}
+	if len(updatedNote.Tags) != 2 || updatedNote.Tags[0] != "Pata" || updatedNote.Tags[1] != "数据，治理" {
+		t.Fatalf("expected note tags preserved after body edit, got: %v", updatedNote.Tags)
+	}
+
+	// Read from disk to verify raw frontmatter
+	diskNote, err := s.GetNote(note.ID)
+	if err != nil {
+		t.Fatalf("GetNote failed: %v", err)
+	}
+	if len(diskNote.Tags) != 2 || diskNote.Tags[1] != "数据，治理" {
+		t.Fatalf("disk note tags corrupted: %v", diskNote.Tags)
+	}
+
+	// 4. External write conflict protection on Note
+	noteFilePath := s.vault.ResolveEntityPath(diskNote)
+	if err := os.WriteFile(noteFilePath, []byte("---\ntype: note\nid: "+note.ID+"\ntitle: 外部改写标题\ntags: [外部]\ncreated_at: 2026-10-20T10:00:00Z\nupdated_at: 2026-10-20T10:05:00Z\n---\n外部正文"), 0644); err != nil {
+		t.Fatalf("WriteFile failed: %v", err)
+	}
+
+	// Attempt UpdateNote without rescan -> baseline conflict must be rejected
+	_, err = s.UpdateNote(UpdateNoteInput{
+		ID:    note.ID,
+		Title: "本地尝试覆盖标题",
+		Tags:  []string{"本地标签"},
+		Body:  "本地尝试覆盖正文",
+	})
+	if err == nil || !strings.Contains(err.Error(), "conflict") {
+		t.Fatalf("expected conflict error on external note edit, got: %v", err)
+	}
+
+	// Verify disk file was NOT overwritten by the failed save
+	rawContent, err := os.ReadFile(noteFilePath)
+	if err != nil {
+		t.Fatalf("ReadFile failed: %v", err)
+	}
+	if !strings.Contains(string(rawContent), "外部改写标题") {
+		t.Fatalf("disk file was overwritten despite conflict: %s", string(rawContent))
+	}
+
+	// 5. Audio transcript Note: modify title and tags without modifying body
+	audioNote := &markdown.Note{
+		Type:            markdown.EntityTypeNote,
+		ID:              markdown.GenerateEntityID(markdown.EntityTypeNote),
+		Title:           "音频逐字稿原标题",
+		Tags:            []string{"语音", "会议"},
+		AudioTranscript: true,
+		AudioFile:       "files/recording.mp3",
+		CreatedAt:       time.Now(),
+		UpdatedAt:       time.Now(),
+		Body:            "<!-- pata:transcript -->\n00:00:01 说话人A: 重要会议逐字稿正文",
+	}
+	if _, err := s.vault.SaveEntity(audioNote, nil); err != nil {
+		t.Fatalf("SaveEntity for audioNote failed: %v", err)
+	}
+
+	// Update title and tags on audio transcript note
+	updatedAudioNote, err := s.UpdateNote(UpdateNoteInput{
+		ID:    audioNote.ID,
+		Title: "音频逐字稿新标题",
+		Tags:  []string{"#会议", "深度复盘"},
+		Body:  "试图篡改逐字稿正文",
+	})
+	if err != nil {
+		t.Fatalf("UpdateNote on audio note failed: %v", err)
+	}
+	if updatedAudioNote.Title != "音频逐字稿新标题" {
+		t.Fatalf("title not updated: %s", updatedAudioNote.Title)
+	}
+	if len(updatedAudioNote.Tags) != 2 || updatedAudioNote.Tags[0] != "会议" || updatedAudioNote.Tags[1] != "深度复盘" {
+		t.Fatalf("tags not updated properly: %v", updatedAudioNote.Tags)
+	}
+	if !strings.Contains(updatedAudioNote.Body, "重要会议逐字稿正文") || strings.Contains(updatedAudioNote.Body, "试图篡改") {
+		t.Fatalf("audio transcript body was modified: %s", updatedAudioNote.Body)
+	}
+
+	// 6. Global tag aggregation: Pata appears once, not twice
+	tags, err := s.GetTagOverview()
+	if err != nil {
+		t.Fatalf("GetTagOverview failed: %v", err)
+	}
+	pataCount := 0
+	for _, item := range tags {
+		if strings.EqualFold(item.Tag, "Pata") {
+			pataCount++
+		}
+	}
+	if pataCount != 1 {
+		t.Fatalf("expected 'Pata' to be aggregated exactly once, found %d times in tags: %+v", pataCount, tags)
 	}
 }

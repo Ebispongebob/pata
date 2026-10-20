@@ -23,6 +23,8 @@ import { Note, LinkSource, EntityType } from '../bindings/pata/internal/storage/
 import { ASRTaskStatus, ASRTaskState } from '../bindings/pata/internal/asr/models';
 import { AudioPlayer } from './AudioPlayer';
 import { TranscriptViewer, TranscriptViewerRef } from './TranscriptViewer';
+import { TagChipEditor } from './TagChipEditor';
+import { validateTag, hasTag, dedupeTags, formatDraftText } from './tagUtils';
 import {
   CandidateItem,
   FileRef,
@@ -52,6 +54,8 @@ interface NotesViewProps {
   onEditingChange?: (isEditing: boolean) => void;
   leaveGuardRef?: React.MutableRefObject<(() => Promise<boolean>) | null>;
   onOpenSettings?: (section?: 'appearance' | 'storage' | 'transcription') => void;
+  tagNames?: string[];
+  onVaultDataChanged?: () => void;
 }
 
 function formatRelativeTime(isoString: string): string {
@@ -115,13 +119,6 @@ function getNoteExcerpt(title: string, body?: string): string {
   return cleaned;
 }
 
-function parseTags(tagStr: string): string[] {
-  return tagStr
-    .split(/[,，]/)
-    .map((t) => t.trim().replace(/^#+/, ''))
-    .filter((t) => t.length > 0);
-}
-
 interface NoteEditorProps {
   noteId: string;
   isNew?: boolean;
@@ -133,6 +130,8 @@ interface NoteEditorProps {
   onNoteCreated?: (newId: string) => void;
   leaveGuardRef?: React.MutableRefObject<(() => Promise<boolean>) | null>;
   onOpenSettings?: (section?: 'appearance' | 'storage' | 'transcription') => void;
+  tagNames?: string[];
+  onVaultDataChanged?: () => void;
 }
 
 function NoteEditor({
@@ -146,6 +145,8 @@ function NoteEditor({
   onNoteCreated,
   leaveGuardRef,
   onOpenSettings,
+  tagNames = [],
+  onVaultDataChanged,
 }: NoteEditorProps) {
   const [initialNote, setInitialNote] = useState<Note | null>(null);
   const initialNoteRef = useRef<Note | null>(initialNote);
@@ -161,7 +162,7 @@ function NoteEditor({
   const [replaceError, setReplaceError] = useState<string | null>(null);
 
   const [editTitle, setEditTitle] = useState<string>('');
-  const [editTags, setEditTags] = useState<string>('');
+  const [editTags, setEditTags] = useState<string[]>([]);
   const [saveStatus, setSaveStatus] = useState<'saved' | 'saving' | 'unsaved' | 'failed' | 'conflict'>('saved');
   const [saveError, setSaveError] = useState<string | null>(null);
   const [conflictError, setConflictError] = useState<string | null>(null);
@@ -172,8 +173,6 @@ function NoteEditor({
   const [showSaveFailedConfirm, setShowSaveFailedConfirm] = useState<boolean>(false);
   const [showDraftNoTitleConfirm, setShowDraftNoTitleConfirm] = useState<boolean>(false);
   const [copiedDraft, setCopiedDraft] = useState<boolean>(false);
-  const [isEditingTags, setIsEditingTags] = useState<boolean>(false);
-  const tagsInputRef = useRef<HTMLInputElement | null>(null);
   const titleInputRef = useRef<HTMLInputElement | null>(null);
 
   const [moreMenuOpen, setMoreMenuOpen] = useState<boolean>(false);
@@ -235,7 +234,7 @@ function NoteEditor({
   const isDeletedRef = useRef<boolean>(false);
 
   const editTitleRef = useRef<string>('');
-  const editTagsRef = useRef<string>('');
+  const editTagsRef = useRef<string[]>([]);
   const triggerDebouncedSaveRef = useRef<() => void>(() => {});
   const isVditorMountedRef = useRef<boolean>(false);
   const onNoteCreatedRef = useRef(onNoteCreated);
@@ -288,7 +287,7 @@ function NoteEditor({
     const currentBody = isAudioTranscriptNote(initialNoteRef.current)
       ? (initialNoteRef.current?.body ?? '')
       : (vditorRef.current ? vditorRef.current.getValue() : '');
-    const currentTags = parseTags(editTagsRef.current);
+    const currentTags = editTagsRef.current;
 
     // 新建草稿保存分支：标题为空时维持安全草稿状态，不写非法空文件到磁盘
     if (isNewDraftRef.current) {
@@ -348,7 +347,7 @@ function NoteEditor({
         if (createdNote && vditorRef.current) {
           const bodyNow = vditorRef.current.getValue();
           const titleNow = editTitleRef.current;
-          const tagsNow = parseTags(editTagsRef.current);
+          const tagsNow = editTagsRef.current;
           if (isDirtyRef.current(titleNow, tagsNow, bodyNow) && !hasConflictRef.current) {
             triggerDebouncedSaveRef.current();
           }
@@ -428,7 +427,7 @@ function NoteEditor({
       if (saved && (vditorRef.current || isAudioTranscriptNote(initialNoteRef.current))) {
         const bodyNow = vditorRef.current ? vditorRef.current.getValue() : (initialNoteRef.current?.body ?? '');
         const titleNow = editTitleRef.current;
-        const tagsNow = parseTags(editTagsRef.current);
+        const tagsNow = editTagsRef.current;
         if (isDirtyRef.current(titleNow, tagsNow, bodyNow) && !hasConflictRef.current) {
           triggerDebouncedSaveRef.current();
         }
@@ -470,9 +469,24 @@ function NoteEditor({
     triggerDebouncedSave();
   };
 
-  const handleTagsChange = (val: string) => {
-    setEditTags(val);
-    editTagsRef.current = val;
+  const handleAddTag = (rawTag: string): boolean => {
+    const res = validateTag(rawTag);
+    if (!res.ok) return false;
+    const clean = res.tag!;
+    if (hasTag(editTagsRef.current, clean)) return true;
+    const nextTags = dedupeTags([...editTagsRef.current, clean]);
+    setEditTags(nextTags);
+    editTagsRef.current = nextTags;
+    setSaveError(null);
+    setSaveStatus('unsaved');
+    triggerDebouncedSave();
+    return true;
+  };
+
+  const handleRemoveTag = (tagToRemove: string) => {
+    const nextTags = editTagsRef.current.filter((t) => t.toLowerCase() !== tagToRemove.toLowerCase());
+    setEditTags(nextTags);
+    editTagsRef.current = nextTags;
     setSaveError(null);
     setSaveStatus('unsaved');
     triggerDebouncedSave();
@@ -492,8 +506,8 @@ function NoteEditor({
       });
       setEditTitle('');
       editTitleRef.current = '';
-      setEditTags('');
-      editTagsRef.current = '';
+      setEditTags([]);
+      editTagsRef.current = [];
       lastSavedStateRef.current = {
         title: '',
         tags: [],
@@ -512,12 +526,12 @@ function NoteEditor({
         setInitialNote(n);
         setEditTitle(n.title);
         editTitleRef.current = n.title;
-        const tagsStr = (n.tags ?? []).join(', ');
-        setEditTags(tagsStr);
-        editTagsRef.current = tagsStr;
+        const noteTags = n.tags ?? [];
+        setEditTags(noteTags);
+        editTagsRef.current = noteTags;
         lastSavedStateRef.current = {
           title: n.title,
-          tags: n.tags ?? [],
+          tags: noteTags,
           body: n.body ?? '',
         };
         setLoadingNote(false);
@@ -709,7 +723,7 @@ function NoteEditor({
         vditorRef.current = vditor;
         // 如果在加载期间用户编辑了标题/标签，触发一次防抖保存检查
         const bodyNow = vditor.getValue();
-        if (isDirtyRef.current(editTitleRef.current, parseTags(editTagsRef.current), bodyNow)) {
+        if (isDirtyRef.current(editTitleRef.current, editTagsRef.current, bodyNow)) {
           triggerDebouncedSaveRef.current();
         }
       },
@@ -828,7 +842,7 @@ function NoteEditor({
     if (isNewDraftRef.current) {
       const currentTitle = editTitleRef.current.trim();
       const currentBody = vditorRef.current ? vditorRef.current.getValue().trim() : '';
-      const currentTags = parseTags(editTagsRef.current);
+      const currentTags = editTagsRef.current;
 
       // 若完全未输入任何内容，直接安全退出，不创建任何磁盘文件
       if (!currentTitle && !currentBody && currentTags.length === 0) {
@@ -855,7 +869,7 @@ function NoteEditor({
     }
 
     const currentTitle = editTitleRef.current;
-    const currentTags = parseTags(editTagsRef.current);
+    const currentTags = editTagsRef.current;
     const currentBody = vditorRef.current ? vditorRef.current.getValue() : (initialNote?.body ?? '');
     const dirty = isDirty(currentTitle, currentTags, currentBody);
 
@@ -892,7 +906,7 @@ function NoteEditor({
       }
 
       const currentTitle = editTitleRef.current.trim();
-      const currentTags = parseTags(editTagsRef.current);
+      const currentTags = editTagsRef.current;
       const currentBody = vditorRef.current ? vditorRef.current.getValue() : (initialNote?.body ?? '');
       const dirty = isDirty(currentTitle, currentTags, currentBody);
       if (!dirty) return true;
@@ -1087,10 +1101,11 @@ function NoteEditor({
   // Copy draft to clipboard (should-fix 3)
   const handleCopyDraft = async () => {
     const currentTitle = editTitleRef.current;
+    const currentTags = editTagsRef.current;
     const currentBody = isAudioTranscriptNote(initialNoteRef.current)
       ? (initialNoteRef.current?.body ?? '')
       : (vditorRef.current ? vditorRef.current.getValue() : '');
-    const draftText = currentTitle ? `# ${currentTitle}\n\n${currentBody}` : currentBody;
+    const draftText = formatDraftText(currentTitle, currentTags, currentBody);
     try {
       await navigator.clipboard.writeText(draftText);
       setCopiedDraft(true);
@@ -1106,8 +1121,8 @@ function NoteEditor({
     if (isNewDraftRef.current) {
       setEditTitle('');
       editTitleRef.current = '';
-      setEditTags('');
-      editTagsRef.current = '';
+      setEditTags([]);
+      editTagsRef.current = [];
       if (vditorRef.current) vditorRef.current.setValue('');
       hasConflictRef.current = false;
       setConflictError(null);
@@ -1120,9 +1135,9 @@ function NoteEditor({
 
       setEditTitle(diskNote.title);
       editTitleRef.current = diskNote.title;
-      const tagsStr = (diskNote.tags ?? []).join(', ');
-      setEditTags(tagsStr);
-      editTagsRef.current = tagsStr;
+      const noteTags = diskNote.tags ?? [];
+      setEditTags(noteTags);
+      editTagsRef.current = noteTags;
       setTitleError(null);
 
       const body = diskNote.body ?? '';
@@ -1293,7 +1308,7 @@ function NoteEditor({
               type="button"
               onClick={handleCopyDraft}
               className="flex items-center space-x-1 px-3 py-1 rounded-md bg-stone-700 hover:bg-stone-800 text-white text-xs font-medium transition shadow-2xs"
-              title="将当前编辑器中的草稿（标题与正文）复制到剪贴板"
+              title="将当前编辑器中的草稿（标题、标签与正文）复制到剪贴板"
             >
               {copiedDraft ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
               <span>{copiedDraft ? '已复制草稿' : '复制草稿到剪贴板'}</span>
@@ -1340,58 +1355,13 @@ function NoteEditor({
           </div>
         )}
 
-        {/* Lightweight Tag Chips / Inline Edit */}
-        <div>
-          {isEditingTags ? (
-            <div className="flex items-center gap-2">
-              <input
-                ref={tagsInputRef}
-                type="text"
-                autoFocus
-                value={editTags}
-                onChange={(e) => handleTagsChange(e.target.value)}
-                onBlur={() => setIsEditingTags(false)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' || e.key === 'Escape') {
-                    setIsEditingTags(false);
-                  }
-                }}
-                placeholder="输入标签，用逗号分隔（如：架构设计, 医疗数仓）"
-                className="text-xs px-2.5 py-1 rounded-md border border-stone-200 dark:border-stone-800 bg-white dark:bg-stone-950 text-stone-800 dark:text-stone-200 placeholder-stone-400 focus:outline-hidden focus:ring-1 focus:ring-emerald-600 w-72 shadow-2xs"
-              />
-              <button
-                type="button"
-                onMouseDown={(e) => e.preventDefault()}
-                onClick={() => setIsEditingTags(false)}
-                className="text-xs px-2 py-1 rounded-md text-stone-500 hover:text-stone-700 dark:text-stone-400 dark:hover:text-stone-200 hover:bg-stone-100 dark:hover:bg-stone-800 transition"
-              >
-                完成
-              </button>
-            </div>
-          ) : (
-            <div className="flex flex-wrap items-center gap-1.5">
-              {parseTags(editTags).map((tag) => (
-                <span
-                  key={tag}
-                  onClick={() => setIsEditingTags(true)}
-                  className="inline-flex items-center text-xs px-2 py-0.5 rounded-md bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 font-mono hover:bg-stone-200/70 dark:hover:bg-stone-700/60 cursor-pointer transition select-none"
-                  title="点击编辑标签"
-                >
-                  #{tag}
-                </span>
-              ))}
-              <button
-                type="button"
-                onClick={() => setIsEditingTags(true)}
-                className="inline-flex items-center text-xs px-2 py-0.5 rounded-md text-stone-400 hover:text-stone-600 dark:hover:text-stone-300 hover:bg-stone-100 dark:hover:bg-stone-800/60 transition cursor-pointer select-none"
-                title="编辑标签"
-              >
-                <Plus className="w-3 h-3 mr-0.5" />
-                <span>{parseTags(editTags).length === 0 ? '添加标签' : '标签'}</span>
-              </button>
-            </div>
-          )}
-        </div>
+        {/* Tag Chips + Add Popover */}
+        <TagChipEditor
+          tags={editTags}
+          suggestedTags={tagNames}
+          onAddTag={handleAddTag}
+          onRemoveTag={handleRemoveTag}
+        />
       </div>
 
       {/* Audio Player and Transcript Viewer for audio transcript notes, or Vditor for ordinary notes */}
@@ -1856,6 +1826,8 @@ export function NotesView({
   onEditingChange,
   leaveGuardRef,
   onOpenSettings,
+  tagNames = [],
+  onVaultDataChanged,
 }: NotesViewProps) {
   const [notes, setNotes] = useState<Note[]>([]);
   const [loading, setLoading] = useState(false);
@@ -2151,10 +2123,15 @@ export function NotesView({
         backLabel={trail.length ? '返回上一篇' : returnToTask ? returnToTask.label : '笔记列表'}
         onOpenNote={handleOpenNote}
         onOpenTask={onOpenTask}
-        onNoteUpdated={loadNotes}
+        onNoteUpdated={() => {
+          loadNotes();
+          onVaultDataChanged?.();
+        }}
         onNoteCreated={handleNoteCreated}
         leaveGuardRef={leaveGuardRef}
         onOpenSettings={onOpenSettings}
+        tagNames={tagNames}
+        onVaultDataChanged={onVaultDataChanged}
       />
     );
   }

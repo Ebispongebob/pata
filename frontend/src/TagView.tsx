@@ -14,6 +14,13 @@ import * as VaultService from '../bindings/pata/vaultservice';
 import { EntityRef } from '../bindings/pata/internal/storage/markdown/models';
 import { DetailSplit, useDetailOrigin } from './DetailSplit';
 import { TaskDetailPanel, TaskDetailHandle } from './TaskDetailPanel';
+import {
+  isVirtualAllTag,
+  formatTagViewHeader,
+  formatTagLoadingText,
+  formatTagErrorSubject,
+  formatTagEmptyMessage,
+} from './tagAll';
 
 interface TagViewProps {
   selectedTag: string | null;
@@ -78,24 +85,22 @@ export function TagView({
 
   const loadTagData = useCallback(async (tag: string | null) => {
     const seq = ++seqRef.current;
-
-    if (!tag || !tag.trim()) {
-      setItems([]);
-      return;
-    }
+    const all = isVirtualAllTag(tag);
 
     setLoading(true);
     setError(null);
     try {
-      const rawRefs = await VaultService.ListByTag(tag.trim());
+      const rawRefs = all
+        ? await VaultService.ListAllEntities()
+        : await VaultService.ListByTag(tag!.trim());
       if (seq !== seqRef.current) return;
 
       const refs = (rawRefs || []).filter((r): r is EntityRef => r !== null);
       setItems(refs);
     } catch (err: any) {
       if (seq !== seqRef.current) return;
-      console.error('Failed to load entities for tag:', err);
-      setError(`加载标签内容失败: ${err?.message || err}`);
+      console.error('Failed to load entities:', err);
+      setError(`加载${formatTagErrorSubject(tag)}内容失败: ${err?.message || err}`);
     } finally {
       if (seq === seqRef.current) {
         setLoading(false);
@@ -111,9 +116,7 @@ export function TagView({
   // Subscribe to vault:changed events
   useEffect(() => {
     const unsubscribe = Events.On('vault:changed', () => {
-      if (selectedTag) {
-        loadTagData(selectedTag);
-      }
+      loadTagData(selectedTag);
     });
 
     return () => {
@@ -174,20 +177,11 @@ export function TagView({
     />
   ) : null;
 
-  if (!selectedTag) {
-    return (
-      <div className="max-w-[900px] mx-auto py-16 flex flex-col items-center justify-center text-stone-400 text-xs">
-        <Hash className="w-8 h-8 mb-2 opacity-30" />
-        <p>请在侧边栏选择一个全局标签查看</p>
-      </div>
-    );
-  }
-
   if (loading && items.length === 0) {
     return (
       <div className="max-w-[900px] mx-auto py-16 flex items-center justify-center text-stone-400 text-xs">
         <Loader2 className="w-5 h-5 animate-spin mr-2 text-emerald-600" />
-        <span>正在加载 #{selectedTag} 关联内容...</span>
+        <span>{formatTagLoadingText(selectedTag)}</span>
       </div>
     );
   }
@@ -209,7 +203,7 @@ export function TagView({
           <div className="flex items-center space-x-2">
             <div className="flex items-center space-x-1.5 px-2.5 py-1 rounded-md bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-200/60 dark:border-emerald-800/60 text-emerald-800 dark:text-emerald-300 font-medium text-sm">
               <Hash className="w-4 h-4" />
-              <span>{selectedTag}</span>
+              <span>{formatTagViewHeader(selectedTag)}</span>
             </div>
             <span className="text-xs text-stone-400">
               共 {items.length} 项（任务 {taskCount} · 笔记 {noteCount} · 记录 {activityCount}）
@@ -221,7 +215,7 @@ export function TagView({
         {items.length === 0 ? (
           <div className="py-16 flex flex-col items-center justify-center text-stone-400 text-xs bg-white dark:bg-stone-900/60 rounded-xl border border-stone-200/80 dark:border-stone-800">
             <Hash className="w-8 h-8 mb-2 opacity-30 text-stone-400" />
-            <p>未找到包含标签 #{selectedTag} 的任务、笔记或记录</p>
+            <p>{formatTagEmptyMessage(selectedTag)}</p>
           </div>
         ) : (
           <div className="space-y-2.5">

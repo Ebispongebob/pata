@@ -215,6 +215,13 @@ export function ListActivitiesByTask(taskID: string): $CancellablePromise<markdo
 }
 
 /**
+ * ListAllEntities returns all entities matching no tag filter, sorted chronologically descending.
+ */
+export function ListAllEntities(): $CancellablePromise<markdown$0.EntityRef[] | null> {
+    return $Call.ByID(916008927);
+}
+
+/**
  * ListByTag returns all entities matching the specified tag.
  * For Activities, tag matching checks act.Tags ∪ parentTask.Tags (for task activities).
  */

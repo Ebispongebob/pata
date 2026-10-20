@@ -5,7 +5,6 @@ import {
   MoreHorizontal,
   Check,
   Calendar,
-  Plus,
   X,
   Trash2,
   AlertCircle,
@@ -19,7 +18,8 @@ import * as VaultService from '../bindings/pata/vaultservice';
 import { Task, TaskStatus, Activity } from '../bindings/pata/internal/storage/markdown/models';
 import { UpdateTaskInput, CreateActivityInput } from '../bindings/pata/models';
 import { playLogoSuccess } from './logoAnimation';
-import { dedupeTags } from './quickCreate';
+import { dedupeTags, validateTag, hasTag } from './tagUtils';
+import { TagChipEditor } from './TagChipEditor';
 import { NoteRefText, NoteRefTextarea, NoteRefMap, pruneRefs, sameRefs, useNoteRefs } from './noteRefs';
 import {
   buildTaskTimelineItems,
@@ -123,8 +123,6 @@ export const TaskDetailPanel = forwardRef<TaskDetailHandle, TaskDetailPanelProps
   // Popover / Menu dropdown states
   const [menuOpen, setMenuOpen] = useState(false);
   const [dueOpen, setDueOpen] = useState(false);
-  const [tagOpen, setTagOpen] = useState(false);
-  const [tagInput, setTagInput] = useState('');
 
   // Modals
   const [showTaskInfo, setShowTaskInfo] = useState(false);
@@ -148,7 +146,6 @@ export const TaskDetailPanel = forwardRef<TaskDetailHandle, TaskDetailPanelProps
   // Popover refs for outside click detection
   const menuRef = useRef<HTMLDivElement>(null);
   const dueRef = useRef<HTMLDivElement>(null);
-  const tagRef = useRef<HTMLDivElement>(null);
 
   // Latest state references for safe auto-saving
   const latestTaskRef = useRef<Task | null>(null);
@@ -238,9 +235,6 @@ export const TaskDetailPanel = forwardRef<TaskDetailHandle, TaskDetailPanelProps
       if (dueRef.current && !dueRef.current.contains(target)) {
         setDueOpen(false);
       }
-      if (tagRef.current && !tagRef.current.contains(target)) {
-        setTagOpen(false);
-      }
     };
     window.addEventListener('mousedown', handleOutsideClick);
     return () => window.removeEventListener('mousedown', handleOutsideClick);
@@ -252,7 +246,6 @@ export const TaskDetailPanel = forwardRef<TaskDetailHandle, TaskDetailPanelProps
       if (e.key === 'Escape') {
         setMenuOpen(false);
         setDueOpen(false);
-        setTagOpen(false);
       }
     };
     window.addEventListener('keydown', onKey);
@@ -405,24 +398,22 @@ export const TaskDetailPanel = forwardRef<TaskDetailHandle, TaskDetailPanelProps
   };
 
   const handleRemoveTag = async (tagToRemove: string) => {
-    const nextTags = detailTags.filter((t) => t !== tagToRemove);
+    const nextTags = detailTags.filter((t) => t.toLowerCase() !== tagToRemove.toLowerCase());
     setDetailTags(nextTags);
     await saveTask({ tags: nextTags });
   };
 
-  const handleAddTag = async (rawTag: string) => {
-    const clean = rawTag.trim().replace(/^#+/, '');
-    if (!clean) return;
-    if (detailTags.includes(clean)) {
-      setTagInput('');
-      setTagOpen(false);
-      return;
+  const handleAddTag = async (rawTag: string): Promise<boolean> => {
+    const res = validateTag(rawTag);
+    if (!res.ok) return false;
+    const clean = res.tag!;
+    if (hasTag(detailTags, clean)) {
+      return true;
     }
     const nextTags = dedupeTags([...detailTags, clean]);
     setDetailTags(nextTags);
-    setTagInput('');
-    setTagOpen(false);
     await saveTask({ tags: nextTags });
+    return true;
   };
 
   const handleTitleBlur = async () => {
@@ -513,15 +504,6 @@ export const TaskDetailPanel = forwardRef<TaskDetailHandle, TaskDetailPanelProps
 
   const { todayStr, tomorrowStr, nextMondayStr } = useMemo(() => getPresetDates(), []);
   const dueDisplay = useMemo(() => formatDueDisplay(detailDue), [detailDue]);
-
-  const availableSuggestedTags = useMemo(() => {
-    const all = tagNames ?? [];
-    const q = tagInput.trim().toLowerCase();
-    return all
-      .filter((t) => !detailTags.includes(t))
-      .filter((t) => !q || t.toLowerCase().includes(q))
-      .slice(0, 6);
-  }, [tagNames, detailTags, tagInput]);
 
   const timelineItems = useMemo(
     () => buildTaskTimelineItems(task, taskActivities),
@@ -769,75 +751,13 @@ export const TaskDetailPanel = forwardRef<TaskDetailHandle, TaskDetailPanelProps
           </div>
 
           {/* Row 2: Tags */}
-          <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
-            {detailTags.map((tag) => (
-              <span
-                key={tag}
-                className="group inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-mono text-stone-600 dark:text-stone-400 bg-stone-100 dark:bg-stone-800/80 hover:bg-stone-200/70 dark:hover:bg-stone-700/70 transition"
-              >
-                <span>#{tag}</span>
-                <button
-                  type="button"
-                  onClick={() => void handleRemoveTag(tag)}
-                  className="text-stone-400 hover:text-rose-600 dark:hover:text-rose-400 transition"
-                  title={`移除 #${tag}`}
-                >
-                  <X className="w-2.5 h-2.5" />
-                </button>
-              </span>
-            ))}
-
-            <div className="relative" ref={tagRef}>
-              <button
-                type="button"
-                onClick={() => {
-                  setTagOpen((v) => !v);
-                  setTagInput('');
-                }}
-                className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs text-stone-400 hover:text-stone-700 dark:hover:text-stone-300 hover:bg-stone-100 dark:hover:bg-stone-800 transition"
-                title="添加标签"
-              >
-                <Plus className="w-3 h-3" />
-                <span>标签</span>
-              </button>
-
-              {tagOpen && (
-                <div className="absolute left-0 top-full mt-1 w-44 rounded-lg border border-stone-200 dark:border-stone-800 bg-white dark:bg-stone-900 shadow-lg p-2 z-30 space-y-2">
-                  <input
-                    type="text"
-                    value={tagInput}
-                    onChange={(e) => setTagInput(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') {
-                        e.preventDefault();
-                        void handleAddTag(tagInput);
-                      }
-                    }}
-                    placeholder="输入新标签..."
-                    autoFocus
-                    className="w-full px-2 py-1 text-xs rounded border border-stone-200 dark:border-stone-800 bg-stone-50 dark:bg-stone-950 text-stone-900 dark:text-stone-100 placeholder-stone-400 focus:outline-none focus:ring-0 focus:border-stone-300 dark:focus:border-stone-700"
-                  />
-
-                  {availableSuggestedTags.length > 0 && (
-                    <div className="space-y-0.5 max-h-32 overflow-y-auto">
-                      <div className="text-[10px] text-stone-400 px-1">已有标签</div>
-                      {availableSuggestedTags.map((t) => (
-                        <button
-                          key={t}
-                          type="button"
-                          onMouseDown={(e) => e.preventDefault()}
-                          onClick={() => void handleAddTag(t)}
-                          className="w-full text-left px-2 py-1 rounded text-xs text-stone-700 dark:text-stone-300 hover:bg-stone-100 dark:hover:bg-stone-800 transition font-mono truncate"
-                        >
-                          #{t}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-          </div>
+          <TagChipEditor
+            tags={detailTags}
+            suggestedTags={tagNames}
+            onAddTag={handleAddTag}
+            onRemoveTag={handleRemoveTag}
+            className="pt-0.5"
+          />
         </div>
 
         {/* Task Description (Seamless inline viewing and editing, 0px size jumping, clickable [[ notes) */}

@@ -352,10 +352,7 @@ func (idx *MemoryIndex) FindByTag(tag string) []EntityRef {
 			if nTime.IsZero() {
 				nTime = n.CreatedAt
 			}
-			snippet := strings.TrimSpace(n.Body)
-			if len(snippet) > 200 {
-				snippet = snippet[:200]
-			}
+			snippet := truncateSnippet(strings.TrimSpace(n.Body), 200)
 			results = append(results, EntityRef{
 				Type:    EntityTypeNote,
 				ID:      id,
@@ -421,6 +418,79 @@ func hasTag(tags []string, target string) bool {
 		}
 	}
 	return false
+}
+
+// FindAll returns all entities (Tasks, Notes, Activities) without tag filtering.
+func (idx *MemoryIndex) FindAll() []EntityRef {
+	idx.mu.RLock()
+	defer idx.mu.RUnlock()
+
+	var results []EntityRef
+
+	// All Tasks
+	for id, t := range idx.tasks {
+		tTime := t.UpdatedAt
+		if tTime.IsZero() {
+			tTime = t.CreatedAt
+		}
+		results = append(results, EntityRef{
+			Type:    EntityTypeTask,
+			ID:      id,
+			Title:   t.Title,
+			Path:    idx.idToFile[id],
+			Time:    tTime,
+			Status:  t.Status,
+			Snippet: t.Description,
+		})
+	}
+
+	// All Notes
+	for id, n := range idx.notes {
+		nTime := n.UpdatedAt
+		if nTime.IsZero() {
+			nTime = n.CreatedAt
+		}
+		snippet := truncateSnippet(strings.TrimSpace(n.Body), 200)
+		results = append(results, EntityRef{
+			Type:    EntityTypeNote,
+			ID:      id,
+			Title:   n.Title,
+			Path:    idx.idToFile[id],
+			Time:    nTime,
+			Snippet: snippet,
+		})
+	}
+
+	// All Activities from Tasks
+	for _, t := range idx.tasks {
+		for _, act := range t.Activities {
+			results = append(results, EntityRef{
+				Type:    EntityTypeActivity,
+				ID:      act.ID,
+				Title:   t.Title,
+				Path:    idx.idToFile[t.ID],
+				Time:    act.At,
+				Snippet: act.Body,
+				TaskID:  t.ID,
+			})
+		}
+	}
+
+	// All Activities from DayPlans
+	for _, p := range idx.dayPlans {
+		for _, act := range p.Activities {
+			results = append(results, EntityRef{
+				Type:    EntityTypeActivity,
+				ID:      act.ID,
+				Title:   p.Date,
+				Path:    idx.idToFile[p.Date],
+				Time:    act.At,
+				Snippet: act.Body,
+			})
+		}
+	}
+
+	return results
 }
 
 // TagOverviewItem represents a tag aggregated across tasks, notes, and activities.

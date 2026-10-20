@@ -347,7 +347,7 @@ func (s *VaultService) CreateTask(input CreateTaskInput) (*markdown.Task, error)
 		Description: desc,
 		Status:      status,
 		Due:         due,
-		Tags:        input.Tags,
+		Tags:        cleanTags(input.Tags),
 		NoteIDs:     cleanedNoteIDs,
 		NoteRefs:    cleanNoteRefs(input.NoteRefs),
 		CreatedAt:   now,
@@ -434,7 +434,7 @@ func (s *VaultService) UpdateTask(input UpdateTaskInput) (*markdown.Task, error)
 	existing.Title = title
 	existing.Status = status
 	existing.Due = due
-	existing.Tags = input.Tags
+	existing.Tags = cleanTags(input.Tags)
 	existing.NoteIDs = cleanedNoteIDs
 	if input.NoteRefs != nil {
 		existing.NoteRefs = cleanNoteRefs(input.NoteRefs)
@@ -455,6 +455,28 @@ func (s *VaultService) UpdateTask(input UpdateTaskInput) (*markdown.Task, error)
 	}
 
 	return existing, nil
+}
+
+// cleanTags normalizes and deduplicates tags case-insensitively,
+// stripping leading '#' characters, trimming spaces, and preserving the first display casing.
+// Commas inside tags are kept as valid characters.
+func cleanTags(in []string) []string {
+	var out []string
+	seen := make(map[string]struct{})
+	for _, raw := range in {
+		trimmed := strings.TrimSpace(raw)
+		cleaned := strings.TrimSpace(strings.TrimLeft(trimmed, "#"))
+		if cleaned == "" {
+			continue
+		}
+		key := strings.ToLower(cleaned)
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		out = append(out, cleaned)
+	}
+	return out
 }
 
 // cleanNoteRefs drops blank entries. Bindings to missing notes are kept on purpose:
@@ -649,14 +671,6 @@ func (s *VaultService) CreateActivity(input CreateActivityInput) (*markdown.Acti
 		return nil, fmt.Errorf("Activity 正文不能为空")
 	}
 
-	var tags []string
-	for _, tag := range input.Tags {
-		cleaned := strings.TrimSpace(strings.TrimPrefix(tag, "#"))
-		if cleaned != "" {
-			tags = append(tags, cleaned)
-		}
-	}
-
 	taskID := strings.TrimSpace(input.TaskID)
 	date := strings.TrimSpace(input.Date)
 
@@ -674,7 +688,7 @@ func (s *VaultService) CreateActivity(input CreateActivityInput) (*markdown.Acti
 	act := markdown.Activity{
 		ID:       markdown.GenerateActivityID(),
 		At:       at,
-		Tags:     tags,
+		Tags:     cleanTags(input.Tags),
 		NoteRefs: cleanNoteRefs(input.NoteRefs),
 		Body:     input.Body,
 	}
@@ -750,13 +764,7 @@ func (s *VaultService) UpdateActivity(input UpdateActivityInput) (*markdown.Acti
 		return nil, fmt.Errorf("Activity 不存在: %s", id)
 	}
 
-	var tags []string
-	for _, tag := range input.Tags {
-		cleaned := strings.TrimSpace(strings.TrimPrefix(tag, "#"))
-		if cleaned != "" {
-			tags = append(tags, cleaned)
-		}
-	}
+	cleanedTags := cleanTags(input.Tags)
 
 	switch loc.OwnerType {
 	case markdown.EntityTypeTask:
@@ -768,7 +776,7 @@ func (s *VaultService) UpdateActivity(input UpdateActivityInput) (*markdown.Acti
 		for i := range task.Activities {
 			if task.Activities[i].ID == id {
 				task.Activities[i].Body = input.Body
-				task.Activities[i].Tags = tags
+				task.Activities[i].Tags = cleanedTags
 				if input.NoteRefs != nil {
 					task.Activities[i].NoteRefs = cleanNoteRefs(input.NoteRefs)
 				}
@@ -795,7 +803,7 @@ func (s *VaultService) UpdateActivity(input UpdateActivityInput) (*markdown.Acti
 		for i := range plan.Activities {
 			if plan.Activities[i].ID == id {
 				plan.Activities[i].Body = input.Body
-				plan.Activities[i].Tags = tags
+				plan.Activities[i].Tags = cleanedTags
 				if input.NoteRefs != nil {
 					plan.Activities[i].NoteRefs = cleanNoteRefs(input.NoteRefs)
 				}
@@ -957,20 +965,12 @@ func (s *VaultService) CreateNote(input CreateNoteInput) (*markdown.Note, error)
 		return nil, fmt.Errorf("笔记标题不能为空")
 	}
 
-	var tags []string
-	for _, tag := range input.Tags {
-		cleaned := strings.TrimSpace(strings.TrimPrefix(tag, "#"))
-		if cleaned != "" {
-			tags = append(tags, cleaned)
-		}
-	}
-
 	now := time.Now()
 	note := &markdown.Note{
 		Type:      markdown.EntityTypeNote,
 		ID:        markdown.GenerateEntityID(markdown.EntityTypeNote),
 		Title:     title,
-		Tags:      tags,
+		Tags:      cleanTags(input.Tags),
 		CreatedAt: now,
 		UpdatedAt: now,
 		Body:      input.Body,
@@ -1007,17 +1007,9 @@ func (s *VaultService) UpdateNote(input UpdateNoteInput) (*markdown.Note, error)
 		return nil, fmt.Errorf("笔记不存在: %s", trimmedID)
 	}
 
-	var tags []string
-	for _, tag := range input.Tags {
-		cleaned := strings.TrimSpace(strings.TrimPrefix(tag, "#"))
-		if cleaned != "" {
-			tags = append(tags, cleaned)
-		}
-	}
-
 	now := time.Now()
 	existing.Title = title
-	existing.Tags = tags
+	existing.Tags = cleanTags(input.Tags)
 	if !(existing.AudioTranscript && strings.TrimSpace(existing.AudioFile) != "") {
 		existing.Body = input.Body
 	}
@@ -1313,6 +1305,32 @@ func (s *VaultService) ListByTag(tag string) ([]markdown.EntityRef, error) {
 	}
 
 	refs := v.Index.FindByTag(trimmed)
+	result := make([]markdown.EntityRef, len(refs))
+	copy(result, refs)
+
+	sort.SliceStable(result, func(i, j int) bool {
+		if !result[i].Time.Equal(result[j].Time) {
+			return result[i].Time.After(result[j].Time)
+		}
+		if result[i].Type != result[j].Type {
+			return result[i].Type < result[j].Type
+		}
+		return result[i].ID < result[j].ID
+	})
+
+	return result, nil
+}
+
+// ListAllEntities returns all entities matching no tag filter, sorted chronologically descending.
+func (s *VaultService) ListAllEntities() ([]markdown.EntityRef, error) {
+	s.mu.Lock()
+	v := s.vault
+	s.mu.Unlock()
+	if v == nil {
+		return nil, fmt.Errorf("尚未打开 Vault")
+	}
+
+	refs := v.Index.FindAll()
 	result := make([]markdown.EntityRef, len(refs))
 	copy(result, refs)
 

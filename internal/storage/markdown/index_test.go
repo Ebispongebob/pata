@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 )
 
 func TestScanExamplesVault(t *testing.T) {
@@ -474,5 +475,154 @@ func TestSearchAll(t *testing.T) {
 		if r.ID == "a-tag-child" {
 			t.Fatalf("SearchAll must NOT return activity when only parent task tags hit query")
 		}
+	}
+}
+
+func TestFindAllEntities(t *testing.T) {
+	idx := NewMemoryIndex()
+	now := time.Now()
+
+	// Task with tag
+	t1 := &Task{
+		Type:        EntityTypeTask,
+		ID:          "t-with-tag",
+		Title:       "带标签任务",
+		Description: "这是带标签的任务描述",
+		Tags:        []string{"tag-alpha"},
+		UpdatedAt:   now.Add(-10 * time.Minute),
+		Activities: []Activity{
+			{
+				ID:   "a-task-1",
+				Body: "任务内活动 1",
+				Tags: []string{"tag-beta"},
+				At:   now.Add(-8 * time.Minute),
+			},
+		},
+	}
+	idx.PutEntity("/vault/tasks/t-with-tag.md", t1, FileBaseline{})
+
+	// Task without tag
+	t2 := &Task{
+		Type:        EntityTypeTask,
+		ID:          "t-no-tag",
+		Title:       "无标签任务",
+		Description: "完全没有标签的任务",
+		Tags:        []string{},
+		UpdatedAt:   now.Add(-5 * time.Minute),
+		Activities: []Activity{
+			{
+				ID:   "a-task-2",
+				Body: "任务内活动 2（无标签）",
+				Tags: []string{},
+				At:   now.Add(-4 * time.Minute),
+			},
+		},
+	}
+	idx.PutEntity("/vault/tasks/t-no-tag.md", t2, FileBaseline{})
+
+	// Note with tag
+	n1 := &Note{
+		Type:      EntityTypeNote,
+		ID:        "n-with-tag",
+		Title:     "带标签笔记",
+		Body:      "笔记正文内容",
+		Tags:      []string{"tag-alpha"},
+		UpdatedAt: now.Add(-7 * time.Minute),
+	}
+	idx.PutEntity("/vault/notes/n-with-tag.md", n1, FileBaseline{})
+
+	// Note without tag
+	n2 := &Note{
+		Type:      EntityTypeNote,
+		ID:        "n-no-tag",
+		Title:     "无标签笔记",
+		Body:      "无标签笔记正文",
+		Tags:      []string{},
+		UpdatedAt: now.Add(-3 * time.Minute),
+	}
+	idx.PutEntity("/vault/notes/n-no-tag.md", n2, FileBaseline{})
+
+	// DayPlan with activity
+	dp := &DayPlan{
+		Type: EntityTypeDayPlan,
+		Date: "2026-10-20",
+		Activities: []Activity{
+			{
+				ID:   "a-plan-1",
+				Body: "今日独立记录",
+				Tags: []string{},
+				At:   now.Add(-2 * time.Minute),
+			},
+		},
+	}
+	idx.PutEntity("/vault/plans/2026-10-20.md", dp, FileBaseline{})
+
+	all := idx.FindAll()
+	// Should contain t-with-tag, t-no-tag, n-with-tag, n-no-tag, a-task-1, a-task-2, a-plan-1
+	if len(all) != 7 {
+		t.Fatalf("expected 7 entities in FindAll, got %d: %+v", len(all), all)
+	}
+
+	foundMap := make(map[string]EntityRef)
+	for _, r := range all {
+		foundMap[r.ID] = r
+		if r.Inherited {
+			t.Errorf("entity %s has Inherited=true, expected false in FindAll", r.ID)
+		}
+	}
+
+	expectedIDs := []string{"t-with-tag", "t-no-tag", "n-with-tag", "n-no-tag", "a-task-1", "a-task-2", "a-plan-1"}
+	for _, id := range expectedIDs {
+		if _, ok := foundMap[id]; !ok {
+			t.Errorf("expected entity %s to be returned by FindAll", id)
+		}
+	}
+
+	// Verify that tasks without tags are definitely included
+	if r, ok := foundMap["t-no-tag"]; !ok || r.Type != EntityTypeTask || r.Title != "无标签任务" {
+		t.Errorf("untagged task not properly found: %+v", r)
+	}
+	// Verify that notes without tags are definitely included
+	if r, ok := foundMap["n-no-tag"]; !ok || r.Type != EntityTypeNote || r.Title != "无标签笔记" {
+		t.Errorf("untagged note not properly found: %+v", r)
+	}
+	// Verify that activities without tags are definitely included
+	if r, ok := foundMap["a-task-2"]; !ok || r.Type != EntityTypeActivity || r.TaskID != "t-no-tag" {
+		t.Errorf("untagged task activity not properly found: %+v", r)
+	}
+	if r, ok := foundMap["a-plan-1"]; !ok || r.Type != EntityTypeActivity || r.Title != "2026-10-20" {
+		t.Errorf("dayplan activity not properly found: %+v", r)
+	}
+}
+
+func TestFindAll_NoteSnippetUTF8Truncation(t *testing.T) {
+	idx := NewMemoryIndex()
+	// 300 Chinese characters (each 3 bytes in UTF-8, total 900 bytes)
+	longBody := strings.Repeat("中", 300)
+	n := &Note{
+		Type:      EntityTypeNote,
+		ID:        "n-long-chinese",
+		Title:     "长中文笔记",
+		Body:      longBody,
+		UpdatedAt: time.Now(),
+	}
+	idx.PutEntity("/vault/notes/n-long-chinese.md", n, FileBaseline{})
+
+	refs := idx.FindAll()
+	var found *EntityRef
+	for i := range refs {
+		if refs[i].ID == "n-long-chinese" {
+			found = &refs[i]
+			break
+		}
+	}
+	if found == nil {
+		t.Fatalf("note not found in FindAll")
+	}
+	if !utf8.ValidString(found.Snippet) {
+		t.Fatalf("snippet contains invalid UTF-8 bytes: %q", found.Snippet)
+	}
+	if runes := []rune(found.Snippet); len(runes) != 203 || !strings.HasSuffix(found.Snippet, "...") {
+		t.Fatalf("expected 203 runes ending with '...', got %d: %q", len(runes), found.Snippet)
 	}
 }

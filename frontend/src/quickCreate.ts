@@ -1,17 +1,7 @@
 // Today / Tasks 共用的快速创建规则（见 docs/03-daily-loop/proposal.md「共用快速创建与末尾标签」）。
 
-export function dedupeTags(tags: string[]): string[] {
-  const seen = new Set<string>();
-  const out: string[] = [];
-  for (const raw of tags) {
-    const t = raw.trim();
-    const key = t.toLowerCase();
-    if (!t || seen.has(key)) continue;
-    seen.add(key);
-    out.push(t);
-  }
-  return out;
-}
+import { dedupeTags } from './tagUtils';
+export { dedupeTags };
 
 // 末尾连续、空白分隔的 #标签；`#` 必须开头一个独立词段（不从 C# 内抽取），标签名非空且不含空白或 #。
 const TRAILING_TAG = /(^|\s)#([^\s#]+)$/;
