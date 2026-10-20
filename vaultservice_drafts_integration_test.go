@@ -309,7 +309,13 @@ func TestDraftUIIntegrationServer(t *testing.T) {
 		case "GetVaultHealth":
 			value, callErr = s.GetVaultHealth()
 		case "GetThemePreference":
-			value = "system"
+			value, callErr = s.GetThemePreference()
+		case "SetThemePreference":
+			callErr = s.SetThemePreference(arg(0))
+		case "GetAccentColorPreference":
+			value, callErr = s.GetAccentColorPreference()
+		case "SetAccentColorPreference":
+			callErr = s.SetAccentColorPreference(arg(0))
 		case "GetASRConfigStatus":
 			value = map[string]bool{"configured": false}
 		case "ListDrafts":

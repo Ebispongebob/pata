@@ -26,8 +26,9 @@ import (
 
 // VaultConfig is the persisted single-vault choice (D18: 单 Vault) and app preferences.
 type VaultConfig struct {
-	VaultPath string `json:"vault_path"`
-	Theme     string `json:"theme,omitempty"`
+	VaultPath   string `json:"vault_path"`
+	Theme       string `json:"theme,omitempty"`
+	AccentColor string `json:"accent_color,omitempty"`
 }
 
 const (
@@ -236,10 +237,13 @@ func (s *VaultService) SelectVaultDirectory() (VaultStatus, error) {
 	if _, err := s.openVault(path); err != nil {
 		return s.GetVaultStatus(), err
 	}
+	s.mu.Lock()
 	cfg, _ := s.loadConfig()
 	cfg.VaultPath = path
-	if err := s.saveConfig(cfg); err != nil {
-		return s.GetVaultStatus(), fmt.Errorf("Vault 已打开但保存配置失败: %w", err)
+	saveErr := s.saveConfig(cfg)
+	s.mu.Unlock()
+	if saveErr != nil {
+		return s.GetVaultStatus(), fmt.Errorf("Vault 已打开但保存配置失败: %w", saveErr)
 	}
 	return s.GetVaultStatus(), nil
 }

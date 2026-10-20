@@ -71,6 +71,14 @@
   --pata-destructive: #ef4444;
 }
 
+/* 自定义 RGB 同时作用于旧色阶和新交互组件；清除后恢复系统色。 */
+:root[data-pata-custom-accent],
+:root[data-pata-custom-accent] :where(.dark, .dark *) {
+  --pata-accent: var(--pata-custom-accent);
+  --pata-accent-hover: var(--pata-custom-accent-hover);
+  --pata-focus-ring: var(--pata-custom-accent);
+}
+
 .drag-region {
   --wails-draggable: drag;
 }
@@ -140,14 +148,14 @@ textarea.bg-transparent:focus-visible,
   user-select: text;
   -webkit-user-select: text;
 }
-.draft-editor .cm-content { color: #292524; caret-color: #047857; }
-.dark .draft-editor .cm-content { color: #e7e5e4; caret-color: #34d399; }
+.draft-editor .cm-content { color: #292524; caret-color: var(--color-emerald-700, #047857); }
+.dark .draft-editor .cm-content { color: #e7e5e4; caret-color: var(--color-emerald-400, #34d399); }
 .dark .draft-editor .cm-line > span:not(.draft-search-match):not(.draft-search-current) { color: inherit; }
 .draft-editor .cm-gutters { color: #a8a29e; }
-.draft-editor .cm-cursor, .draft-editor .cm-dropCursor { border-left-color: #047857; }
-.dark .draft-editor .cm-cursor, .dark .draft-editor .cm-dropCursor { border-left-color: #34d399; }
-.draft-editor .cm-selectionBackground { background: #a7f3d088 !important; }
-.dark .draft-editor .cm-selectionBackground { background: #065f46aa !important; }
+.draft-editor .cm-cursor, .draft-editor .cm-dropCursor { border-left-color: var(--color-emerald-700, #047857); }
+.dark .draft-editor .cm-cursor, .dark .draft-editor .cm-dropCursor { border-left-color: var(--color-emerald-400, #34d399); }
+.draft-editor .cm-selectionBackground { background: color-mix(in srgb, var(--color-emerald-200, #a7f3d0) 53%, transparent) !important; }
+.dark .draft-editor .cm-selectionBackground { background: color-mix(in srgb, var(--color-emerald-800, #065f46) 67%, transparent) !important; }
 .draft-search-match { background: #fef08a; color: #292524; border-radius: 2px; }
 .draft-search-current { background: #fbbf24; color: #292524; border-radius: 2px; }
 .dark .draft-search-match { background: #854d0e; color: #fef9c3; }
@@ -461,14 +469,16 @@ textarea.bg-transparent:focus-visible,
 }
 
 /* IR mode link styling */
+.vditor-reset a,
 .vditor-ir__link,
 .vditor-editor-wrapper .vditor-ir__link {
-  color: #047857 !important; /* emerald-700 */
+  color: var(--color-emerald-700, #047857) !important; /* emerald-700 */
 }
 
+:where(.dark, .dark *) .vditor-reset a,
 :where(.dark, .dark *) .vditor-ir__link,
 :where(.dark, .dark *) .vditor-editor-wrapper .vditor-ir__link {
-  color: #34d399 !important; /* emerald-400 */
+  color: var(--color-emerald-400, #34d399) !important; /* emerald-400 */
 }
 
 

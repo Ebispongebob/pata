@@ -121,6 +121,13 @@ export function GetASRTaskStatus(noteID: string): $CancellablePromise<asr$0.ASRT
 }
 
 /**
+ * GetAccentColorPreference 返回主题强调色；空值使用应用默认配色。
+ */
+export function GetAccentColorPreference(): $CancellablePromise<string> {
+    return $Call.ByID(3274213929);
+}
+
+/**
  * GetActivity returns an activity by its ID.
  */
 export function GetActivity(id: string): $CancellablePromise<markdown$0.Activity | null> {
@@ -357,6 +364,13 @@ export function SelectVaultDirectory(): $CancellablePromise<$models.VaultStatus>
  */
 export function SetASRKey(key: string): $CancellablePromise<void> {
     return $Call.ByID(296420522, key);
+}
+
+/**
+ * SetAccentColorPreference 仅保存应用强调色，不修改 Vault 业务数据。
+ */
+export function SetAccentColorPreference(color: string): $CancellablePromise<void> {
+    return $Call.ByID(2067846917, color);
 }
 
 /**
