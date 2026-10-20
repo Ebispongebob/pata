@@ -13,6 +13,8 @@ import {
   Clock,
   RefreshCw,
   FilePenLine,
+  PanelLeftClose,
+  PanelLeftOpen,
 } from 'lucide-react';
 import * as VaultService from '../bindings/pata/internal/app/vaultservice';
 import * as UpdaterService from '../bindings/pata/internal/app/updaterservice';
@@ -39,9 +41,17 @@ export default function App() {
   const titlebarLogoRef = useRef<SVGSVGElement | null>(null);
   const [activeNav, setActiveNav] = useState<'today' | 'tasks' | 'notes' | 'draft' | 'tag'>('today');
   const [selectedTag, setSelectedTag] = useState<string | null>(null);
-  const [sidebarCollapsed] = useState(false); // 侧栏恒展开，收起功能按走查反馈移除
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
+    try { return localStorage.getItem('pata_sidebar_collapsed') === 'true'; }
+    catch { return false; }
+  });
   const [sidebarWidth, setSidebarWidth] = useState(240);
   const [, setIsResizing] = useState(false); // 手柄无高亮，仅保留状态位供拖拽逻辑判断扩展
+
+  useEffect(() => {
+    try { localStorage.setItem('pata_sidebar_collapsed', String(sidebarCollapsed)); }
+    catch { /* 本地偏好不可用时仍可在当前会话切换。 */ }
+  }, [sidebarCollapsed]);
 
   // Settings & Theme state
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -701,16 +711,19 @@ export default function App() {
 
       {/* Left column: lights+logo strip above sidebar, unified background */}
       <div
-        style={{ width: `${sidebarWidth}px` }}
+        style={{ width: `${sidebarCollapsed ? 88 : sidebarWidth}px` }}
         className="relative shrink-0 flex flex-col bg-stone-100/80 dark:bg-stone-950/80 backdrop-blur select-none"
       >
-        <div className="h-[52px] shrink-0 drag-region flex items-center pl-[84px] gap-2 select-none">
-          <PataLogo ref={titlebarLogoRef} className="w-6 h-6 shrink-0" />
-          <span className="text-sm font-medium text-stone-600 dark:text-stone-300">Pata</span>
+        <div className="h-[52px] shrink-0 drag-region flex items-center pl-[84px] select-none overflow-hidden">
+          <div aria-hidden={sidebarCollapsed} className={`flex items-center gap-2 ${sidebarCollapsed ? 'invisible' : ''}`}>
+            <PataLogo ref={titlebarLogoRef} className="w-6 h-6 shrink-0" />
+            <span className="text-sm font-medium text-stone-600 dark:text-stone-300">Pata</span>
+          </div>
         </div>
 
       {/* Sidebar */}
       <aside
+        id="sidebar-navigation"
         className="relative flex flex-col flex-1 min-h-0"
       >
         {/* Resize Handle (expanded only) */}
@@ -728,26 +741,41 @@ export default function App() {
 
         {/* Primary Navigation */}
         <div className="flex-1 overflow-y-auto px-2 py-2 space-y-0.5">
-          {/* Quick Search */}
-          <button
-            onClick={() => setIsSearchOpen(true)}
-            className="w-full flex items-center justify-between px-2.5 py-1.5 mb-2 rounded-md text-xs text-stone-500 dark:text-stone-400 hover:text-stone-800 dark:hover:text-stone-200 hover:bg-stone-200/60 dark:hover:bg-stone-800/60 border border-stone-200/80 dark:border-stone-800/80 bg-stone-50/70 dark:bg-stone-900/50 transition-colors shadow-2xs cursor-pointer group"
-            title="全局搜索 (⌘K / ⌘P)"
-          >
-            <div className="flex items-center space-x-2 truncate">
-              <Search className="w-3.5 h-3.5 shrink-0 opacity-70 group-hover:opacity-100" />
-              {!sidebarCollapsed && <span>搜索</span>}
-            </div>
-            {!sidebarCollapsed && (
-              <kbd className="text-[10px] font-mono opacity-60 bg-stone-200/80 dark:bg-stone-800 px-1 py-0.2 rounded shrink-0">
-                ⌘K
-              </kbd>
-            )}
-          </button>
+          <div className={`flex gap-1 mb-2 ${sidebarCollapsed ? 'flex-col' : ''}`}>
+            <button
+              type="button"
+              onClick={() => setSidebarCollapsed((collapsed) => !collapsed)}
+              aria-label={sidebarCollapsed ? '展开侧栏' : '收起侧栏'}
+              title={sidebarCollapsed ? '展开侧栏' : '收起侧栏'}
+              aria-expanded={!sidebarCollapsed}
+              aria-controls="sidebar-navigation"
+              className={`h-8 shrink-0 flex items-center justify-center rounded-md text-stone-500 dark:text-stone-400 hover:bg-stone-200/60 dark:hover:bg-stone-800/60 cursor-pointer no-drag-region ${sidebarCollapsed ? 'w-full' : 'w-8'}`}
+            >
+              {sidebarCollapsed ? <PanelLeftOpen className="w-4 h-4" /> : <PanelLeftClose className="w-4 h-4" />}
+            </button>
+            {/* Quick Search */}
+            <button
+              onClick={() => setIsSearchOpen(true)}
+              aria-label="全局搜索"
+              className={`min-w-0 h-8 flex items-center px-2.5 py-1.5 rounded-md text-xs text-stone-500 dark:text-stone-400 hover:text-stone-800 dark:hover:text-stone-200 hover:bg-stone-200/60 dark:hover:bg-stone-800/60 border border-stone-200/80 dark:border-stone-800/80 bg-stone-50/70 dark:bg-stone-900/50 transition-colors shadow-2xs cursor-pointer group ${sidebarCollapsed ? 'w-full justify-center' : 'flex-1 justify-between'}`}
+              title="全局搜索 (⌘K / ⌘P)"
+            >
+              <div className="flex items-center space-x-2 truncate">
+                <Search className="w-3.5 h-3.5 shrink-0 opacity-70 group-hover:opacity-100" />
+                {!sidebarCollapsed && <span>搜索</span>}
+              </div>
+              {!sidebarCollapsed && (
+                <kbd className="text-[10px] font-mono opacity-60 bg-stone-200/80 dark:bg-stone-800 px-1 py-0.2 rounded shrink-0">
+                  ⌘K
+                </kbd>
+              )}
+            </button>
+          </div>
 
           <button
             onClick={() => goNav('today')}
-            className={`w-full flex items-center space-x-2.5 px-2.5 py-2 rounded-md text-xs font-medium transition-colors cursor-pointer ${
+            aria-label="Today"
+            className={`w-full flex items-center ${sidebarCollapsed ? 'justify-center' : 'space-x-2.5'} px-2.5 py-2 rounded-md text-xs font-medium transition-colors cursor-pointer ${
               activeNav === 'today'
                 ? 'bg-[var(--pata-brand)] text-white shadow-xs'
                 : 'text-stone-700 dark:text-stone-300 hover:bg-stone-200/60 dark:hover:bg-stone-800/60'
@@ -760,7 +788,8 @@ export default function App() {
 
           <button
             onClick={() => goNav('tasks')}
-            className={`w-full flex items-center space-x-2.5 px-2.5 py-2 rounded-md text-xs font-medium transition-colors cursor-pointer ${
+            aria-label="Tasks"
+            className={`w-full flex items-center ${sidebarCollapsed ? 'justify-center' : 'space-x-2.5'} px-2.5 py-2 rounded-md text-xs font-medium transition-colors cursor-pointer ${
               activeNav === 'tasks'
                 ? 'bg-[var(--pata-brand)] text-white shadow-xs'
                 : 'text-stone-700 dark:text-stone-300 hover:bg-stone-200/60 dark:hover:bg-stone-800/60'
@@ -773,7 +802,8 @@ export default function App() {
 
           <button
             onClick={() => goNav('notes')}
-            className={`w-full flex items-center space-x-2.5 px-2.5 py-2 rounded-md text-xs font-medium transition-colors cursor-pointer ${
+            aria-label="Notes"
+            className={`w-full flex items-center ${sidebarCollapsed ? 'justify-center' : 'space-x-2.5'} px-2.5 py-2 rounded-md text-xs font-medium transition-colors cursor-pointer ${
               activeNav === 'notes'
                 ? 'bg-[var(--pata-brand)] text-white shadow-xs'
                 : 'text-stone-700 dark:text-stone-300 hover:bg-stone-200/60 dark:hover:bg-stone-800/60'
@@ -786,7 +816,8 @@ export default function App() {
 
           <button
             onClick={() => goNav('draft')}
-            className={`w-full flex items-center space-x-2.5 px-2.5 py-2 rounded-md text-xs font-medium transition-colors ${
+            aria-label="Draft"
+            className={`w-full flex items-center ${sidebarCollapsed ? 'justify-center' : 'space-x-2.5'} px-2.5 py-2 rounded-md text-xs font-medium transition-colors ${
               activeNav === 'draft'
                 ? 'bg-emerald-700 text-white shadow-xs'
                 : 'text-stone-700 dark:text-stone-300 hover:bg-stone-200/60 dark:hover:bg-stone-800/60'
@@ -798,6 +829,12 @@ export default function App() {
           </button>
 
           {/* Tags section */}
+          {sidebarCollapsed && (
+            <button type="button" onClick={() => setSidebarCollapsed(false)} aria-label="展开侧栏查看标签" title="展开侧栏查看标签"
+              className={`w-full flex items-center justify-center px-2.5 py-2 rounded-md cursor-pointer ${activeNav === 'tag' ? 'bg-emerald-100/70 dark:bg-emerald-950/60 text-emerald-900 dark:text-emerald-200' : 'text-stone-500 dark:text-stone-400 hover:bg-stone-200/60 dark:hover:bg-stone-800/60'}`}>
+              <Hash className="w-4 h-4" />
+            </button>
+          )}
           {!sidebarCollapsed && (
             <div className="pt-3">
               <div className="text-[10px] uppercase font-semibold text-stone-400 px-2 mb-1 flex items-center justify-between">
@@ -860,53 +897,52 @@ export default function App() {
         </div>
 
         {/* Sidebar Footer: settings entry + persistent health warning if present */}
-        {!sidebarCollapsed && (
-          <div className="relative p-2 flex items-center justify-between no-drag-region border-t border-stone-200/60 dark:border-stone-800/60 gap-1.5">
-            <div className="flex items-center gap-1.5 min-w-0">
-              <button
-                onClick={() => {
-                  if (isSettingsOpen) {
-                    setIsSettingsOpen(false);
-                  } else {
-                    handleOpenSettings();
-                  }
-                }}
-                className={`flex items-center space-x-2 px-2.5 py-1.5 rounded-md text-xs font-medium transition cursor-pointer ${
-                  isSettingsOpen
-                    ? 'bg-[var(--pata-brand)] text-white shadow-xs'
-                    : 'text-stone-600 dark:text-stone-400 hover:text-stone-900 dark:hover:text-stone-100 hover:bg-stone-200/60 dark:hover:bg-stone-800/60'
-                }`}
-                title="设置 (⌘,)"
-              >
-                <Settings className="w-4 h-4 shrink-0" />
-                <span>设置</span>
-              </button>
+        <div className={`relative p-2 flex items-center no-drag-region border-t border-stone-200/60 dark:border-stone-800/60 ${sidebarCollapsed ? 'flex-col gap-1' : 'justify-between'}`}>
+          <button
+            onClick={() => {
+              if (isSettingsOpen) {
+                setIsSettingsOpen(false);
+              } else {
+                handleOpenSettings();
+              }
+            }}
+            aria-label="设置"
+            className={`flex items-center ${sidebarCollapsed ? 'w-full justify-center' : 'space-x-2'} px-2.5 py-1.5 rounded-md text-xs font-medium transition cursor-pointer ${
+              isSettingsOpen
+                ? 'bg-[var(--pata-brand)] text-white shadow-xs'
+                : 'text-stone-600 dark:text-stone-400 hover:text-stone-900 dark:hover:text-stone-100 hover:bg-stone-200/60 dark:hover:bg-stone-800/60'
+            }`}
+            title="设置 (⌘,)"
+          >
+            <Settings className="w-4 h-4 shrink-0" />
+            {!sidebarCollapsed && <span>设置</span>}
+          </button>
 
-              {renderUpdateButton()}
-            </div>
+          {renderUpdateButton()}
 
-            {(hasHealthIssues || rescanError || (vaultStatus?.configured && !vaultStatus?.open)) && (
-              <button
-                onClick={() => {
-                  setShowHealthModal(true);
-                }}
-                className={`flex items-center space-x-1 px-1.5 py-1 rounded text-xs font-medium border transition cursor-pointer shrink-0 ${
-                  rescanError || !vaultStatus?.open
-                    ? 'bg-rose-100 dark:bg-rose-950/70 text-rose-800 dark:text-rose-200 border-rose-300 dark:border-rose-800/80 hover:bg-rose-200/80'
-                    : 'bg-amber-100 dark:bg-amber-950/70 text-amber-900 dark:text-amber-200 border-amber-300 dark:border-amber-800/80 hover:bg-amber-200/80'
-                }`}
-                title="Vault 状态与健康异常诊断"
-              >
-                <AlertTriangle className={`w-3.5 h-3.5 shrink-0 ${rescanError || !vaultStatus?.open ? 'text-rose-600 dark:text-rose-400' : 'text-amber-600 dark:text-amber-400'}`} />
-                <span>
-                  {rescanError || !vaultStatus?.open
-                    ? '异常'
-                    : parseErrorCount + danglingRefCount}
-                </span>
-              </button>
-            )}
-          </div>
-        )}
+          {(hasHealthIssues || rescanError || (vaultStatus?.configured && !vaultStatus?.open)) && (
+            <button
+              onClick={() => {
+                healthTriggerRef.current = document.activeElement as HTMLElement | null;
+                setShowHealthModal(true);
+              }}
+              aria-label="Vault 状态与健康异常诊断"
+              className={`flex items-center ${sidebarCollapsed ? 'w-full justify-center' : 'space-x-1'} px-1.5 py-1 rounded text-xs font-medium border transition cursor-pointer shrink-0 ${
+                rescanError || !vaultStatus?.open
+                  ? 'bg-rose-100 dark:bg-rose-950/70 text-rose-800 dark:text-rose-200 border-rose-300 dark:border-rose-800/80 hover:bg-rose-200/80'
+                  : 'bg-amber-100 dark:bg-amber-950/70 text-amber-900 dark:text-amber-200 border-amber-300 dark:border-amber-800/80 hover:bg-amber-200/80'
+              }`}
+              title="Vault 状态与健康异常诊断"
+            >
+              <AlertTriangle className={`w-3.5 h-3.5 shrink-0 ${rescanError || !vaultStatus?.open ? 'text-rose-600 dark:text-rose-400' : 'text-amber-600 dark:text-amber-400'}`} />
+              {!sidebarCollapsed && <span>
+                {rescanError || !vaultStatus?.open
+                  ? '异常'
+                  : parseErrorCount + danglingRefCount}
+              </span>}
+            </button>
+          )}
+        </div>
       </aside>
       </div>
 

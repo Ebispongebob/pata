@@ -52,3 +52,4 @@
 具体实现、测试与验收仍以对应阶段的 `proposal.md`、测试源码和 PR 为准；这里不重复维护逐项完成日志。
 
 - Draft 草稿的实现与验收见 [阶段 4](04-knowledge-loop/proposal.md#验收)。
+- 侧栏收起行为见 [阶段 5](05-release/proposal.md#侧栏收起2026-10-20-补充)。
