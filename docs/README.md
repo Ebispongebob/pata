@@ -53,3 +53,4 @@
 
 - Draft 草稿的实现与验收见 [阶段 4](04-knowledge-loop/proposal.md#验收)。
 - 侧栏收起行为见 [阶段 5](05-release/proposal.md#侧栏收起2026-10-20-补充)。
+- RGB 强调色配置见 [阶段 10](10-settings/proposal.md#rgb-强调色2026-10-20-补充)。

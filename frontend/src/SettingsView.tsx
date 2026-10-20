@@ -20,10 +20,13 @@ import { Menu } from '@base-ui/react/menu';
 import * as VaultService from '../bindings/pata/internal/app/vaultservice';
 import * as UpdaterService from '../bindings/pata/internal/app/updaterservice';
 import { VaultStatus, VaultHealth, ASRConfigStatus } from '../bindings/pata/internal/app/models';
+import { AccentColorSettings } from './AccentColorSettings';
+import type { useAccentColor } from './useAccentColor';
 
 interface SettingsViewProps {
   themeMode: 'system' | 'light' | 'dark';
   onThemeChange: (mode: 'system' | 'light' | 'dark') => void;
+  accent: ReturnType<typeof useAccentColor>;
   vaultStatus: VaultStatus | null;
   onSelectVault: () => void;
   onRescanVault: () => void;
@@ -38,6 +41,7 @@ interface SettingsViewProps {
 export function SettingsView({
   themeMode,
   onThemeChange,
+  accent,
   vaultStatus,
   onSelectVault,
   onRescanVault,
@@ -285,6 +289,7 @@ export function SettingsView({
               </button>
             </div>
           </div>
+          <AccentColorSettings {...accent} onChange={accent.change} onRetry={accent.retry} />
         </section>
 
         {/* Section 2: 存储 */}

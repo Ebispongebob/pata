@@ -36,6 +36,7 @@ import { TaskDetailPanel, TaskDetailHandle } from './TaskDetailPanel';
 
 import { DraftView } from './DraftView';
 import { draftShortcut, hasBlockingDraftDialog } from './draftEditing';
+import { useAccentColor } from './useAccentColor';
 
 export default function App() {
   const titlebarLogoRef = useRef<SVGSVGElement | null>(null);
@@ -54,6 +55,7 @@ export default function App() {
   }, [sidebarCollapsed]);
 
   // Settings & Theme state
+  const accent = useAccentColor();
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [settingsSection, setSettingsSection] = useState<'appearance' | 'storage' | 'transcription' | 'updater' | null>(null);
   const [themeMode, setThemeMode] = useState<'system' | 'light' | 'dark'>(() => {
@@ -777,7 +779,7 @@ export default function App() {
             aria-label="Today"
             className={`w-full flex items-center ${sidebarCollapsed ? 'justify-center' : 'space-x-2.5'} px-2.5 py-2 rounded-md text-xs font-medium transition-colors cursor-pointer ${
               activeNav === 'today'
-                ? 'bg-[var(--pata-brand)] text-white shadow-xs'
+                ? 'bg-[var(--pata-accent)] text-white shadow-xs'
                 : 'text-stone-700 dark:text-stone-300 hover:bg-stone-200/60 dark:hover:bg-stone-800/60'
             }`}
             title="Today"
@@ -791,7 +793,7 @@ export default function App() {
             aria-label="Tasks"
             className={`w-full flex items-center ${sidebarCollapsed ? 'justify-center' : 'space-x-2.5'} px-2.5 py-2 rounded-md text-xs font-medium transition-colors cursor-pointer ${
               activeNav === 'tasks'
-                ? 'bg-[var(--pata-brand)] text-white shadow-xs'
+                ? 'bg-[var(--pata-accent)] text-white shadow-xs'
                 : 'text-stone-700 dark:text-stone-300 hover:bg-stone-200/60 dark:hover:bg-stone-800/60'
             }`}
             title="Tasks"
@@ -805,7 +807,7 @@ export default function App() {
             aria-label="Notes"
             className={`w-full flex items-center ${sidebarCollapsed ? 'justify-center' : 'space-x-2.5'} px-2.5 py-2 rounded-md text-xs font-medium transition-colors cursor-pointer ${
               activeNav === 'notes'
-                ? 'bg-[var(--pata-brand)] text-white shadow-xs'
+                ? 'bg-[var(--pata-accent)] text-white shadow-xs'
                 : 'text-stone-700 dark:text-stone-300 hover:bg-stone-200/60 dark:hover:bg-stone-800/60'
             }`}
             title="Notes"
@@ -819,7 +821,7 @@ export default function App() {
             aria-label="Draft"
             className={`w-full flex items-center ${sidebarCollapsed ? 'justify-center' : 'space-x-2.5'} px-2.5 py-2 rounded-md text-xs font-medium transition-colors ${
               activeNav === 'draft'
-                ? 'bg-emerald-700 text-white shadow-xs'
+                ? 'bg-[var(--pata-accent)] text-white shadow-xs'
                 : 'text-stone-700 dark:text-stone-300 hover:bg-stone-200/60 dark:hover:bg-stone-800/60'
             }`}
             title="Draft"
@@ -909,7 +911,7 @@ export default function App() {
             aria-label="设置"
             className={`flex items-center ${sidebarCollapsed ? 'w-full justify-center' : 'space-x-2'} px-2.5 py-1.5 rounded-md text-xs font-medium transition cursor-pointer ${
               isSettingsOpen
-                ? 'bg-[var(--pata-brand)] text-white shadow-xs'
+                ? 'bg-[var(--pata-accent)] text-white shadow-xs'
                 : 'text-stone-600 dark:text-stone-400 hover:text-stone-900 dark:hover:text-stone-100 hover:bg-stone-200/60 dark:hover:bg-stone-800/60'
             }`}
             title="设置 (⌘,)"
@@ -923,7 +925,6 @@ export default function App() {
           {(hasHealthIssues || rescanError || (vaultStatus?.configured && !vaultStatus?.open)) && (
             <button
               onClick={() => {
-                healthTriggerRef.current = document.activeElement as HTMLElement | null;
                 setShowHealthModal(true);
               }}
               aria-label="Vault 状态与健康异常诊断"
@@ -1046,6 +1047,7 @@ export default function App() {
             <SettingsView
               themeMode={themeMode}
               onThemeChange={handleThemeChange}
+              accent={accent}
               vaultStatus={vaultStatus}
               onSelectVault={handleSelectVault}
               onRescanVault={handleRescan}
