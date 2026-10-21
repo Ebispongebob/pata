@@ -74,6 +74,10 @@ func readDraft(v *markdown.Vault, id string) (*Draft, error) {
 	if err != nil {
 		return nil, err
 	}
+	info, err := os.Lstat(path)
+	if err != nil || !info.Mode().IsRegular() {
+		return nil, fmt.Errorf("无法读取草稿 %s", id)
+	}
 	baseline, data, err := markdown.ReadBaseline(path)
 	if err != nil {
 		return nil, fmt.Errorf("无法读取草稿 %s", id)
@@ -103,6 +107,15 @@ func (s *VaultService) ListDrafts(vaultPath string) ([]*Draft, error) {
 	if err != nil {
 		return nil, err
 	}
+	drafts, err := readDrafts(v, false)
+	for _, draft := range drafts {
+		draft.Body = ""
+	}
+	return drafts, err
+}
+
+// 搜索跳过单个不可读草稿；列表仍报告错误，目录边界错误始终返回。
+func readDrafts(v *markdown.Vault, skipUnreadable bool) ([]*Draft, error) {
 	dir, err := draftPath(v, "")
 	if err != nil {
 		return nil, err
@@ -122,9 +135,11 @@ func (s *VaultService) ListDrafts(vaultPath string) ([]*Draft, error) {
 		}
 		draft, err := readDraft(v, id)
 		if err != nil {
+			if skipUnreadable {
+				continue
+			}
 			return nil, err
 		}
-		draft.Body = ""
 		drafts = append(drafts, draft)
 	}
 	sort.Slice(drafts, func(i, j int) bool {

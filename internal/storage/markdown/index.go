@@ -812,6 +812,11 @@ func matchTagsCaseInsensitive(tags []string, lowerQ string) bool {
 	return false
 }
 
+// SearchSnippet 提取包含关键词的正文片段，供索引搜索和独立草稿搜索共用。
+func SearchSnippet(body, query string) string {
+	return extractSnippet(body, strings.ToLower(strings.TrimSpace(query)))
+}
+
 func extractSnippet(body, lowerQ string) string {
 	if strings.TrimSpace(body) == "" {
 		return ""

@@ -351,8 +351,7 @@ export function SaveDraft(input: $models.SaveDraftInput): $CancellablePromise<$m
 }
 
 /**
- * SearchAll performs case-insensitive substring search across tasks, notes, activities, and files.
- * Empty or whitespace-only queries return an empty list without error.
+ * SearchAll 按任务、笔记、草稿、记录、附件分组，执行不区分大小写的文字搜索。
  */
 export function SearchAll(query: string): $CancellablePromise<markdown$0.SearchResultItem[] | null> {
     return $Call.ByID(150684201, query);

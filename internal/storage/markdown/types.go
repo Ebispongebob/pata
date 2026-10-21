@@ -15,6 +15,7 @@ const (
 	EntityTypeDayPlan  EntityType = "day_plan"
 	EntityTypeActivity EntityType = "activity"
 	EntityTypeFile     EntityType = "file"
+	EntityTypeDraft    EntityType = "draft" // 仅用于搜索结果，不是 Frontmatter 实体类型。
 )
 
 // FileResource represents an ordinary binary or document file in the files/ directory.

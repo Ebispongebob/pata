@@ -74,6 +74,11 @@ export enum EntityType {
     EntityTypeDayPlan = "day_plan",
     EntityTypeActivity = "activity",
     EntityTypeFile = "file",
+
+    /**
+     * 仅用于搜索结果，不是 Frontmatter 实体类型。
+     */
+    EntityTypeDraft = "draft",
 };
 
 /**

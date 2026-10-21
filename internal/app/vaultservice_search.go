@@ -2,6 +2,7 @@ package app
 
 import (
 	"fmt"
+	"path/filepath"
 	"sort"
 	"strings"
 
@@ -100,9 +101,10 @@ func (s *VaultService) ListAllEntities() ([]markdown.EntityRef, error) {
 	return result, nil
 }
 
-// SearchAll performs case-insensitive substring search across tasks, notes, activities, and files.
-// Empty or whitespace-only queries return an empty list without error.
+// SearchAll 按任务、笔记、草稿、记录、附件分组，执行不区分大小写的文字搜索。
 func (s *VaultService) SearchAll(query string) ([]markdown.SearchResultItem, error) {
+	s.draftMu.Lock()
+	defer s.draftMu.Unlock()
 	s.mu.Lock()
 	v := s.vault
 	s.mu.Unlock()
@@ -110,5 +112,41 @@ func (s *VaultService) SearchAll(query string) ([]markdown.SearchResultItem, err
 		return nil, fmt.Errorf("尚未打开 Vault")
 	}
 
-	return v.Index.SearchAll(query), nil
+	query = strings.TrimSpace(query)
+	results := v.Index.SearchAll(query)
+	if query == "" {
+		return results, nil
+	}
+	drafts, err := readDrafts(v, true)
+	if err != nil {
+		return nil, err
+	}
+	lowerQuery := strings.ToLower(query)
+	draftResults := make([]markdown.SearchResultItem, 0)
+	for _, draft := range drafts {
+		if !strings.Contains(strings.ToLower(draft.Body), lowerQuery) && !strings.Contains(strings.ToLower(draft.Title), lowerQuery) {
+			continue
+		}
+		snippet := markdown.SearchSnippet(draft.Body, query)
+		if snippet == draft.Title {
+			_, body, _ := strings.Cut(strings.TrimSpace(draft.Body), "\n")
+			snippet = markdown.SearchSnippet(body, query)
+		}
+		draftResults = append(draftResults, markdown.SearchResultItem{
+			Type: markdown.EntityTypeDraft, ID: draft.ID, Title: draft.Title,
+			Snippet: snippet,
+			Path:    filepath.Join(v.RootPath, "drafts", draft.ID+".md"),
+		})
+	}
+	split := len(results)
+	for i, result := range results {
+		if result.Type == markdown.EntityTypeActivity || result.Type == markdown.EntityTypeFile {
+			split = i
+			break
+		}
+	}
+	merged := make([]markdown.SearchResultItem, 0, len(results)+len(draftResults))
+	merged = append(merged, results[:split]...)
+	merged = append(merged, draftResults...)
+	return append(merged, results[split:]...), nil
 }
