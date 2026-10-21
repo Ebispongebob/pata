@@ -143,6 +143,11 @@ textarea.bg-transparent:focus-visible,
   box-shadow: 0 0 0 2px rgba(5, 150, 105, 0.2);
 }
 
+/* 草稿内容保留交互，仅外侧留白和内容区间距可拖动窗口。 */
+.draft-document > * {
+  --wails-draggable: no-drag;
+}
+
 .draft-editor {
   --wails-draggable: no-drag;
   user-select: text;

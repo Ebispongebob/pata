@@ -100,7 +100,7 @@ export function DraftView({ vaultStatus, onSelectVault, vaultBusy, newDraftReque
   if (selected) return <DraftDocument key={`${selected.id}:${selected.version}`} draft={selected} scope={scope} shortcutsEnabled={shortcutsEnabled} leaveGuardRef={leaveGuardRef}
     onBack={() => { ++selectionSequence.current; setSelected(null); void load(); }} onNew={() => void createRef.current()} creating={busy} createError={error} />;
 
-  return <div className="h-full overflow-y-auto p-6"><div className="max-w-3xl mx-auto space-y-5">
+  return <div className="h-full overflow-y-auto p-6 drag-region"><div className="max-w-3xl mx-auto space-y-5 no-drag-region">
     <div className="flex items-center justify-between">
       <h2 className="text-sm font-semibold">Draft <span className="ml-2 text-xs text-stone-400">{drafts.length}</span></h2>
       <button type="button" onClick={() => void createRef.current()} disabled={busy} title="新建草稿 (⌘N)" className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-700 text-white rounded-md text-xs cursor-pointer disabled:opacity-50"><Plus className="w-3.5 h-3.5" />新建草稿 <span className="opacity-70">⌘N</span></button>
@@ -259,7 +259,7 @@ function DraftDocument({ draft, scope, shortcutsEnabled, leaveGuardRef, onBack, 
     finally { deletingRef.current = false; setDeleting(false); }
   };
   const actionClass = 'px-2 py-1 rounded-md hover:bg-stone-100 dark:hover:bg-stone-800 text-xs cursor-pointer disabled:opacity-40';
-  return <div className="h-full flex flex-col max-w-4xl mx-auto p-6 gap-3">
+  return <div className="h-full drag-region"><div className="draft-document h-full flex flex-col max-w-4xl mx-auto p-6 gap-3">
     <div className="flex items-center justify-between shrink-0">
       <button type="button" className={`${actionClass} flex items-center gap-1`} onClick={async () => { if (await flushRef.current()) onBack(); }}><ArrowLeft className="w-3.5 h-3.5" />草稿列表</button>
       <div className="flex items-center gap-2 text-[11px] text-stone-400"><span aria-live="polite">{status === 'saving' ? '保存中…' : status === 'unsaved' ? '待保存' : status === 'failed' ? '保存失败' : status === 'conflict' ? '保存冲突' : ''}</span>
@@ -287,7 +287,7 @@ function DraftDocument({ draft, scope, shortcutsEnabled, leaveGuardRef, onBack, 
     {reloadConfirm && <div role="dialog" aria-modal="true" aria-label="重新加载草稿" className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-6">
       <div className="max-w-sm rounded-xl p-5 bg-white dark:bg-stone-900 space-y-4 text-sm"><h3 className="font-semibold">重新加载草稿？</h3><p>当前未保存的改动会被文件中的内容替换。建议先复制草稿。</p><div className="flex justify-end gap-2"><button type="button" className={actionClass} onClick={() => setReloadConfirm(false)}>取消</button><button type="button" className={actionClass} onClick={() => void reload()}>确认重新加载</button></div></div>
     </div>}
-  </div>;
+  </div></div>;
 }
 
 function DeleteDraftDialog({ title, busy, error, onCancel, onConfirm }: {
