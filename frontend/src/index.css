@@ -364,8 +364,14 @@ textarea.bg-transparent:focus-visible,
 
 .vditor-reset li,
 .vditor-editor-wrapper .vditor-reset li {
+  line-height: 1.45 !important;
   margin-top: 1px !important;
   margin-bottom: 1px !important;
+}
+
+.vditor-reset li::marker,
+.vditor-editor-wrapper .vditor-reset li::marker {
+  line-height: 1.45 !important;
 }
 
 .vditor-reset li + li,
@@ -375,6 +381,7 @@ textarea.bg-transparent:focus-visible,
 
 .vditor-reset li p,
 .vditor-editor-wrapper .vditor-reset li p {
+  line-height: 1.45 !important;
   margin-top: 0 !important;
   margin-bottom: 2px !important;
 }

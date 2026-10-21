@@ -96,6 +96,9 @@ test('排版与正文可读性: Notes 编辑区与代码块字号校准', () => 
   // 代码块调整为 13px / 1.5
   assert.ok(cssContent.includes('font-size: 13px !important;'), '代码块字号应为 13px');
   assert.ok(cssContent.includes('line-height: 1.5 !important;'), '代码块行高应为 1.5');
+
+  // 列表项行高调整为 1.45，紧凑对齐，消除列表回车新行（如 2.）光标悬浮偏上问题
+  assert.ok(cssContent.includes('line-height: 1.45 !important;'), '列表项应为紧凑行高 1.45');
 });
 
 test('系统 Reduce Motion 遵循: scrollIntoView 避免无条件 smooth', () => {
