@@ -12,7 +12,7 @@ import (
 	"github.com/wailsapp/wails/v3/pkg/events"
 )
 
-func setupApplicationMenu(app *application.App, mainWindow *application.WebviewWindow, updaterSvc *UpdaterService) *application.Menu {
+func setupApplicationMenu(app *application.App, windowService *WindowService, updaterSvc *UpdaterService) *application.Menu {
 	menu := application.NewMenu()
 
 	if runtime.GOOS == "darwin" {
@@ -22,21 +22,13 @@ func setupApplicationMenu(app *application.App, mainWindow *application.WebviewW
 
 		settingsItem := pataMenu.Add("设置…").SetAccelerator("CmdOrCtrl+,")
 		settingsItem.OnClick(func(ctx *application.Context) {
-			if mainWindow.IsMinimised() {
-				mainWindow.UnMinimise()
-			}
-			mainWindow.Show()
-			mainWindow.Focus()
+			windowService.showMainWindow()
 			app.Event.Emit("menu:open-settings")
 		})
 
 		checkUpdatesItem := pataMenu.Add("检查更新…")
 		checkUpdatesItem.OnClick(func(ctx *application.Context) {
-			if mainWindow.IsMinimised() {
-				mainWindow.UnMinimise()
-			}
-			mainWindow.Show()
-			mainWindow.Focus()
+			windowService.showMainWindow()
 			updaterSvc.triggerManualCheckFromMenu()
 		})
 
@@ -64,6 +56,7 @@ func setupApplicationMenu(app *application.App, mainWindow *application.WebviewW
 // Run creates and starts the desktop application.
 func Run(assets embed.FS, trayIcon []byte, version string, officialBuild bool) error {
 	vaultService := NewVaultService()
+	windowService := newWindowService(vaultService)
 	mcpService := newMCPService(vaultService)
 	updaterService := NewUpdaterService(vaultService, version, officialBuild)
 
@@ -72,9 +65,11 @@ func Run(assets embed.FS, trayIcon []byte, version string, officialBuild bool) e
 		Description: "Personal task and note workspace",
 		Services: []application.Service{
 			application.NewService(vaultService),
+			application.NewService(windowService),
 			application.NewService(mcpService),
 			application.NewService(updaterService),
 		},
+		ShouldQuit: windowService.shouldQuit,
 		Assets: application.AssetOptions{
 			Handler: application.AssetFileServerFS(assets),
 			Middleware: func(next http.Handler) http.Handler {
@@ -98,34 +93,11 @@ func Run(assets embed.FS, trayIcon []byte, version string, officialBuild bool) e
 		},
 	})
 
-	savedWindow, _ := vaultService.GetWindowStatePreference()
-	winWidth, winHeight := OpenWindowSize(savedWindow)
-	startState := application.WindowStateNormal
-	if savedWindow != nil && savedWindow.IsMaximised {
-		startState = application.WindowStateMaximised
-	}
-
-	// Create window with MacTitleBarHiddenInset according to macos-native spec
-	mainWindow := app.Window.NewWithOptions(application.WebviewWindowOptions{
-		Title:      "Pata",
-		Width:      winWidth,
-		Height:     winHeight,
-		MinWidth:   MinWindowWidth,
-		MinHeight:  MinWindowHeight,
-		StartState: startState,
-		Mac: application.MacWindow{
-			Backdrop: application.MacBackdropTranslucent,
-			TitleBar: application.MacTitleBarHiddenInset,
-		},
-		BackgroundColour: application.NewRGB(250, 250, 248),
-		URL:              "/",
-	})
-
-	tracker := newWindowStateTracker(mainWindow, vaultService)
-	tracker.attach(app)
+	windowService.app = app
+	windowService.showMainWindow()
 
 	// Configure macOS standard application menu
-	appMenu := setupApplicationMenu(app, mainWindow, updaterService)
+	appMenu := setupApplicationMenu(app, windowService, updaterService)
 	app.Menu.SetApplicationMenu(appMenu)
 
 	// Initialize updater with app
@@ -135,13 +107,7 @@ func Run(assets embed.FS, trayIcon []byte, version string, officialBuild bool) e
 	tray := app.SystemTray.New()
 	tray.SetTemplateIcon(trayIcon)
 	tray.SetTooltip("Pata")
-	tray.OnClick(func() {
-		if mainWindow.IsMinimised() {
-			mainWindow.UnMinimise()
-		}
-		mainWindow.Show()
-		mainWindow.Focus()
-	})
+	tray.OnClick(func() { go windowService.showMainWindow() })
 
 	return app.Run()
 }

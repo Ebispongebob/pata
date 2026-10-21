@@ -19,6 +19,7 @@ import {
 import * as VaultService from '../bindings/pata/internal/app/vaultservice';
 import * as UpdaterService from '../bindings/pata/internal/app/updaterservice';
 import { VaultStatus, VaultHealth, UpdateStatus } from '../bindings/pata/internal/app/models';
+import * as WindowService from '../bindings/pata/internal/app/windowservice';
 import { TagOverviewItem } from '../bindings/pata/internal/storage/markdown/models';
 import { Dialog, DialogContent, DialogTitle } from './components/ui/dialog';
 import { Button } from './components/ui/button';
@@ -37,6 +38,7 @@ import { TaskDetailPanel, TaskDetailHandle } from './TaskDetailPanel';
 import { DraftView } from './DraftView';
 import { draftShortcut, hasBlockingDraftDialog } from './draftEditing';
 import { useAccentColor } from './useAccentColor';
+import { useWindowLifecycle, WindowTransition } from './useWindowLifecycle';
 
 export default function App() {
   const titlebarLogoRef = useRef<SVGSVGElement | null>(null);
@@ -150,7 +152,18 @@ export default function App() {
 
   // 只保护页面内的草稿；右侧 Inspector 的草稿由它自己保护。
   const leaveGuardRef = useRef<(() => Promise<boolean>) | null>(null);
+  const windowLeaveGuardRef = useRef<(() => Promise<boolean>) | null>(null);
+  windowLeaveGuardRef.current = async () => {
+    // 关窗会同时卸载工作区与 Inspector，两个区域都要完成保存确认。
+    setIsSettingsOpen(false);
+    if (leaveGuardRef.current && !(await leaveGuardRef.current())) return false;
+    return (await detailRef.current?.confirmLeave()) ?? true;
+  };
+  const windowLifecycle = useWindowLifecycle('main', windowLeaveGuardRef);
+  const windowBlockedRef = useRef(false);
+  windowBlockedRef.current = windowLifecycle.blocked;
   const guarded = useCallback(async (go: () => void) => {
+    if (windowBlockedRef.current) return;
     if (leaveGuardRef.current && !(await leaveGuardRef.current())) {
       setIsSettingsOpen(false);
       return;
@@ -168,7 +181,7 @@ export default function App() {
   const searchActionRef = useRef<() => void>(() => {});
   searchActionRef.current = () => {
     if (isSearchOpen) { setIsSearchOpen(false); return; }
-    if (vaultBusy || hasBlockingDraftDialog()) return;
+    if (vaultBusy || windowLifecycle.blocked || hasBlockingDraftDialog()) return;
     void guarded(() => setIsSearchOpen(true));
   };
 
@@ -591,6 +604,7 @@ export default function App() {
       }
     };
     initTheme();
+    return Events.On('appearance:changed', initTheme);
   }, []);
 
   const handleThemeChange = (mode: 'system' | 'light' | 'dark') => {
@@ -608,8 +622,10 @@ export default function App() {
   const handleSelectVault = async () => {
     // 切换 Vault 将卸载当前详情，先保护未保存的任务草稿。
     if (detailRef.current && !(await detailRef.current.confirmLeave())) return;
+    if (leaveGuardRef.current && !(await leaveGuardRef.current())) return;
     setVaultBusy(true);
     try {
+      await WindowService.PrepareVaultChange();
       const prevPath = vaultStatus?.path;
       const st = await VaultService.SelectVaultDirectory();
       await refreshVault();
@@ -624,7 +640,9 @@ export default function App() {
       }
     } catch (err: any) {
       console.error('Select vault failed:', err);
+      setRescanError(String(err));
     } finally {
+      await WindowService.FinishVaultChange().catch(() => {});
       setVaultBusy(false);
     }
   };
@@ -1048,7 +1066,7 @@ export default function App() {
               <DraftView key={vaultStatus?.path ?? 'draft'} vaultStatus={vaultStatus} onSelectVault={handleSelectVault} vaultBusy={vaultBusy}
                 newDraftRequest={newDraftRequest} onNewDraftRequestConsumed={() => setNewDraftRequest(null)}
                 initialDraftId={focusDraftId} onInitialDraftConsumed={() => setFocusDraftId(null)}
-                shortcutsEnabled={!isSettingsOpen && !isSearchOpen && !showHealthModal} leaveGuardRef={leaveGuardRef} />
+                shortcutsEnabled={!isSettingsOpen && !isSearchOpen && !showHealthModal && !windowLifecycle.blocked} leaveGuardRef={leaveGuardRef} />
             )}
 
             {activeNav === 'tag' && (
@@ -1097,6 +1115,8 @@ export default function App() {
         onOpenTodayDate={handleOpenTodayDate}
         vaultOpen={vaultStatus?.open}
       />
+
+      <WindowTransition {...windowLifecycle} />
 
       {/* Vault Health Detail Modal */}
       <Dialog open={showHealthModal} onOpenChange={setShowHealthModal}>

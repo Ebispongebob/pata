@@ -24,13 +24,18 @@ func (s *VaultService) GetAccentColorPreference() (string, error) {
 }
 
 // SetAccentColorPreference 仅保存应用强调色，不修改 Vault 业务数据。
-func (s *VaultService) SetAccentColorPreference(color string) error {
+func (s *VaultService) SetAccentColorPreference(color string) (err error) {
 	color = strings.ToLower(strings.TrimSpace(color))
 	if color != "" && !accentColorPattern.MatchString(color) {
 		return fmt.Errorf("主题色必须为六位 RGB 十六进制颜色")
 	}
 	s.mu.Lock()
-	defer s.mu.Unlock()
+	defer func() {
+		s.mu.Unlock()
+		if err == nil {
+			s.dispatchEvent("appearance:changed", nil)
+		}
+	}()
 	cfg, err := s.loadConfig()
 	if err != nil {
 		return fmt.Errorf("读取主题色配置失败，原配置已保留")

@@ -29,6 +29,7 @@ export interface DraftEditorRef {
   highlight: (query: string, current?: number) => void;
   replace: (matches: TextMatch[], value: string) => void;
   insert: (value: string) => void;
+  composing: () => boolean;
 }
 
 interface Props {
@@ -77,6 +78,7 @@ export const DraftEditor = forwardRef<DraftEditorRef, Props>(function DraftEdito
   }, []);
 
   useImperativeHandle(ref, () => ({
+    composing() { return viewRef.current?.composing ?? false; },
     setValue(body, resetHistory = false) {
       const view = viewRef.current;
       if (!view) return;

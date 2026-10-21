@@ -4,10 +4,12 @@
 import * as MCPService from "./mcpservice.js";
 import * as UpdaterService from "./updaterservice.js";
 import * as VaultService from "./vaultservice.js";
+import * as WindowService from "./windowservice.js";
 export {
     MCPService,
     UpdaterService,
-    VaultService
+    VaultService,
+    WindowService
 };
 
 export {
@@ -21,6 +23,7 @@ export type {
     CreateTaskInput,
     MCPStatus,
     Draft,
+    DraftWindowState,
     SaveDraftInput,
     TimelineItem,
     UpdateActivityInput,
