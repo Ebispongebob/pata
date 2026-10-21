@@ -24,6 +24,7 @@ import { TodayPlanList } from './TodayPlanList';
 import { TaskDetailPanel, TaskDetailHandle } from './TaskDetailPanel';
 import { DetailSplit, useDetailOrigin } from './DetailSplit';
 import { NoteRefText, NoteRefTextarea, NoteRefMap, pruneRefs, sameRefs, useNoteRefs } from './noteRefs';
+import { getLocalDateStr, followTodayOnDateChange } from './todayDate';
 
 interface TodayViewProps {
   vaultStatus: VaultStatus | null;
@@ -46,11 +47,6 @@ function formatTimelineTime(isoString: string): string {
   if (!isoString || isNaN(d.getTime())) return isoString;
   const pad = (n: number) => n.toString().padStart(2, '0');
   return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
-}
-
-function getLocalDateStr(d: Date = new Date()): string {
-  const pad = (n: number) => n.toString().padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
 function shiftDateStr(dateStr: string, offsetDays: number): string {
@@ -111,7 +107,9 @@ export function TodayView({
   onVaultDataChanged,
   leaveGuardRef,
 }: TodayViewProps) {
-  const todayStr = useMemo(() => getLocalDateStr(), []);
+  const [todayStr, setTodayStr] = useState<string>(getLocalDateStr);
+  const todayStrRef = useRef(todayStr);
+  const pendingAutoFollowRef = useRef<string | null>(null);
   const [selectedDate, setSelectedDate] = useState<string>(
     initialDate && /^\d{4}-\d{2}-\d{2}$/.test(initialDate) ? initialDate : todayStr
   );
@@ -161,6 +159,50 @@ export function TodayView({
   }, []);
   const panelRef = useRef<TaskDetailHandle>(null);
   const origin = useDetailOrigin();
+
+  const selectedDateRef = useRef(selectedDate);
+  selectedDateRef.current = selectedDate;
+  // 正在编写 Activity 时保留所在日期，等保存/取消后再自动跟随新的一天。
+  // 任务详情独立保持挂载，日期变化不会丢弃其内部草稿。
+  const autoFollowBlocked = Boolean(quickActivityBody.trim() || editingActivityId || creatingActivity || editSaving || leavePrompt);
+  const autoFollowBlockedRef = useRef(autoFollowBlocked);
+  autoFollowBlockedRef.current = autoFollowBlocked;
+
+  useEffect(() => {
+    const refreshToday = () => {
+      const nextToday = getLocalDateStr();
+      const previousToday = todayStrRef.current;
+      if (nextToday === previousToday) return;
+      todayStrRef.current = nextToday;
+      setTodayStr(nextToday);
+      // 仅在原本查看今天时自动跟随；历史日期保持原状。
+      if (selectedDateRef.current !== previousToday) return;
+      if (autoFollowBlockedRef.current) {
+        pendingAutoFollowRef.current = previousToday;
+      } else {
+        setSelectedDate((date) => followTodayOnDateChange(date, previousToday, nextToday));
+      }
+    };
+
+    // macOS 休眠会暂停定时器；恢复可见/聚焦时立即核对本地日期。
+    const onVisibilityChange = () => { if (!document.hidden) refreshToday(); };
+    const interval = window.setInterval(refreshToday, 15_000);
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    window.addEventListener('focus', refreshToday);
+    refreshToday();
+    return () => {
+      window.clearInterval(interval);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+      window.removeEventListener('focus', refreshToday);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (autoFollowBlocked || !pendingAutoFollowRef.current) return;
+    const previousToday = pendingAutoFollowRef.current;
+    pendingAutoFollowRef.current = null;
+    setSelectedDate((date) => followTodayOnDateChange(date, previousToday, todayStrRef.current));
+  }, [autoFollowBlocked]);
 
   useEffect(() => {
     if (!noticeMsg) return;
@@ -224,12 +266,33 @@ export function TodayView({
     void loadData();
   }, [loadData]);
 
+  const ignoreVaultChangedUntilRef = useRef<number>(0);
+  const pendingVaultChangeTimerRef = useRef<number | null>(null);
+
   useEffect(() => {
     const unsubscribe = Events.On('vault:changed', () => {
+      const remaining = ignoreVaultChangedUntilRef.current - Date.now();
+      if (remaining > 0) {
+        if (pendingVaultChangeTimerRef.current === null) {
+          pendingVaultChangeTimerRef.current = window.setTimeout(() => {
+            pendingVaultChangeTimerRef.current = null;
+            void loadData();
+          }, remaining);
+        }
+        return;
+      }
+      if (pendingVaultChangeTimerRef.current !== null) {
+        window.clearTimeout(pendingVaultChangeTimerRef.current);
+        pendingVaultChangeTimerRef.current = null;
+      }
       void loadData();
     });
     return () => {
       unsubscribe();
+      if (pendingVaultChangeTimerRef.current !== null) {
+        window.clearTimeout(pendingVaultChangeTimerRef.current);
+        pendingVaultChangeTimerRef.current = null;
+      }
     };
   }, [loadData]);
 
@@ -296,6 +359,8 @@ export function TodayView({
     setSaving(true);
     setSaveError(null);
     try {
+      // 屏蔽保存 plans/ 触发的自身文件系统事件，避免松手重排后瞬间发生重复 loadData 与 DOM 震荡
+      ignoreVaultChangedUntilRef.current = Date.now() + 1000;
       const filtered = newTaskIds.filter((id) => taskMap.has(id));
       const dropped = newTaskIds.length - filtered.length;
       const updated = await VaultService.SaveDayPlan(date, filtered);
@@ -305,6 +370,11 @@ export function TodayView({
       setNoticeMsg(dropped > 0 ? `已同步移除 ${dropped} 个失效任务占位` : null);
       return true;
     } catch (err: any) {
+      ignoreVaultChangedUntilRef.current = 0;
+      if (pendingVaultChangeTimerRef.current !== null) {
+        window.clearTimeout(pendingVaultChangeTimerRef.current);
+        pendingVaultChangeTimerRef.current = null;
+      }
       console.error('Failed to save day plan for date:', date, err);
       reportSaveError(err);
       await loadData();
