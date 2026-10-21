@@ -727,6 +727,12 @@ export default function App() {
     <div className="relative flex h-screen w-screen overflow-hidden bg-stone-100/60 dark:bg-transparent text-stone-900 dark:text-stone-100 font-sans">
       {/* 4px top edge guard: prevents native window resize from triggering wails:drag */}
       <div className="absolute top-0 left-0 right-0 h-1 no-drag-region z-30 pointer-events-auto" />
+      {/* 顶部留白可拖动窗口，避开系统缩放边缘和页面控件。 */}
+      <div
+        aria-hidden="true"
+        style={{ left: sidebarCollapsed ? 88 : sidebarWidth }}
+        className="absolute top-1 right-2 h-4 drag-region app-chrome z-10"
+      />
 
       {/* Left column: lights+logo strip above sidebar, unified background */}
       <div
