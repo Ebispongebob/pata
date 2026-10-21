@@ -348,6 +348,11 @@ textarea.bg-transparent:focus-visible,
 }
 
 /* Lists: compact padding and item spacing */
+.vditor-editor-wrapper .vditor-reset ol {
+  /* Markdown 自动转换后仍显示编号，避免继承全局列表重置。 */
+  list-style-type: decimal;
+}
+
 .vditor-reset ul,
 .vditor-reset ol,
 .vditor-editor-wrapper .vditor-reset ul,
