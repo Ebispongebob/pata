@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { Events } from '@wailsio/runtime';
 import * as VaultService from '../bindings/pata/vaultservice';
 import { applyAccent, validAccent } from './accentColor';
 
@@ -16,6 +17,14 @@ export function useAccentColor() {
   const mountedRef = useRef(true);
 
   useEffect(() => { applyAccent(color); }, [color]);
+  useEffect(() => Events.On('appearance:changed', () => {
+    if (savingRef.current || pendingRef.current !== null) return;
+    void VaultService.GetAccentColorPreference().then((saved) => {
+      if (savingRef.current || pendingRef.current !== null || !validAccent(saved)) return;
+      currentRef.current = saved; setColor(saved);
+      try { localStorage.setItem('pata_accent_color', saved); } catch { /* 以磁盘偏好为准。 */ }
+    }).catch(() => {});
+  }), []);
   useEffect(() => {
     let cancelled = false;
     mountedRef.current = true;

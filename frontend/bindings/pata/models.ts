@@ -78,6 +78,11 @@ export interface Draft {
     "updated_at": string;
 }
 
+export interface DraftWindowState {
+    "vault": VaultStatus;
+    "initial_draft_id": string;
+}
+
 export interface SaveDraftInput {
     "vault_path": string;
     "id": string;

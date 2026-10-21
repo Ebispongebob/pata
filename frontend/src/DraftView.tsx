@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeft, FilePenLine, FolderOpen, Plus, Trash2 } from 'lucide-react';
+import { Events } from '@wailsio/runtime';
+import { ExternalLink, FilePenLine, FolderOpen, PanelLeft, Plus, RefreshCw, Trash2, X } from 'lucide-react';
 import * as VaultService from '../bindings/pata/vaultservice';
+import * as WindowService from '../bindings/pata/windowservice';
 import type { Draft, VaultStatus } from '../bindings/pata/models';
 import { DraftEditor, type DraftEditorRef } from './DraftEditor';
 import { DraftFindBar } from './DraftFindBar';
@@ -18,109 +20,215 @@ interface Props {
   onInitialDraftConsumed: () => void;
   shortcutsEnabled: boolean;
   leaveGuardRef: LeaveGuard;
+  standalone?: boolean;
 }
 
-export function DraftView({ vaultStatus, onSelectVault, vaultBusy, newDraftRequest, onNewDraftRequestConsumed, initialDraftId, onInitialDraftConsumed, shortcutsEnabled, leaveGuardRef }: Props) {
-  const [drafts, setDrafts] = useState<Draft[]>([]);
-  const [selected, setSelected] = useState<Draft | null>(null);
-  const [error, setError] = useState('');
-  const [busy, setBusy] = useState(false);
-  const [deleteTarget, setDeleteTarget] = useState<Draft | null>(null);
-  const [deleteError, setDeleteError] = useState('');
-  const [deleting, setDeleting] = useState(false);
-  const deletingRef = useRef(false);
-  const creatingRef = useRef(false);
-  const selectionSequence = useRef(0);
+type DraftChange = { vault_path: string; id: string; kind: 'saved' | 'deleted' };
+type Guard = () => Promise<boolean>;
+const draftTitle = (body: string) => {
+  const text = Array.from(body.split('\n').find((line) => line.trim())?.trim() || '未命名草稿');
+  return text.length > 60 ? text.slice(0, 60).join('') + '…' : text.join('');
+};
+
+export function DraftView(props: Props) {
+  const { vaultStatus, onSelectVault, vaultBusy, shortcutsEnabled, leaveGuardRef, standalone = false } = props;
   const scope = vaultStatus?.path ?? '';
-  useEffect(() => () => { ++selectionSequence.current; }, []);
+  const storageKey = `pata_draft_workspace:${standalone ? 'window' : 'main'}:${scope}`;
+  const [drafts, setDrafts] = useState<Draft[]>([]);
+  const [documents, setDocuments] = useState<Draft[]>([]);
+  const [activeId, setActiveId] = useState<string | null>(null);
+  const [ready, setReady] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const [filesVisible, setFilesVisible] = useState(true);
+  const guards = useRef(new Map<string, Guard>());
+  const operating = useRef(false);
+  const refreshSequence = useRef(0);
+  const initialTask = useRef<Promise<{ list: Draft[]; documents: Draft[]; active: string; request: number | null; focus: string | null }> | null>(null);
+  const initialList = useRef<Draft[]>([]);
+  const consumedNew = useRef<number | null>(null);
+  const consumedFocus = useRef<string | null>(null);
+  const current = useRef({ props, documents, activeId });
+  current.current = { props, documents, activeId };
+  const registerGuard = useCallback((id: string, guard: Guard | null) => {
+    if (guard) guards.current.set(id, guard); else guards.current.delete(id);
+  }, []);
+  const flush = useCallback(async () => {
+    for (const guard of guards.current.values()) if (!(await guard())) return false;
+    return true;
+  }, []);
+  useEffect(() => {
+    leaveGuardRef.current = flush;
+    return () => { if (leaveGuardRef.current === flush) leaveGuardRef.current = null; };
+  }, [flush, leaveGuardRef]);
 
-  const load = useCallback(async () => {
+  const refresh = useCallback(async () => {
     if (!vaultStatus?.open) return;
-    const sequence = selectionSequence.current;
+    const sequence = ++refreshSequence.current;
     try {
-      setDrafts(((await VaultService.ListDrafts(scope)) ?? []).filter((item): item is Draft => item !== null));
-      if (sequence === selectionSequence.current) setError('');
-    } catch (error) { if (sequence === selectionSequence.current) setError(String(error)); }
+      const list = ((await VaultService.ListDrafts(scope)) ?? []).filter((item): item is Draft => item !== null);
+      initialList.current = list;
+      if (sequence === refreshSequence.current) setDrafts(list);
+    } catch (error) { if (sequence === refreshSequence.current) setError(String(error)); }
   }, [scope, vaultStatus?.open]);
-  useEffect(() => { void load(); }, [load]);
-
-  const createRef = useRef<(guard?: boolean) => Promise<void>>(async () => {});
-  createRef.current = async (guard = true) => {
-    if (creatingRef.current || !vaultStatus?.open) return;
-    creatingRef.current = true;
-    const sequence = ++selectionSequence.current;
-    setBusy(true);
-    try {
-      if (guard && leaveGuardRef.current && !(await leaveGuardRef.current())) return;
-      const draft = await VaultService.CreateDraft(scope);
-      if (draft && sequence === selectionSequence.current) { setSelected(draft); setError(''); }
-    } catch (error) { setError(String(error)); }
-    finally { creatingRef.current = false; setBusy(false); }
-  };
   useEffect(() => {
-    if (!newDraftRequest || !vaultStatus?.open) return;
-    onNewDraftRequestConsumed();
-    void createRef.current(false);
-  }, [newDraftRequest, vaultStatus?.open, onNewDraftRequestConsumed]);
+    const stop = Events.On('draft:changed', (event) => {
+      if ((event.data as DraftChange).vault_path === scope) void refresh();
+    });
+    const focus = () => void refresh();
+    window.addEventListener('focus', focus);
+    return () => { ++refreshSequence.current; stop(); window.removeEventListener('focus', focus); };
+  }, [scope, refresh]);
 
-  const openRef = useRef<(id: string, guard?: boolean) => Promise<void>>(async () => {});
-  openRef.current = async (id, guard = true) => {
-    if (creatingRef.current) return;
-    const sequence = ++selectionSequence.current;
-    try {
-      if (guard && leaveGuardRef.current && !(await leaveGuardRef.current())) return;
+  useEffect(() => {
+    if (!vaultStatus?.open) return;
+    let mounted = true;
+    // 严格模式的重复挂载共用初始化请求，空 Vault 只创建一篇草稿。
+    initialTask.current ??= (async () => {
+      const list = ((await VaultService.ListDrafts(scope)) ?? []).filter((item): item is Draft => item !== null);
+      initialList.current = list;
+      const request = current.current.props.newDraftRequest;
+      const focus = current.current.props.initialDraftId;
+      let saved: { ids?: string[]; active?: string } = {};
+      try { saved = JSON.parse(localStorage.getItem(storageKey) || '{}'); } catch { /* 使用磁盘列表作为回退。 */ }
+      const known = new Set(list.map((item) => item.id));
+      const ids = Array.isArray(saved?.ids) ? [...new Set(saved.ids.filter((id) => typeof id === 'string' && known.has(id)))] : [];
+      let active = focus || (saved?.active && known.has(saved.active) ? saved.active : list[0]?.id);
+      let created: Draft | null = null;
+      if (request || (!active && !list.length)) {
+        created = await VaultService.CreateDraft(scope);
+        if (!created) throw new Error('未收到草稿创建结果');
+        active = created.id; list.unshift(created);
+      }
+      if (!active) throw new Error('无法打开草稿');
+      if (!ids.includes(active)) ids.push(active);
+      const opened = await Promise.all(ids.map(async (id) => {
+        if (created?.id === id) return created;
+        const draft = await VaultService.GetDraft(scope, id);
+        if (!draft) throw new Error('无法读取草稿');
+        return draft;
+      }));
+      return { list, documents: opened, active, request, focus };
+    })();
+    void initialTask.current.then((result) => {
+      if (!mounted) return;
+      consumedNew.current = result.request; consumedFocus.current = result.focus;
+      setDrafts(result.list); setDocuments(result.documents); setActiveId(result.active); setReady(true);
+      if (result.request && current.current.props.newDraftRequest === result.request) current.current.props.onNewDraftRequestConsumed();
+      if (result.focus && current.current.props.initialDraftId === result.focus) current.current.props.onInitialDraftConsumed();
+    }).catch((error) => { if (mounted) { setDrafts(initialList.current); setError(String(error)); setReady(true); } });
+    return () => { mounted = false; };
+  }, [scope, storageKey, vaultStatus?.open]);
+
+  const tabIds = documents.map((item) => item.id).join(',');
+  useEffect(() => {
+    if (!ready) return;
+    try { localStorage.setItem(storageKey, JSON.stringify({ ids: tabIds ? tabIds.split(',') : [], active: activeId })); }
+    catch { /* 偏好不可用不影响 Markdown 保存。 */ }
+  }, [ready, tabIds, activeId, storageKey]);
+
+  const run = async (action: () => Promise<void>) => {
+    if (operating.current || !ready || hasBlockingDraftDialog()) return;
+    operating.current = true; setBusy(true);
+    try { if (await flush()) { await action(); setError(''); } }
+    catch (error) { setError(String(error)); }
+    finally { operating.current = false; setBusy(false); }
+  };
+  const selectRef = useRef<(id: string) => Promise<void>>(async () => {});
+  selectRef.current = async (id) => run(async () => {
+    if (!current.current.documents.some((item) => item.id === id)) {
       const draft = await VaultService.GetDraft(scope, id);
-      if (draft && sequence === selectionSequence.current) { setSelected(draft); setError(''); }
-    } catch (error) { if (sequence === selectionSequence.current) setError(String(error)); }
-  };
+      if (!draft) throw new Error('无法读取草稿');
+      setDocuments((items) => [...items, draft]);
+    }
+    setActiveId(id);
+  });
+  const createRef = useRef<() => Promise<void>>(async () => {});
+  createRef.current = () => run(async () => {
+    const draft = await VaultService.CreateDraft(scope);
+    if (!draft) throw new Error('未收到草稿创建结果');
+    setDocuments((items) => [...items, draft]); setActiveId(draft.id);
+    await refresh();
+  });
   useEffect(() => {
-    if (!initialDraftId || !vaultStatus?.open) return;
-    onInitialDraftConsumed();
-    void openRef.current(initialDraftId, false);
-  }, [initialDraftId, vaultStatus?.open, onInitialDraftConsumed]);
+    const request = props.newDraftRequest;
+    if (!ready || busy || !request || consumedNew.current === request) return;
+    consumedNew.current = request; props.onNewDraftRequestConsumed();
+    void createRef.current();
+  }, [props.newDraftRequest, props.onNewDraftRequestConsumed, ready, busy]);
+  useEffect(() => {
+    const id = props.initialDraftId;
+    if (!id) { consumedFocus.current = null; return; }
+    if (!ready || busy || consumedFocus.current === id) return;
+    consumedFocus.current = id; props.onInitialDraftConsumed();
+    void selectRef.current(id);
+  }, [props.initialDraftId, props.onInitialDraftConsumed, ready, busy]);
 
-  const deleteDraft = async () => {
-    if (!deleteTarget || deletingRef.current) return;
-    deletingRef.current = true;
-    setDeleting(true); setDeleteError('');
-    try {
-      await VaultService.DeleteDraft(scope, deleteTarget.id, deleteTarget.version);
-      setDeleteTarget(null);
-      await load();
-    } catch (error) { setDeleteError(String(error)); }
-    finally { deletingRef.current = false; setDeleting(false); }
-  };
+  const metadata = useCallback((draft: Draft) => {
+    setDocuments((items) => items.map((item) => item.id === draft.id ? draft : item));
+  }, []);
+  const deleted = useCallback((id: string) => {
+    const remaining = current.current.documents.filter((item) => item.id !== id);
+    setDocuments((items) => items.filter((item) => item.id !== id));
+    setDrafts((items) => items.filter((item) => item.id !== id));
+    setActiveId((active) => active === id ? remaining[0]?.id ?? null : active);
+  }, []);
+  const closeTab = (id: string) => void run(async () => {
+    const remaining = current.current.documents.filter((item) => item.id !== id);
+    setDocuments(remaining);
+    if (activeId === id) setActiveId(remaining[0]?.id ?? null);
+  });
+  const active = documents.find((item) => item.id === activeId);
+  const buttonClass = 'p-1.5 rounded-md text-stone-500 hover:bg-stone-200/70 dark:hover:bg-stone-800 disabled:opacity-40 cursor-pointer';
 
   if (!vaultStatus?.open) return <div className="p-10 text-center space-y-4">
     <FolderOpen className="w-9 h-9 mx-auto text-emerald-600" />
     <p className="text-sm text-stone-600 dark:text-stone-300">请先打开 Vault，再创建草稿。</p>
-    <button type="button" disabled={vaultBusy} onClick={onSelectVault} className="px-3 py-2 rounded-md bg-emerald-700 text-white text-xs">选择 Vault 目录</button>
+    {!standalone && <button type="button" disabled={vaultBusy} onClick={onSelectVault} className="px-3 py-2 rounded-md bg-emerald-700 text-white text-xs">选择 Vault 目录</button>}
   </div>;
 
-  if (selected) return <DraftDocument key={`${selected.id}:${selected.version}`} draft={selected} scope={scope} shortcutsEnabled={shortcutsEnabled} leaveGuardRef={leaveGuardRef}
-    onBack={() => { ++selectionSequence.current; setSelected(null); void load(); }} onNew={() => void createRef.current()} creating={busy} createError={error} />;
-
-  return <div className="h-full overflow-y-auto p-6 drag-region"><div className="max-w-3xl mx-auto space-y-5 no-drag-region">
-    <div className="flex items-center justify-between">
-      <h2 className="text-sm font-semibold">Draft <span className="ml-2 text-xs text-stone-400">{drafts.length}</span></h2>
-      <button type="button" onClick={() => void createRef.current()} disabled={busy} title="新建草稿 (⌘N)" className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-700 text-white rounded-md text-xs cursor-pointer disabled:opacity-50"><Plus className="w-3.5 h-3.5" />新建草稿 <span className="opacity-70">⌘N</span></button>
+  return <div className="h-full min-h-0 flex flex-col pt-4 drag-region">
+    <div className="flex flex-1 min-h-0">
+      {filesVisible && <aside aria-label="草稿文件栏" className="w-44 xl:w-52 shrink-0 flex flex-col min-h-0 border-r border-stone-200/70 dark:border-stone-800 bg-stone-100/40 dark:bg-stone-950/25 no-drag-region">
+        <div className="h-10 px-3 flex items-center justify-between shrink-0">
+          <span className="text-[11px] font-medium text-stone-500">草稿 <span className="ml-1 opacity-60">{drafts.length}</span></span>
+          <div className="flex"><button type="button" aria-label="刷新草稿" title="刷新草稿" className={buttonClass} onClick={() => void refresh()}><RefreshCw className="w-3.5 h-3.5" /></button><button type="button" disabled={busy || !ready} aria-label="新建草稿" title="新建草稿 (⌘N)" className={buttonClass} onClick={() => void createRef.current()}><Plus className="w-3.5 h-3.5" /></button></div>
+        </div>
+        <div className="flex-1 min-h-0 overflow-y-auto px-1.5 pb-3">
+          {drafts.map((draft) => {
+            const title = documents.find((item) => item.id === draft.id)?.title || draft.title;
+            return <button type="button" key={draft.id} disabled={busy || !ready} onClick={() => void selectRef.current(draft.id)} title={title} aria-current={activeId === draft.id ? 'page' : undefined}
+              className={`w-full flex items-center gap-2 px-2 py-2 rounded-md text-xs text-left cursor-pointer disabled:opacity-50 ${activeId === draft.id ? 'bg-emerald-100/70 dark:bg-emerald-950/60 text-emerald-900 dark:text-emerald-200' : 'text-stone-600 dark:text-stone-400 hover:bg-stone-200/60 dark:hover:bg-stone-800/60'}`}><FilePenLine className="w-3.5 h-3.5 shrink-0" /><span className="truncate">{title}</span></button>;
+          })}
+        </div>
+      </aside>}
+      <section aria-label="草稿工作区" className="flex-1 min-w-0 min-h-0 flex flex-col">
+        <div className="h-10 shrink-0 flex items-stretch border-b border-stone-200/70 dark:border-stone-800 no-drag-region">
+          <button type="button" aria-label={filesVisible ? '收起草稿文件栏' : '展开草稿文件栏'} title={filesVisible ? '收起草稿文件栏' : '展开草稿文件栏'} className={`${buttonClass} m-1`} onClick={() => setFilesVisible((visible) => !visible)}><PanelLeft className="w-4 h-4" /></button>
+          <div role="tablist" aria-label="已打开的草稿" className="flex flex-1 min-w-0 overflow-x-auto">
+            {documents.map((draft) => <div key={draft.id} className={`shrink-0 max-w-52 flex items-center border-r border-stone-200/70 dark:border-stone-800 ${activeId === draft.id ? 'bg-white/70 dark:bg-stone-800/60 border-t-2 border-t-emerald-600' : 'border-t-2 border-t-transparent'}`}>
+              <button type="button" role="tab" aria-selected={activeId === draft.id} aria-controls={`draft-panel-${draft.id}`} id={`draft-tab-${draft.id}`} disabled={busy} className="min-w-0 truncate px-3 h-full text-xs cursor-pointer" onClick={() => void selectRef.current(draft.id)}>{draft.title}</button>
+              <button type="button" disabled={busy} aria-label={`关闭草稿标签：${draft.title}`} title="关闭标签，不删除草稿" className={`${buttonClass} mr-1 shrink-0`} onClick={() => closeTab(draft.id)}><X className="w-3 h-3" /></button>
+            </div>)}
+          </div>
+          <button type="button" disabled={busy || !ready} aria-label="新建草稿标签" title="新建草稿 (⌘N)" className={`${buttonClass} m-1 shrink-0`} onClick={() => void createRef.current()}><Plus className="w-4 h-4" /></button>
+          {!standalone && <button type="button" disabled={busy || !active} aria-label="在独立窗口打开当前草稿" title="在独立窗口打开当前草稿" className={`${buttonClass} m-1 shrink-0 flex items-center gap-1.5 text-xs`} onClick={() => void run(async () => { if (activeId) await WindowService.OpenDraftWindow(scope, activeId); })}><ExternalLink className="w-3.5 h-3.5" /><span className="hidden lg:inline">独立窗口</span></button>}
+        </div>
+        {error && <div role="alert" className="px-4 py-2 text-xs text-rose-600 no-drag-region">{error}</div>}
+        {!ready && <div className="p-6 text-xs text-stone-400 no-drag-region">正在打开草稿…</div>}
+        {ready && !active && <div className="flex-1 flex flex-col items-center justify-center gap-3 text-stone-400 no-drag-region"><span className="text-sm">选择左侧草稿，或直接新建</span><button type="button" disabled={busy} className="text-xs text-emerald-700 dark:text-emerald-400 cursor-pointer" onClick={() => void createRef.current()}>新建草稿 ⌘N</button></div>}
+        {documents.map((draft) => <div key={draft.id} role="tabpanel" id={`draft-panel-${draft.id}`} aria-labelledby={`draft-tab-${draft.id}`} className={activeId === draft.id ? 'flex-1 min-h-0' : 'hidden'}>
+          <DraftDocument draft={draft} scope={scope} active={activeId === draft.id} shortcutsEnabled={shortcutsEnabled && !busy && activeId === draft.id} registerGuard={registerGuard} onMetadata={metadata} onDeleted={deleted} />
+        </div>)}
+      </section>
     </div>
-    {error && <p role="alert" className="text-xs text-rose-600">{error}</p>}
-    {!drafts.length && !error && <div className="py-20 text-center text-sm text-stone-400">暂无草稿，按 ⌘N 新建。</div>}
-    {drafts.map((draft) => <div key={draft.id} className="flex items-center rounded-xl border border-stone-200 dark:border-stone-800 bg-white/70 dark:bg-stone-900/60 hover:border-emerald-500">
-      <button type="button" onClick={() => void openRef.current(draft.id)} className="flex-1 min-w-0 text-left p-4 rounded-xl cursor-pointer">
-      <div className="flex items-center gap-2"><FilePenLine className="w-4 h-4 shrink-0 text-stone-400" /><h3 className="truncate text-sm font-medium">{draft.title}</h3></div>
-      <div className="mt-2 text-[11px] text-stone-400">{new Date(draft.updated_at).toLocaleString()}</div>
-      </button>
-      <button type="button" aria-label={`删除草稿：${draft.title}`} title="删除草稿" className="p-2 mr-3 rounded-md text-stone-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950 cursor-pointer" onClick={() => { setDeleteError(''); setDeleteTarget(draft); }}><Trash2 className="w-4 h-4" /></button>
-    </div>)}
-    {deleteTarget && <DeleteDraftDialog title={deleteTarget.title} busy={deleting} error={deleteError} onCancel={() => { setDeleteTarget(null); void load(); }} onConfirm={() => void deleteDraft()} />}
-  </div></div>;
+  </div>;
 }
 
-function DraftDocument({ draft, scope, shortcutsEnabled, leaveGuardRef, onBack, onNew, creating, createError }: {
-  draft: Draft; scope: string; shortcutsEnabled: boolean; leaveGuardRef: LeaveGuard;
-  onBack: () => void; onNew: () => void; creating: boolean; createError: string;
+function DraftDocument({ draft, scope, active, shortcutsEnabled, registerGuard, onMetadata, onDeleted }: {
+  draft: Draft; scope: string; active: boolean; shortcutsEnabled: boolean;
+  registerGuard: (id: string, guard: Guard | null) => void;
+  onMetadata: (draft: Draft) => void; onDeleted: (id: string) => void;
 }) {
   const editorRef = useRef<DraftEditorRef>(null);
   const bodyRef = useRef(draft.body);
@@ -149,6 +257,7 @@ function DraftDocument({ draft, scope, shortcutsEnabled, leaveGuardRef, onBack, 
   const flushRef = useRef<() => Promise<boolean>>(async () => true);
   flushRef.current = async () => {
     if (deletedRef.current) return true;
+    if (editorRef.current?.composing()) { setError('请先完成当前输入，再切换或关闭窗口。'); return false; }
     if (timerRef.current !== null) { window.clearTimeout(timerRef.current); timerRef.current = null; }
     while (true) {
       if (savingRef.current) { if (!(await savingRef.current)) return false; continue; }
@@ -163,6 +272,7 @@ function DraftDocument({ draft, scope, shortcutsEnabled, leaveGuardRef, onBack, 
         .then((saved) => {
           if (!saved) throw new Error('未收到草稿保存结果');
           savedRef.current = saved;
+          onMetadata({ ...saved, body: bodyRef.current, title: draftTitle(bodyRef.current) });
           if (mountedRef.current) { setStatus(bodyRef.current === body ? 'saved' : 'unsaved'); setError(''); }
           return true;
         }).catch((error) => {
@@ -178,22 +288,56 @@ function DraftDocument({ draft, scope, shortcutsEnabled, leaveGuardRef, onBack, 
 
   useEffect(() => {
     mountedRef.current = true;
-    const guard = () => deletingRef.current ? Promise.resolve(false) : flushRef.current();
-    leaveGuardRef.current = guard;
+    const guard = () => deletedRef.current ? Promise.resolve(true) : deletingRef.current ? Promise.resolve(false) : flushRef.current();
+    registerGuard(draft.id, guard);
     const beforeUnload = () => { void flushRef.current(); };
     window.addEventListener('beforeunload', beforeUnload);
-    requestAnimationFrame(() => editorRef.current?.focus());
     return () => {
       mountedRef.current = false;
       if (timerRef.current !== null) window.clearTimeout(timerRef.current);
-      if (leaveGuardRef.current === guard) leaveGuardRef.current = null;
+      registerGuard(draft.id, null);
       window.removeEventListener('beforeunload', beforeUnload);
       void flushRef.current();
     };
-  }, [leaveGuardRef]);
+  }, [draft.id, registerGuard]);
+
+  const refreshRef = useRef<() => Promise<void>>(async () => {});
+  refreshRef.current = async () => {
+    if (savingRef.current) await savingRef.current;
+    if (deletedRef.current || deletingRef.current || conflictRef.current || bodyRef.current !== savedRef.current.body) return;
+    const baseline = savedRef.current;
+    try {
+      const loaded = await VaultService.GetDraft(scope, draft.id);
+      if (!loaded || !mountedRef.current || savingRef.current || savedRef.current.version !== baseline.version || bodyRef.current !== baseline.body) return;
+      if (loaded.version !== baseline.version) {
+        // 外部版本成为新的编辑基线，同时清除针对旧正文的撤销历史。
+        savedRef.current = loaded; bodyRef.current = loaded.body;
+        editorRef.current?.setValue(loaded.body, true);
+        editorRef.current?.highlight(findMode ? query : '', 0);
+        setFindBody(loaded.body); setIndex(0); setStatus('saved'); setError('');
+        onMetadata(loaded);
+      }
+    } catch (error) { if (mountedRef.current) setError(String(error)); }
+  };
+  useEffect(() => {
+    const stop = Events.On('draft:changed', (event) => {
+      const change = event.data as DraftChange;
+      if (change.vault_path !== scope || change.id !== draft.id || deletingRef.current) return;
+      if (change.kind === 'deleted' && !savingRef.current && !conflictRef.current && bodyRef.current === savedRef.current.body) {
+        deletedRef.current = true; onDeleted(draft.id);
+      } else void refreshRef.current();
+    });
+    const focus = () => void refreshRef.current();
+    window.addEventListener('focus', focus);
+    return () => { stop(); window.removeEventListener('focus', focus); };
+  }, [draft.id, scope, onDeleted]);
+  useEffect(() => {
+    if (active) { editorRef.current?.focus(); void refreshRef.current(); }
+  }, [active]);
 
   const changeBody = (body: string) => {
     bodyRef.current = body;
+    onMetadata({ ...savedRef.current, body, title: draftTitle(body) });
     setFindBody(body);
     setStatus(conflictRef.current ? 'conflict' : 'unsaved');
     if (timerRef.current !== null) window.clearTimeout(timerRef.current);
@@ -237,6 +381,7 @@ function DraftDocument({ draft, scope, shortcutsEnabled, leaveGuardRef, onBack, 
       const loaded = await VaultService.GetDraft(scope, draft.id);
       if (!loaded) return;
       savedRef.current = loaded; bodyRef.current = loaded.body; conflictRef.current = false;
+      onMetadata(loaded);
       editorRef.current?.setValue(loaded.body, true);
       editorRef.current?.highlight(findMode ? query : '', 0);
       setFindBody(loaded.body); setIndex(0); setStatus('saved'); setError(''); setReloadConfirm(false);
@@ -254,25 +399,20 @@ function DraftDocument({ draft, scope, shortcutsEnabled, leaveGuardRef, onBack, 
       }
       await VaultService.DeleteDraft(scope, draft.id, savedRef.current.version);
       deletedRef.current = true;
-      onBack();
+      onDeleted(draft.id);
     } catch (error) { setDeleteError(String(error)); }
     finally { deletingRef.current = false; setDeleting(false); }
   };
   const actionClass = 'px-2 py-1 rounded-md hover:bg-stone-100 dark:hover:bg-stone-800 text-xs cursor-pointer disabled:opacity-40';
-  return <div className="h-full drag-region"><div className="draft-document h-full flex flex-col max-w-4xl mx-auto p-6 gap-3">
-    <div className="flex items-center justify-between shrink-0">
-      <button type="button" className={`${actionClass} flex items-center gap-1`} onClick={async () => { if (await flushRef.current()) onBack(); }}><ArrowLeft className="w-3.5 h-3.5" />草稿列表</button>
-      <div className="flex items-center gap-2 text-[11px] text-stone-400"><span aria-live="polite">{status === 'saving' ? '保存中…' : status === 'unsaved' ? '待保存' : status === 'failed' ? '保存失败' : status === 'conflict' ? '保存冲突' : ''}</span>
-        <button type="button" className={`${actionClass} flex items-center gap-1 hover:text-rose-600`} onClick={() => { setDeleteError(''); setDeleteConfirm(true); }}><Trash2 className="w-3.5 h-3.5" />删除草稿</button>
-        <button type="button" className={actionClass} title="新建草稿 (⌘N)" disabled={creating} onClick={onNew}>新建草稿 ⌘N</button></div>
-    </div>
+  return <div className="h-full drag-region"><div className="draft-document h-full flex flex-col px-4 py-2 gap-2">
     <div role="toolbar" aria-label="草稿编辑工具" className="flex items-center gap-1 text-stone-500 shrink-0">
       <button type="button" className={actionClass} onClick={() => openFind('find')}>查找 ⌘F</button>
       <button type="button" className={actionClass} onClick={() => openFind('replace')}>替换 ⌘⇧R</button>
-      <span className="ml-auto text-[11px]">⌘⇧L 多行末尾编辑 · Esc 退出多光标</span>
+      <span aria-live="polite" className="ml-auto text-[11px]">{status === 'saving' ? '保存中…' : status === 'unsaved' ? '待保存' : status === 'failed' ? '保存失败' : status === 'conflict' ? '保存冲突' : ''}</span>
+      <button type="button" className={`${actionClass} flex items-center gap-1 hover:text-rose-600`} onClick={() => { setDeleteError(''); setDeleteConfirm(true); }}><Trash2 className="w-3.5 h-3.5" /><span className="hidden sm:inline">删除草稿</span></button>
     </div>
-    {(error || createError) && <div role="alert" className="shrink-0 rounded-lg border border-amber-300 p-3 text-xs text-amber-800 dark:text-amber-300 space-y-2">
-      <p>{error || createError}</p><div className="flex gap-2">
+    {error && <div role="alert" className="shrink-0 rounded-lg border border-amber-300 p-3 text-xs text-amber-800 dark:text-amber-300 space-y-2">
+      <p>{error}</p><div className="flex gap-2">
         <button type="button" className={actionClass} onClick={() => void copy()}>复制草稿</button>
         {!conflictRef.current && <button type="button" className={actionClass} onClick={() => void flushRef.current()}>重试保存</button>}
         <button type="button" className={actionClass} onClick={() => setReloadConfirm(true)}>重新加载</button>

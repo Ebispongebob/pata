@@ -164,9 +164,14 @@ func (s *VaultService) GetDraft(vaultPath, id string) (*Draft, error) {
 	return readDraft(v, id)
 }
 
-func (s *VaultService) CreateDraft(vaultPath string) (*Draft, error) {
+func (s *VaultService) CreateDraft(vaultPath string) (draft *Draft, err error) {
 	s.draftMu.Lock()
-	defer s.draftMu.Unlock()
+	defer func() {
+		s.draftMu.Unlock()
+		if err == nil {
+			s.notifyDraftChange(vaultPath, draft.ID, "saved")
+		}
+	}()
 	v, err := s.draftVault(vaultPath)
 	if err != nil {
 		return nil, err
@@ -183,9 +188,14 @@ func (s *VaultService) CreateDraft(vaultPath string) (*Draft, error) {
 }
 
 // SaveDraft 比较客户端读取的版本，避免重扫或另一编辑者更新后覆盖内容。
-func (s *VaultService) SaveDraft(input SaveDraftInput) (*Draft, error) {
+func (s *VaultService) SaveDraft(input SaveDraftInput) (draft *Draft, err error) {
 	s.draftMu.Lock()
-	defer s.draftMu.Unlock()
+	defer func() {
+		s.draftMu.Unlock()
+		if err == nil {
+			s.notifyDraftChange(input.VaultPath, input.ID, "saved")
+		}
+	}()
 	v, err := s.draftVault(input.VaultPath)
 	if err != nil {
 		return nil, err
@@ -208,9 +218,14 @@ func (s *VaultService) SaveDraft(input SaveDraftInput) (*Draft, error) {
 }
 
 // DeleteDraft 检查客户端版本后删除原文；已删除的草稿不会被重复删除或重新创建。
-func (s *VaultService) DeleteDraft(vaultPath, id, version string) error {
+func (s *VaultService) DeleteDraft(vaultPath, id, version string) (err error) {
 	s.draftMu.Lock()
-	defer s.draftMu.Unlock()
+	defer func() {
+		s.draftMu.Unlock()
+		if err == nil {
+			s.notifyDraftChange(vaultPath, id, "deleted")
+		}
+	}()
 	v, err := s.draftVault(vaultPath)
 	if err != nil {
 		return err
@@ -236,4 +251,8 @@ func (s *VaultService) DeleteDraft(vaultPath, id, version string) error {
 		return fmt.Errorf("草稿删除失败")
 	}
 	return nil
+}
+
+func (s *VaultService) notifyDraftChange(vaultPath, id, kind string) {
+	s.dispatchEvent("draft:changed", map[string]string{"vault_path": vaultPath, "id": id, "kind": kind})
 }

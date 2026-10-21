@@ -1812,9 +1812,14 @@ func (s *VaultService) GetThemePreference() (string, error) {
 }
 
 // SetThemePreference persists the theme preference ("system", "light", or "dark").
-func (s *VaultService) SetThemePreference(theme string) error {
+func (s *VaultService) SetThemePreference(theme string) (err error) {
 	s.mu.Lock()
-	defer s.mu.Unlock()
+	defer func() {
+		s.mu.Unlock()
+		if err == nil {
+			s.dispatchEvent("appearance:changed", nil)
+		}
+	}()
 	theme = strings.TrimSpace(strings.ToLower(theme))
 	if theme != "system" && theme != "light" && theme != "dark" {
 		return fmt.Errorf("无效的主题选项: %s，仅支持 system, light, dark", theme)
