@@ -274,6 +274,9 @@ func TestDraftUIIntegrationServer(t *testing.T) {
 	if _, err := s.CreateNote(CreateNoteInput{Title: "普通笔记保持原样", Body: "原有笔记正文\n"}); err != nil {
 		t.Fatal(err)
 	}
+	if os.Getenv("PATA_SEARCH_UI") == "1" {
+		seedSearchIntegrationData(t, s)
+	}
 	listener, err := net.Listen("tcp", "127.0.0.1:"+port)
 	if err != nil {
 		t.Fatal(err)
@@ -335,6 +338,16 @@ func TestDraftUIIntegrationServer(t *testing.T) {
 			}
 		case "ListNotes":
 			value, callErr = s.ListNotes()
+		case "SearchAll":
+			value, callErr = s.SearchAll(arg(0))
+		case "ListTasks":
+			value, callErr = s.ListTasks()
+		case "GetTask":
+			value, callErr = s.GetTask(arg(0))
+		case "GetActivity":
+			value, callErr = s.GetActivity(arg(0))
+		case "ListActivitiesByTask":
+			value, callErr = s.ListActivitiesByTask(arg(0))
 		case "ListNoteRefs":
 			value, callErr = s.ListNoteRefs()
 		case "GetNote":

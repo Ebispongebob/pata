@@ -51,10 +51,10 @@ type MemoryIndex struct {
 	vaultRoot    string
 	tasks        map[string]*Task
 	notes        map[string]*Note
-	dayPlans     map[string]*DayPlan // key: date YYYY-MM-DD
-	files        map[string]FileResource // key: relative slash path, e.g. "files/doc.pdf"
-	fileToID     map[string]string   // absPath -> entity ID
-	idToFile     map[string]string   // entity ID -> absPath
+	dayPlans     map[string]*DayPlan         // key: date YYYY-MM-DD
+	files        map[string]FileResource     // key: relative slash path, e.g. "files/doc.pdf"
+	fileToID     map[string]string           // absPath -> entity ID
+	idToFile     map[string]string           // entity ID -> absPath
 	activityLocs map[string]ActivityLocation // activityID -> location
 	baselines    map[string]FileBaseline
 	danglingRefs []DanglingRef
@@ -802,6 +802,11 @@ func matchTagsCaseInsensitive(tags []string, lowerQ string) bool {
 		}
 	}
 	return false
+}
+
+// SearchSnippet 提取包含关键词的正文片段，供索引搜索和独立草稿搜索共用。
+func SearchSnippet(body, query string) string {
+	return extractSnippet(body, strings.ToLower(strings.TrimSpace(query)))
 }
 
 func extractSnippet(body, lowerQ string) string {

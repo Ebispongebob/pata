@@ -75,6 +75,7 @@ export default function App() {
   const detailRef = useRef<TaskDetailHandle>(null);
   const detailOrigin = useDetailOrigin();
   const [focusNoteId, setFocusNoteId] = useState<string | null>(null);
+  const [focusDraftId, setFocusDraftId] = useState<string | null>(null);
   const [newDraftRequest, setNewDraftRequest] = useState<number | null>(null);
   const draftSequenceRef = useRef(0);
   const newDraftBusyRef = useRef(false);
@@ -119,6 +120,21 @@ export default function App() {
     void guarded(() => {
       setIsSettingsOpen(false);
       if (nav !== activeNav) setActiveNav(nav);
+    });
+  };
+
+  const searchActionRef = useRef<() => void>(() => {});
+  searchActionRef.current = () => {
+    if (isSearchOpen) { setIsSearchOpen(false); return; }
+    if (vaultBusy || hasBlockingDraftDialog()) return;
+    void guarded(() => setIsSearchOpen(true));
+  };
+
+  const handleOpenDraft = (draftId: string) => {
+    void guarded(() => {
+      setIsSettingsOpen(false);
+      setActiveNav('draft');
+      setFocusDraftId(draftId);
     });
   };
 
@@ -316,13 +332,13 @@ export default function App() {
       }
 
       const target = e.target as HTMLElement | null;
-      if (target?.isContentEditable || target?.closest?.('.vditor')) {
+      if ((target?.isContentEditable || target?.closest?.('.vditor')) && !target?.closest?.('.draft-editor')) {
         return;
       }
 
       if ((e.metaKey || e.ctrlKey) && (e.key === 'k' || e.key === 'p' || e.key === 'K' || e.key === 'P')) {
         e.preventDefault();
-        setIsSearchOpen((prev) => !prev);
+        if (!e.isComposing && e.keyCode !== 229) searchActionRef.current();
       }
     };
 
@@ -371,6 +387,7 @@ export default function App() {
       if (st?.configured && st.path !== prevPath) {
         setDetailSelection(null);
         setFocusNoteId(null);
+        setFocusDraftId(null);
         setNoteOrigin(null);
         setTodayDate(null);
         setSelectedTag(null);
@@ -528,7 +545,7 @@ export default function App() {
             </button>
             {/* Quick Search */}
             <button
-              onClick={() => setIsSearchOpen(true)}
+              onClick={() => searchActionRef.current()}
               aria-label="全局搜索"
               className={`min-w-0 h-8 flex items-center px-2.5 py-1.5 rounded-md text-xs text-stone-500 dark:text-stone-400 hover:text-stone-800 dark:hover:text-stone-200 hover:bg-stone-200/60 dark:hover:bg-stone-800/60 border border-stone-200/80 dark:border-stone-800/80 bg-stone-50/70 dark:bg-stone-900/50 transition-colors shadow-2xs cursor-pointer group ${sidebarCollapsed ? 'w-full justify-center' : 'flex-1 justify-between'}`}
               title="全局搜索 (⌘K / ⌘P)"
@@ -791,6 +808,7 @@ export default function App() {
             {activeNav === 'draft' && (
               <DraftView key={vaultStatus?.path ?? 'draft'} vaultStatus={vaultStatus} onSelectVault={handleSelectVault} vaultBusy={vaultBusy}
                 newDraftRequest={newDraftRequest} onNewDraftRequestConsumed={() => setNewDraftRequest(null)}
+                initialDraftId={focusDraftId} onInitialDraftConsumed={() => setFocusDraftId(null)}
                 shortcutsEnabled={!isSettingsOpen && !isSearchOpen && !showHealthModal} leaveGuardRef={leaveGuardRef} />
             )}
 
@@ -831,10 +849,12 @@ export default function App() {
 
       {/* Global Quick Search Overlay */}
       <SearchOverlay
+        key={vaultStatus?.path ?? 'unconfigured-search'}
         isOpen={isSearchOpen}
         onClose={() => setIsSearchOpen(false)}
         onOpenTask={handleOpenTask}
         onOpenNote={handleOpenNote}
+        onOpenDraft={handleOpenDraft}
         onOpenTodayDate={handleOpenTodayDate}
         vaultOpen={vaultStatus?.open}
       />

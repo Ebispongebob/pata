@@ -14,11 +14,13 @@ interface Props {
   vaultBusy: boolean;
   newDraftRequest: number | null;
   onNewDraftRequestConsumed: () => void;
+  initialDraftId: string | null;
+  onInitialDraftConsumed: () => void;
   shortcutsEnabled: boolean;
   leaveGuardRef: LeaveGuard;
 }
 
-export function DraftView({ vaultStatus, onSelectVault, vaultBusy, newDraftRequest, onNewDraftRequestConsumed, shortcutsEnabled, leaveGuardRef }: Props) {
+export function DraftView({ vaultStatus, onSelectVault, vaultBusy, newDraftRequest, onNewDraftRequestConsumed, initialDraftId, onInitialDraftConsumed, shortcutsEnabled, leaveGuardRef }: Props) {
   const [drafts, setDrafts] = useState<Draft[]>([]);
   const [selected, setSelected] = useState<Draft | null>(null);
   const [error, setError] = useState('');
@@ -28,12 +30,17 @@ export function DraftView({ vaultStatus, onSelectVault, vaultBusy, newDraftReque
   const [deleting, setDeleting] = useState(false);
   const deletingRef = useRef(false);
   const creatingRef = useRef(false);
+  const selectionSequence = useRef(0);
   const scope = vaultStatus?.path ?? '';
+  useEffect(() => () => { ++selectionSequence.current; }, []);
 
   const load = useCallback(async () => {
     if (!vaultStatus?.open) return;
-    try { setDrafts(((await VaultService.ListDrafts(scope)) ?? []).filter((item): item is Draft => item !== null)); setError(''); }
-    catch (error) { setError(String(error)); }
+    const sequence = selectionSequence.current;
+    try {
+      setDrafts(((await VaultService.ListDrafts(scope)) ?? []).filter((item): item is Draft => item !== null));
+      if (sequence === selectionSequence.current) setError('');
+    } catch (error) { if (sequence === selectionSequence.current) setError(String(error)); }
   }, [scope, vaultStatus?.open]);
   useEffect(() => { void load(); }, [load]);
 
@@ -41,11 +48,12 @@ export function DraftView({ vaultStatus, onSelectVault, vaultBusy, newDraftReque
   createRef.current = async (guard = true) => {
     if (creatingRef.current || !vaultStatus?.open) return;
     creatingRef.current = true;
+    const sequence = ++selectionSequence.current;
     setBusy(true);
     try {
       if (guard && leaveGuardRef.current && !(await leaveGuardRef.current())) return;
       const draft = await VaultService.CreateDraft(scope);
-      if (draft) { setSelected(draft); setError(''); }
+      if (draft && sequence === selectionSequence.current) { setSelected(draft); setError(''); }
     } catch (error) { setError(String(error)); }
     finally { creatingRef.current = false; setBusy(false); }
   };
@@ -54,6 +62,22 @@ export function DraftView({ vaultStatus, onSelectVault, vaultBusy, newDraftReque
     onNewDraftRequestConsumed();
     void createRef.current(false);
   }, [newDraftRequest, vaultStatus?.open, onNewDraftRequestConsumed]);
+
+  const openRef = useRef<(id: string, guard?: boolean) => Promise<void>>(async () => {});
+  openRef.current = async (id, guard = true) => {
+    if (creatingRef.current) return;
+    const sequence = ++selectionSequence.current;
+    try {
+      if (guard && leaveGuardRef.current && !(await leaveGuardRef.current())) return;
+      const draft = await VaultService.GetDraft(scope, id);
+      if (draft && sequence === selectionSequence.current) { setSelected(draft); setError(''); }
+    } catch (error) { if (sequence === selectionSequence.current) setError(String(error)); }
+  };
+  useEffect(() => {
+    if (!initialDraftId || !vaultStatus?.open) return;
+    onInitialDraftConsumed();
+    void openRef.current(initialDraftId, false);
+  }, [initialDraftId, vaultStatus?.open, onInitialDraftConsumed]);
 
   const deleteDraft = async () => {
     if (!deleteTarget || deletingRef.current) return;
@@ -73,8 +97,8 @@ export function DraftView({ vaultStatus, onSelectVault, vaultBusy, newDraftReque
     <button type="button" disabled={vaultBusy} onClick={onSelectVault} className="px-3 py-2 rounded-md bg-emerald-700 text-white text-xs">选择 Vault 目录</button>
   </div>;
 
-  if (selected) return <DraftDocument key={selected.id} draft={selected} scope={scope} shortcutsEnabled={shortcutsEnabled} leaveGuardRef={leaveGuardRef}
-    onBack={() => { setSelected(null); void load(); }} onNew={() => void createRef.current()} creating={busy} createError={error} />;
+  if (selected) return <DraftDocument key={`${selected.id}:${selected.version}`} draft={selected} scope={scope} shortcutsEnabled={shortcutsEnabled} leaveGuardRef={leaveGuardRef}
+    onBack={() => { ++selectionSequence.current; setSelected(null); void load(); }} onNew={() => void createRef.current()} creating={busy} createError={error} />;
 
   return <div className="h-full overflow-y-auto p-6"><div className="max-w-3xl mx-auto space-y-5">
     <div className="flex items-center justify-between">
@@ -84,10 +108,7 @@ export function DraftView({ vaultStatus, onSelectVault, vaultBusy, newDraftReque
     {error && <p role="alert" className="text-xs text-rose-600">{error}</p>}
     {!drafts.length && !error && <div className="py-20 text-center text-sm text-stone-400">暂无草稿，按 ⌘N 新建。</div>}
     {drafts.map((draft) => <div key={draft.id} className="flex items-center rounded-xl border border-stone-200 dark:border-stone-800 bg-white/70 dark:bg-stone-900/60 hover:border-emerald-500">
-      <button type="button" onClick={async () => {
-      try { const loaded = await VaultService.GetDraft(scope, draft.id); if (loaded) setSelected(loaded); }
-      catch (error) { setError(String(error)); }
-    }} className="flex-1 min-w-0 text-left p-4 rounded-xl cursor-pointer">
+      <button type="button" onClick={() => void openRef.current(draft.id)} className="flex-1 min-w-0 text-left p-4 rounded-xl cursor-pointer">
       <div className="flex items-center gap-2"><FilePenLine className="w-4 h-4 shrink-0 text-stone-400" /><h3 className="truncate text-sm font-medium">{draft.title}</h3></div>
       <div className="mt-2 text-[11px] text-stone-400">{new Date(draft.updated_at).toLocaleString()}</div>
       </button>

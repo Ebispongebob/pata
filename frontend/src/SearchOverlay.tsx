@@ -3,6 +3,7 @@ import {
   Search,
   CheckSquare,
   FileText,
+  FilePenLine,
   MessageSquare,
   Paperclip,
   AlertCircle,
@@ -18,6 +19,7 @@ interface SearchOverlayProps {
   onClose: () => void;
   onOpenTask: (taskId: string) => void;
   onOpenNote: (noteId: string) => void;
+  onOpenDraft: (draftId: string) => void;
   onOpenTodayDate?: (date: string) => void;
   vaultOpen?: boolean;
 }
@@ -27,11 +29,13 @@ export function SearchOverlay({
   onClose,
   onOpenTask,
   onOpenNote,
+  onOpenDraft,
   onOpenTodayDate,
   vaultOpen = true,
 }: SearchOverlayProps) {
   const [query, setQuery] = useState('');
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
   const [results, setResults] = useState<SearchResultItem[]>([]);
   const [activityTaskMap, setActivityTaskMap] = useState<Record<string, string>>({});
   const [selectedIndex, setSelectedIndex] = useState<number>(0);
@@ -62,14 +66,19 @@ export function SearchOverlay({
       setResults([]);
       setActivityTaskMap({});
       setLoading(false);
+      setError('');
       setSelectedIndex(0);
     }
   }, [isOpen]);
 
   // Debounced search with sequence token race-condition guard
   useEffect(() => {
-    if (!isOpen) return;
+    if (!isOpen || !vaultOpen) return;
 
+    const seq = ++seqRef.current;
+    setError('');
+    setResults([]);
+    setActivityTaskMap({});
     const trimmed = query.trim();
     if (!trimmed) {
       ++seqRef.current;
@@ -82,7 +91,6 @@ export function SearchOverlay({
 
     setLoading(true);
     const timer = setTimeout(async () => {
-      const seq = ++seqRef.current;
       try {
         const rawResults = await VaultService.SearchAll(trimmed);
         if (seq !== seqRef.current) return;
@@ -116,6 +124,7 @@ export function SearchOverlay({
         if (seq !== seqRef.current) return;
         console.error('SearchAll query error:', err);
         setResults([]);
+        setError('搜索失败，请稍后重试。');
       } finally {
         if (seq === seqRef.current) {
           setLoading(false);
@@ -125,25 +134,28 @@ export function SearchOverlay({
 
     return () => {
       clearTimeout(timer);
+      ++seqRef.current;
     };
-  }, [query, isOpen]);
+  }, [query, isOpen, vaultOpen]);
 
-  // Group results by type (Task -> Note -> Activity -> File)
+  // 按任务、笔记、草稿、记录、附件排列。
   const tasks = useMemo(() => results.filter((r) => r.type === 'task'), [results]);
   const notes = useMemo(() => results.filter((r) => r.type === 'note'), [results]);
+  const drafts = useMemo(() => results.filter((r) => r.type === 'draft'), [results]);
   const activities = useMemo(() => results.filter((r) => r.type === 'activity'), [results]);
   const files = useMemo(() => results.filter((r) => (r.type as string) === 'file'), [results]);
 
   // Truncate displayed items to first 5 per type
   const displayedTasks = useMemo(() => tasks.slice(0, 5), [tasks]);
   const displayedNotes = useMemo(() => notes.slice(0, 5), [notes]);
+  const displayedDrafts = useMemo(() => drafts.slice(0, 5), [drafts]);
   const displayedActivities = useMemo(() => activities.slice(0, 5), [activities]);
   const displayedFiles = useMemo(() => files.slice(0, 5), [files]);
 
   // Flattened displayed items for keyboard navigation index
   const displayedItems = useMemo(
-    () => [...displayedTasks, ...displayedNotes, ...displayedActivities, ...displayedFiles],
-    [displayedTasks, displayedNotes, displayedActivities, displayedFiles]
+    () => [...displayedTasks, ...displayedNotes, ...displayedDrafts, ...displayedActivities, ...displayedFiles],
+    [displayedTasks, displayedNotes, displayedDrafts, displayedActivities, displayedFiles]
   );
 
   // Keep selected index within bounds
@@ -173,6 +185,9 @@ export function SearchOverlay({
       } else if (item.type === 'note') {
         onOpenNote(item.id);
         onClose();
+      } else if (item.type === 'draft') {
+        onOpenDraft(item.id);
+        onClose();
       } else if (item.type === 'activity') {
         const taskId = activityTaskMap[item.id];
         if (taskId) {
@@ -191,7 +206,7 @@ export function SearchOverlay({
         onClose();
       }
     },
-    [activityTaskMap, onOpenTask, onOpenNote, onOpenTodayDate, onClose]
+    [activityTaskMap, onOpenTask, onOpenNote, onOpenDraft, onOpenTodayDate, onClose]
   );
 
   // Keyboard navigation & a11y focus trap
@@ -246,12 +261,13 @@ export function SearchOverlay({
             ref={inputRef}
             type="text"
             role="combobox"
+            aria-label="搜索草稿、笔记、任务"
             aria-expanded={displayedItems.length > 0}
             aria-autocomplete="list"
             aria-controls="search-results-list"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="搜索任务、笔记、记录 (⌘K / ⌘P)..."
+            placeholder="搜索草稿、笔记、任务 (⌘K / ⌘P)..."
             className="flex-1 bg-transparent text-sm text-stone-900 dark:text-stone-100 placeholder-stone-400 dark:placeholder-stone-500 outline-none border-none focus:outline-none focus:ring-0"
           />
           {loading && <Loader2 className="w-3.5 h-3.5 text-stone-400 animate-spin shrink-0" />}
@@ -290,9 +306,11 @@ export function SearchOverlay({
               <Search className="w-6 h-6 mx-auto mb-2 opacity-40" />
               <p className="text-xs">输入关键词跨类型快速搜索</p>
               <p className="text-[11px] mt-1 text-stone-400/80">
-                覆盖任务标题与描述、笔记内容、以及任务记录
+                搜索草稿、笔记和任务的标题、正文
               </p>
             </div>
+          ) : error ? (
+            <p role="alert" className="py-12 text-center text-xs text-rose-600 dark:text-rose-400">{error}</p>
           ) : loading && results.length === 0 ? (
             <div className="py-12 text-center text-stone-400 dark:text-stone-500">
               <Loader2 className="w-5 h-5 mx-auto mb-2 animate-spin text-stone-400" />
@@ -417,7 +435,63 @@ export function SearchOverlay({
                 </div>
               )}
 
-              {/* 3. Activities Section */}
+              {/* 3. Drafts Section */}
+              {displayedDrafts.length > 0 && (
+                <div>
+                  <div className="flex items-center justify-between px-3.5 py-1.5 text-[11px] font-semibold text-stone-500 dark:text-stone-400 bg-stone-100/60 dark:bg-stone-800/40">
+                    <div className="flex items-center space-x-1.5">
+                      <FilePenLine className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                      <span>草稿</span>
+                    </div>
+                    <span className="font-mono text-[10px] text-stone-400">
+                      {drafts.length > 5 ? `显示前 5 条 / 共 ${drafts.length} 条` : `共 ${drafts.length} 条`}
+                    </span>
+                  </div>
+                  <div className="p-1 space-y-0.5">
+                    {displayedDrafts.map((draft, j) => {
+                      const globalIndex = displayedTasks.length + displayedNotes.length + j;
+                      const isSelected = selectedIndex === globalIndex;
+                      return (
+                        <div
+                          key={`draft-${draft.id}`}
+                          role="option"
+                          aria-selected={isSelected}
+                          tabIndex={-1}
+                          ref={(el) => {
+                            itemRefs.current[globalIndex] = el;
+                          }}
+                          onMouseEnter={() => setSelectedIndex(globalIndex)}
+                          onClick={() => handleItemSelect(draft)}
+                          className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-xs cursor-pointer transition-colors ${
+                            isSelected
+                              ? 'bg-stone-200/80 dark:bg-stone-800 text-stone-900 dark:text-stone-50'
+                              : 'text-stone-700 dark:text-stone-300 hover:bg-stone-100 dark:hover:bg-stone-800/50'
+                          }`}
+                        >
+                          <div className="flex items-center space-x-2.5 min-w-0 mr-2 flex-1">
+                            <FilePenLine className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 shrink-0 opacity-80" />
+                            <div className="min-w-0 flex-1">
+                              <div className="font-medium truncate">{draft.title || '(未命名草稿)'}</div>
+                              {draft.snippet && (
+                                <div className="text-[11px] text-stone-500 dark:text-stone-400 truncate mt-0.5 opacity-90">
+                                  {draft.snippet}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                          {isSelected && (
+                            <span className="text-[10px] font-mono text-stone-400 dark:text-stone-500 shrink-0">
+                              ↵ 打开
+                            </span>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* 4. Activities Section */}
               {displayedActivities.length > 0 && (
                 <div>
                   <div className="flex items-center justify-between px-3.5 py-1.5 text-[11px] font-semibold text-stone-500 dark:text-stone-400 bg-stone-100/60 dark:bg-stone-800/40">
@@ -431,7 +505,7 @@ export function SearchOverlay({
                   </div>
                   <div className="p-1 space-y-0.5">
                     {displayedActivities.map((act, k) => {
-                      const globalIndex = displayedTasks.length + displayedNotes.length + k;
+                      const globalIndex = displayedTasks.length + displayedNotes.length + displayedDrafts.length + k;
                       const isSelected = selectedIndex === globalIndex;
                       const taskId = activityTaskMap[act.id];
                       const hasTaskId = Boolean(taskId);
@@ -503,7 +577,7 @@ export function SearchOverlay({
                 </div>
               )}
 
-              {/* 4. Files Section */}
+              {/* 5. Files Section */}
               {displayedFiles.length > 0 && (
                 <div>
                   <div className="flex items-center justify-between px-3.5 py-1.5 text-[11px] font-semibold text-stone-500 dark:text-stone-400 bg-stone-100/60 dark:bg-stone-800/40">
@@ -517,7 +591,7 @@ export function SearchOverlay({
                   </div>
                   <div className="p-1 space-y-0.5">
                     {displayedFiles.map((file, m) => {
-                      const globalIndex = displayedTasks.length + displayedNotes.length + displayedActivities.length + m;
+                      const globalIndex = displayedTasks.length + displayedNotes.length + displayedDrafts.length + displayedActivities.length + m;
                       const isSelected = selectedIndex === globalIndex;
 
                       return (
