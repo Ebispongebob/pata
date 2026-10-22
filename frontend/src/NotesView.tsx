@@ -17,6 +17,7 @@ import {
   Trash2,
 } from 'lucide-react';
 import Vditor from 'vditor';
+import { bindVditorHistory } from './vditorHistory';
 import * as VaultService from '../bindings/pata/vaultservice';
 import { VaultStatus, CreateNoteInput, UpdateNoteInput } from '../bindings/pata/models';
 import { Note, LinkSource, EntityType } from '../bindings/pata/internal/storage/markdown/models';
@@ -686,6 +687,7 @@ function NoteEditor({
     isVditorMountedRef.current = true;
 
     const isDark = document.documentElement.classList.contains('dark');
+    let unbindHistory = () => {};
 
     // Vditor 离线包已裁剪至 <=8MB (从 23MB 裁剪至 7.5MB，保留 lute, highlight.js, icons, i18n, content-theme; 移除数学公式、流程图、脑图等重型图表库)
     // 若未来从 node_modules 重新同步，需参照 docs/02-foundation/spike-desktop-result.md §4 重新裁剪。
@@ -724,6 +726,7 @@ function NoteEditor({
       },
       after: () => {
         vditorRef.current = vditor;
+        unbindHistory = bindVditorHistory(vditor);
         // 如果在加载期间用户编辑了标题/标签，触发一次防抖保存检查
         const bodyNow = vditor.getValue();
         if (isDirtyRef.current(editTitleRef.current, editTagsRef.current, bodyNow)) {
@@ -748,6 +751,7 @@ function NoteEditor({
 
     return () => {
       observer.disconnect();
+      unbindHistory();
       if (debounceTimerRef.current) {
         window.clearTimeout(debounceTimerRef.current);
         debounceTimerRef.current = null;

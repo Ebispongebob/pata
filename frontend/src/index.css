@@ -399,15 +399,32 @@ textarea.bg-transparent:focus-visible,
   margin: 12px 0 !important;
 }
 
-/* Code blocks: compact padding & font */
-.vditor-reset pre,
-.vditor-editor-wrapper .vditor-reset pre {
+/* 只调整可见代码块，避免给 IR 隐藏源码增加占位和背景。 */
+.vditor-editor-wrapper .vditor-reset pre:not(.vditor-ir__marker) {
   margin-top: 4px !important;
   margin-bottom: 8px !important;
   padding: 8px 12px !important;
   font-size: 13px !important;
   line-height: 1.5 !important;
   border-radius: 6px !important;
+}
+
+/* 编辑源码时隐藏重复预览；离开代码块后恢复语法高亮预览。 */
+.vditor-editor-wrapper .vditor-ir__node--expand[data-type="code-block"] > .vditor-ir__preview {
+  display: none;
+}
+
+.vditor-editor-wrapper .vditor-ir__node--expand[data-type="code-block"] > .vditor-ir__marker--pre {
+  display: block;
+}
+
+.vditor-editor-wrapper .vditor-ir__node[data-type="code-block"] > .vditor-ir__marker--pre > code {
+  padding: 8px 12px;
+  font-family: var(--pata-font-mono);
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--pata-foreground);
+  background: var(--pata-surface-hover);
 }
 
 /* Tables: compact padding */

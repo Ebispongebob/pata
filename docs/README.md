@@ -60,3 +60,5 @@
 **阶段 12：代码与实机验收完成。** 保留既有视觉风格，建立轻量 Design Tokens 并彻底解耦交互 Accent 与品牌绿；引入可复用基础组件（`Button` / `Dialog` / `ConfirmDialog`）收敛确认弹层与弹窗；恢复全局可见的 `:focus-visible` 键盘焦点并局部隔离编辑器；校准 Note 长文本排版（15px / 1.68）；引入 `closestCenter` 算法并优化 Today dnd-kit 拖拽跟手性与占位反馈；完成 Reduce Motion 动效降级走查与零多余依赖控制。详见 [idea](12-frontend-foundation/idea.md)、[proposal](12-frontend-foundation/proposal.md)。
 
 **阶段 13：代码与实机验收完成。** 恢复 App Shell 全局三栏架构，单个可调整宽度的 Task Inspector 跨页共享；Today / Task Activity 统一时间在上布局、任务链接正常字号、一体式悬浮 Composer、人工评论原地编辑与草稿离开防护；macOS 打包签名、端到端全量回归与 BDD 契约测试通过。详见 [idea](13-app-shell-activity/idea.md)、[proposal](13-app-shell-activity/proposal.md)。
+
+阶段 4 修正 Notes 代码块与撤销（2026-10-22）：代码块编辑时隐藏重复预览，离开后恢复高亮；撤销前收录未结束防抖的编辑，支持立即撤销及重做。临时 Vault 的原生界面验证、深浅色检查、Markdown 保存和重新打开、独立 PR 分支的生产构建及 macOS 打包签名通过；本轮未新增单元测试或持久测试脚本。详见 [阶段 4 方案](04-knowledge-loop/proposal.md#notes-代码块与撤销2026-10-22-修正)。
