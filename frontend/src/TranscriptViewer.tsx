@@ -32,9 +32,9 @@ export const TranscriptViewer = forwardRef<TranscriptViewerRef, TranscriptViewer
             el.scrollIntoView({ behavior: prefersReducedMotion ? 'auto' : 'smooth', block: 'center' });
             setHighlightedId(targetBlock.id);
             if (highlightTimeoutRef.current) {
-              clearTimeout(highlightTimeoutRef.current);
+              window.clearTimeout(highlightTimeoutRef.current);
             }
-            highlightTimeoutRef.current = setTimeout(() => {
+            highlightTimeoutRef.current = window.setTimeout(() => {
               setHighlightedId(null);
             }, 1800);
           }
@@ -45,7 +45,7 @@ export const TranscriptViewer = forwardRef<TranscriptViewerRef, TranscriptViewer
     useEffect(() => {
       return () => {
         if (highlightTimeoutRef.current) {
-          clearTimeout(highlightTimeoutRef.current);
+          window.clearTimeout(highlightTimeoutRef.current);
         }
       };
     }, []);

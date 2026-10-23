@@ -17,12 +17,14 @@ var trayIcon []byte
 
 func main() {
 	vaultService := NewVaultService()
+	mcpService := newMCPService(vaultService)
 
 	app := application.New(application.Options{
 		Name:        "Pata",
 		Description: "Personal task and note workspace",
 		Services: []application.Service{
 			application.NewService(vaultService),
+			application.NewService(mcpService),
 		},
 		Assets: application.AssetOptions{
 			Handler: application.AssetFileServerFS(assets),

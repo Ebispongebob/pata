@@ -62,3 +62,5 @@
 **阶段 13：代码与实机验收完成。** 恢复 App Shell 全局三栏架构，单个可调整宽度的 Task Inspector 跨页共享；Today / Task Activity 统一时间在上布局、任务链接正常字号、一体式悬浮 Composer、人工评论原地编辑与草稿离开防护；macOS 打包签名、端到端全量回归与 BDD 契约测试通过。详见 [idea](13-app-shell-activity/idea.md)、[proposal](13-app-shell-activity/proposal.md)。
 
 阶段 4 修正 Notes 代码块与撤销（2026-10-22）：代码块编辑时隐藏重复预览，离开后恢复高亮；优先复用 Vditor 原生历史机制并配置 `undoDelay: 100` 缩短防抖窗口。临时 Vault 的原生界面验证、深浅色检查、Markdown 保存和重新打开、独立 PR 分支的生产构建及 macOS 打包签名通过；本轮未新增单元测试或持久测试脚本。详见 [阶段 4 方案](04-knowledge-loop/proposal.md#notes-代码块与撤销2026-10-22-修正)。
+
+阶段 10 增加本机 MCP：设置中启停、保存启用选择、复制接入说明；支持任务、笔记和每日记录。见 [MCP](10-settings/proposal.md#mcp)。

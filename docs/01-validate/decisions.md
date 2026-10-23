@@ -13,7 +13,7 @@
 | D09 | Notes 借鉴 Flomo 单列卡片浏览；打开后独占主内容区 | 不采用文件树 + 列表 + 编辑器三列 |
 | D10 | 编辑器首选 Vditor；Frontmatter 由 Go Core 管理 | 编辑正文与结构化元数据隔离 |
 | D11 | 数据源为本地 Markdown；初期无 SQLite | Note 仍可直接编辑 Markdown；Task/Today 的 Markdown 是内部持久化协议，推荐通过 App GUI（未来可经 CLI）操作；不需要引入数据库 |
-| D12 | MVP 不实现 CLI/MCP/内置 AI；未来 CLI 与 GUI 共用 App Core | 不以 Pi Agent 直接手改 Task/DayPlan Markdown 为官方编辑方式；CLI 可以依赖运行中的 App；IPC、自动启动、命令细节都留到未来阶段，不纳入阶段 8 |
+| D12 | MVP 不实现 CLI/内置 AI；本机 MCP 见 D47，未来 CLI 与 GUI 共用 App Core | 不以 Pi Agent 直接手改 Task/DayPlan Markdown 为官方编辑方式；CLI 可以依赖运行中的 App；IPC、自动启动、命令细节都留到未来阶段，不纳入阶段 8 |
 | D13 | 周/月复盘是 Note，不是功能模块 | 利用已有记录、由人或外部 Agent 生成 |
 | D14 | macOS MVP；Go + Wails v3 + React/TS | 小型本地应用，工程兼容性仍需 Spike |
 | D15 | 「啪嗒 / Pata」为正式产品名称 | 同名冲突和商标尚未核查 |
@@ -50,6 +50,8 @@
 | D44 | 阶段 11 从 MP3 生成**只读逐字稿 Note**：文件仍是普通 Markdown Note，导入原始 MP3 后立即创建 Note，再异步写入识别结果 | 仅**自动生成的转写正文**在 Pata 内只读，不能编辑发言/说话人/时间戳，但可选择、复制、搜索和点击时间戳播放；标题/标签仍可编辑，普通手写 Note（包括附带 MP3）不受影响。支持毫秒定位、失败重试，重新转写经确认替换整篇只读正文并保留 Note 属性与音频关联。无独立 Transcript 类型/JSON 侧车/多供应商/AI 摘要；主音频关联及时间戳链接的唯一协议待阶段 2 Schema 定稿，详见 [阶段 11](../11-audio-transcription/proposal.md) |
 | D45 | 阶段 12 保留 Pata 现有视觉和布局，仅局部优化基础组件、排版与交互一致性；shadcn/ui Nova 是工程参考，不整体换肤 | 避免为了统一技术栈让用户重新学习界面；坚持 Less is More、按需引入、不做全量重构。详见 [阶段 12](../12-frontend-foundation/proposal.md) |
 | D46 | UI 交互强调色优先跟随 macOS 系统设置，Pata 品牌绿主要用于品牌识别；成功/警告/错误使用独立语义色 | 在 Wails/WKWebView 实机验证 Accent 来源与更新；无法可靠读取时明确降级，不把固定绿/蓝冒充系统色，不为此增加新用户配置项。详见 [阶段 12](../12-frontend-foundation/proposal.md) |
+
+| D47 | 本机 MCP 在设置中启停，首次关闭，启用后重启恢复 | 支持任务、笔记和每日记录；仅监听回环地址，更换资料库后需重新启用。详见 [阶段 10](../10-settings/proposal.md#mcp) |
 
 ## 不轻易改变的设计约束
 
