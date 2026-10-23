@@ -164,14 +164,15 @@ func (s *MCPService) Start() (MCPStatus, error) {
 func (s *MCPService) Stop() (MCPStatus, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if err := s.saveEnabled(false); err != nil {
-		return s.statusLocked(), err
-	}
 	if s.runtime != nil {
 		s.runtime.stop()
 		s.runtime = nil
 	}
+	s.enabled = false
 	s.err = ""
+	if err := s.saveEnabled(false); err != nil {
+		s.err = "MCP 服务已停止，但关闭状态未保存。下次打开 Pata 时可能自动启动。" + err.Error()
+	}
 	return s.statusLocked(), nil
 }
 
