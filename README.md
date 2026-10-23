@@ -1,39 +1,59 @@
-# 啪嗒 · Pata
+# Pata · 啪嗒
 
-**记下一点，完成一件。**
+**English | [简体中文](README.zh-CN.md)**
 
-一款极简、本地优先、以 Markdown 为唯一业务数据源的 macOS 个人工作工具。
+**Capture a thought. Finish a task.**
 
-**Today 管当下，Tasks 管进展，Notes 管沉淀，Activity 负责留痕，标签负责关联。**
+Pata is a local-first macOS app for personal work. **Today keeps you focused, Tasks tracks what needs doing, Notes holds what you learn, Activity preserves what happened, and tags connect it all.**
 
-> **当前状态（2026-10）**：阶段 1～11 的桌面代码与 macOS 实机验收已完成；阶段 12「前端基础设施与设计系统整理」设计已定稿，尚未实施。实际进度以 [docs/README.md](docs/README.md) 为准。
+Instead of adding layers of project management, Pata brings your tasks, daily records, and notes into one lightweight workspace.
 
-## 项目推进方式
+## Features
 
-`docs/` **按交付顺序划分实施阶段，不按功能模块划分**。每阶段以 `idea.md` 和 `proposal.md` 记录目标、实现与验收。阶段 1～11 已完成；第 12 阶段为 [前端基础设施与设计系统整理](docs/12-frontend-foundation/proposal.md)，保留现有视觉，按需统一组件、Tokens 与交互体验。
+- **Today**: Plan your day and capture what happened. A task's due date is independent of the days you plan to work on it.
+- **Tasks**: Keep tasks either open or completed, with a running activity history. No complex workflow states or priorities.
+- **Notes**: Browse a single-column note list, write in Markdown, and connect ideas with tags and `[[note references]]`.
+- **Activity**: Record comments on tasks or standalone daily entries. Task activity appears consistently in both the task details and the Today timeline.
+- **Search and attachments**: Search tasks, notes, activity, and attachment filenames. Import and reference files, with native macOS preview support.
+- **Audio transcripts**: Turn an imported MP3 into a Markdown transcript with speakers and millisecond timestamps using your own API key. Jump between the transcript and its audio player.
+- **Local MCP**: Let an external agent search, read, and create tasks and notes, or append activity to a task or day plan.
 
-**完整阶段清单：[docs/README.md](docs/README.md)**
+## Principles
 
-> 开发注意：`frontend/bindings/` 由 wails3 CLI 生成，须用与 `go.mod` 一致的 **v3.0.0-beta.28**（`wails3 generate bindings -clean=true -ts -i`），其他版本会触发全量风格迁移。
+**Less is More · Record Once · Local First**
 
-## 体验 UI 原型
+- Just **Today / Tasks / Notes** as the three main destinations. No Projects or Inbox.
+- **Markdown + YAML frontmatter** is the source of truth. No separate application database is required. The Vault stores records in `notes/`, `tasks/`, and `plans/`, and original attachments in `files/`.
+- Activity belongs to a Task or DayPlan, so the same record does not need to be stored twice.
+- There is no built-in general-purpose AI chat workspace. Agents connect through the optional local MCP server. Audio transcription is explicitly initiated by the user and uses a cloud ASR service; the API key is stored in macOS Keychain.
+- Keep the experience pleasant and practical for individual use without adding complexity just for future extensibility.
 
-直接用浏览器打开 [`docs/01-validate/prototype/index.html`](docs/01-validate/prototype/index.html)，无需安装依赖或构建；刷新即恢复演示数据。
+## Run and develop
 
-## MVP 边界
+Pata is currently run from source or packaged locally on macOS. See [CONTRIBUTING.md](CONTRIBUTING.md) for setup and the full development workflow. You will need Go, Node.js, Xcode Command Line Tools, and the Wails v3 CLI version matching this repository.
 
-- 三个一级入口：**Today / Tasks / Notes**；Memo 是记录数据，不是第四个入口。
-- 标签是跨 Task / Note / Memo 的全局聚合；没有 Projects / Inbox。
-- Notes 采用 Flomo 启发的单列卡片列表，打开后占用整块主内容区编辑。
-- 本地 Markdown + YAML Frontmatter；初期无需独立业务数据库。
-- **CLI、内置 AI、插件、云同步均不进入 MVP**；阶段 11 的云端 ASR 仅用于 BYOK 音频转写，不提供内置 AI 整理。
+```bash
+git clone https://github.com/yukange/pata.git
+cd pata
+go mod download
+npm --prefix frontend ci
+wails3 task dev
+```
 
-当前技术基础为 Go + Wails v3 + React/TypeScript + Vditor，既有 Notes、Vault、Files、Activity 功能在阶段 1～9 已陆续实现。
+Run `wails3 task package` to build a local app package. When changing Go service interfaces, follow the [development instructions](CONTRIBUTING.md#create-new-files) for generating Wails bindings; do not hand-edit generated files.
 
-原生体验目标遵循 macOS 27 HIG；[Magpie 源码实现参考与 macOS 验收约束](docs/01-validate/macos-native.md) 已加入阶段 1，真正的标题栏和系统材质在阶段 2 Wails 实机验证。
+## Connect an agent (MCP)
 
-## MCP
+In Pata, open **Settings → MCP**, enable the local service, and copy its connection instructions into your agent. The service listens only on `127.0.0.1` and requires Pata to stay running. It is disabled by default and stays disabled after you manually stop it.
 
-在「设置 → MCP」启动服务，复制接入说明并发送给 Agent。Pata 需保持打开；手动停止服务后，下次打开应用时仍保持关闭。
+The six tools cover search, list, read, create task, create note, and append activity. See the [MCP reference](docs/10-settings/proposal.md#mcp) for their behavior and limitations.
 
-工具列表和服务行为见 [MCP 功能说明](docs/10-settings/proposal.md#mcp)。
+## Documentation
+
+- [Design and implementation history](docs/README.md): Delivery stages 01–13 and their documents (Chinese).
+- [Data schema](docs/02-foundation/schema.md): Authoritative Markdown data model (Chinese).
+- [Product decisions](docs/01-validate/decisions.md): Agreed design choices and boundaries (Chinese).
+- [AGENTS.md](AGENTS.md): Project instructions for development agents (Chinese).
+- [Early interaction prototype](docs/01-validate/prototype/index.html): A browser-viewable historical prototype, **not a representation of the complete current macOS app**.
+
+Stages 01–13 have been implemented and validated on macOS. Future changes will follow actual usage needs rather than a predetermined series of feature stages.
