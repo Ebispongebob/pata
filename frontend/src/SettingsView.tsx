@@ -17,6 +17,7 @@ import { Browser } from '@wailsio/runtime';
 import * as VaultService from '../bindings/pata/vaultservice';
 import { VaultStatus, VaultHealth, ASRConfigStatus } from '../bindings/pata/models';
 import { AccentColorSettings } from './AccentColorSettings';
+import { MCPSettings } from './MCPSettings';
 import type { useAccentColor } from './useAccentColor';
 
 interface SettingsViewProps {
@@ -371,6 +372,8 @@ export function SettingsView({
             </button>
           </div>
         </section>
+
+        <MCPSettings />
 
         {/* Section 3: 语音转写 */}
         <section

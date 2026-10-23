@@ -83,6 +83,14 @@ export interface DraftWindowState {
     "initial_draft_id": string;
 }
 
+export interface MCPStatus {
+    "enabled": boolean;
+    "running": boolean;
+    "endpoint": string;
+    "vaultChanged": boolean;
+    "error": string;
+}
+
 export interface SaveDraftInput {
     "vault_path": string;
     "id": string;
