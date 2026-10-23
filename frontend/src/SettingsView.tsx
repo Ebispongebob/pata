@@ -13,6 +13,7 @@ import {
   Check,
   Copy,
 } from 'lucide-react';
+import { MCPSettings } from './MCPSettings';
 import { Browser } from '@wailsio/runtime';
 import * as VaultService from '../bindings/pata/vaultservice';
 import { VaultStatus, VaultHealth, ASRConfigStatus } from '../bindings/pata/models';
@@ -366,6 +367,8 @@ export function SettingsView({
             </button>
           </div>
         </section>
+
+        <MCPSettings />
 
         {/* Section 3: 语音转写 */}
         <section

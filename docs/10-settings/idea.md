@@ -43,3 +43,7 @@
 - [阶段 9 · Files](../09-vault-files/proposal.md)：Vault 目录及文件资源安全规则不变。
 
 **完成判定**：侧边栏低频操作被单个设置入口收敛；一个主窗口设置页完成外观、Vault、ASR 密钥配置；首启和故障不失联，用户资料不受损。
+
+## MCP
+
+让本机 Agent 通过 Pata 操作资料库，功能见 [MCP](proposal.md#mcp)。

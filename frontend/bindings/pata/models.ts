@@ -67,6 +67,14 @@ export interface CreateTaskInput {
     "note_refs"?: { [_ in string]?: string } | null;
 }
 
+export interface MCPStatus {
+    "enabled": boolean;
+    "running": boolean;
+    "endpoint": string;
+    "vaultChanged": boolean;
+    "error": string;
+}
+
 /**
  * TimelineItem represents an aggregated item in the day timeline (activity or completion).
  */

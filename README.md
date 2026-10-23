@@ -26,8 +26,14 @@
 - 标签是跨 Task / Note / Memo 的全局聚合；没有 Projects / Inbox。
 - Notes 采用 Flomo 启发的单列卡片列表，打开后占用整块主内容区编辑。
 - 本地 Markdown + YAML Frontmatter；初期无需独立业务数据库。
-- **CLI、MCP、内置 AI、插件、云同步均不进入 MVP**；阶段 11 的云端 ASR 仅用于 BYOK 音频转写，不提供内置 AI 整理。
+- **CLI、内置 AI、插件、云同步均不进入 MVP**；阶段 11 的云端 ASR 仅用于 BYOK 音频转写，不提供内置 AI 整理。
 
 当前技术基础为 Go + Wails v3 + React/TypeScript + Vditor，既有 Notes、Vault、Files、Activity 功能在阶段 1～9 已陆续实现。
 
 原生体验目标遵循 macOS 27 HIG；[Magpie 源码实现参考与 macOS 验收约束](docs/01-validate/macos-native.md) 已加入阶段 1，真正的标题栏和系统材质在阶段 2 Wails 实机验证。
+
+## MCP
+
+在「设置 → MCP」启动服务，复制接入说明并发送给 Agent。Pata 需保持打开；手动停止服务后，下次打开应用时仍保持关闭。
+
+工具列表和服务行为见 [MCP 功能说明](docs/10-settings/proposal.md#mcp)。
