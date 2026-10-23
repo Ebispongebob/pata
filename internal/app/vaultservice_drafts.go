@@ -165,6 +165,13 @@ func (s *VaultService) GetDraft(vaultPath, id string) (*Draft, error) {
 }
 
 func (s *VaultService) CreateDraft(vaultPath string) (draft *Draft, err error) {
+	return s.createDraftWithBody(vaultPath, "")
+}
+
+func (s *VaultService) createDraftWithBody(vaultPath, body string) (draft *Draft, err error) {
+	if !utf8.ValidString(body) {
+		return nil, fmt.Errorf("草稿正文不是有效的 UTF-8 文本")
+	}
 	s.draftMu.Lock()
 	defer func() {
 		s.draftMu.Unlock()
@@ -181,7 +188,7 @@ func (s *VaultService) CreateDraft(vaultPath string) (draft *Draft, err error) {
 	if err != nil {
 		return nil, err
 	}
-	if _, err := markdown.SafeWriteExclusive(path, []byte{}, v.Tracker); err != nil {
+	if _, err := markdown.SafeWriteExclusive(path, []byte(body), v.Tracker); err != nil {
 		return nil, fmt.Errorf("无法创建草稿")
 	}
 	return readDraft(v, id)

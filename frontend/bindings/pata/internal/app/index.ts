@@ -24,6 +24,7 @@ export type {
     MCPStatus,
     Draft,
     DraftWindowState,
+    MCPStatus,
     SaveDraftInput,
     TimelineItem,
     UpdateActivityInput,

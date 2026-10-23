@@ -1,3 +1,4 @@
+import { MCPSettings } from './MCPSettings';
 import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   ArrowLeft,
@@ -14,7 +15,6 @@ import {
   Check,
   Copy,
 } from 'lucide-react';
-import { MCPSettings } from './MCPSettings';
 import { Browser } from '@wailsio/runtime';
 import { Menu } from '@base-ui/react/menu';
 import * as VaultService from '../bindings/pata/internal/app/vaultservice';

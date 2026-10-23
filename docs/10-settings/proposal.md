@@ -102,13 +102,16 @@
 
 | 工具 | 功能 |
 |---|---|
-| `pata_search` | 搜索任务、笔记、记录和附件名称 |
-| `pata_list` | 列出任务或笔记的 ID、标题和标签 |
-| `pata_read` | 按 ID 读取任务或笔记，按日期读取每日计划 |
+| `pata_search` | 搜索任务、笔记、草稿、记录和附件名称 |
+| `pata_list` | 列出任务、笔记或草稿的 ID、标题等摘要 |
+| `pata_read` | 按 ID 读取任务、笔记或草稿及版本，按日期读取每日计划 |
 | `pata_create_note` | 创建笔记，设置标题、正文和标签 |
 | `pata_create_task` | 创建任务，设置标题、状态、到期日和标签 |
 | `pata_append_activity` | 向任务或指定日期追加记录 |
 | `pata_set_task_status` | 输入 `{id, status: "done" 或 "todo"}`，完成或重新打开既有任务，返回当前 Task |
+
+| `pata_create_draft` | 以完整正文创建草稿，首个非空行作为标题 |
+| `pata_save_draft` | 带上次读取的版本保存草稿，过期版本拒绝覆盖 |
 
 MCP 创建 Task / Note、追加 Activity 和变更 Task 状态均由 Core 标记 Agent 来源，调用参数不能指定 `created_by` / `by`。来源格式以 [Schema](../02-foundation/schema.md#操作来源阶段-14) 为准。`pata_set_task_status` 重复设置相同状态不写盘、不新增事件；非法状态、缺失任务及未打开或已切换的资料库均返回错误，成功后通知 GUI 刷新。
 
