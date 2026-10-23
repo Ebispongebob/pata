@@ -692,6 +692,7 @@ function NoteEditor({
     const vditor = new Vditor(vditorContainerRef.current, {
       cdn: '/vditor',
       mode: 'ir',
+      undoDelay: 100,
       value: initialNote.body ?? '',
       height: '100%',
       placeholder: '开始记录内容...（支持 Markdown 语法、表格、代码块）',
