@@ -26,6 +26,7 @@ import (
 
 // VaultConfig is the persisted single-vault choice (D18: 单 Vault) and app preferences.
 type VaultConfig struct {
+	MCPEnabled  bool   `json:"mcp_enabled,omitempty"`
 	VaultPath   string `json:"vault_path"`
 	Theme       string `json:"theme,omitempty"`
 	AccentColor string `json:"accent_color,omitempty"`
@@ -153,6 +154,8 @@ type transcriptRecord struct {
 
 // VaultService owns the single Vault instance; all structured file access goes through it.
 type VaultService struct {
+	// externalMu 保证一次外部调用期间不会切换 Vault。
+	externalMu        sync.RWMutex
 	mu                sync.Mutex
 	draftMu           sync.Mutex
 	vault             *markdown.Vault
@@ -1704,6 +1707,8 @@ func (s *VaultService) dispatchEvent(name string, data any) {
 }
 
 func (s *VaultService) openVault(path string) (*markdown.Vault, error) {
+	s.externalMu.Lock()
+	defer s.externalMu.Unlock()
 	v, err := markdown.NewVault(path)
 	if err != nil {
 		return nil, fmt.Errorf("打开 Vault 失败: %w", err)

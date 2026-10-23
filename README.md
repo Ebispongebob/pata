@@ -26,7 +26,13 @@
 - 标签是跨 Task / Note / Memo 的全局聚合；没有 Projects / Inbox。
 - Notes 采用 Flomo 启发的单列卡片列表，打开后占用整块主内容区编辑。
 - 本地 Markdown + YAML Frontmatter；初期无需独立业务数据库。
-- **CLI、MCP、内置 AI、插件、云同步均不进入 MVP**；阶段 11 的云端 ASR 仅用于 BYOK 音频转写，不提供内置 AI 整理。
+- **CLI、内置 AI、插件、云同步均不进入 MVP**；阶段 11 的云端 ASR 仅用于 BYOK 音频转写，不提供内置 AI 整理。本机 MCP 接入作为后续补充，默认关闭。
+
+## 连接 AI Agent
+
+在「设置 → MCP」点击「启动 MCP 服务」，再点击「复制接入说明」，将说明发送给支持本机 MCP 的 Agent。服务使用 Streamable HTTP，仅监听 `http://127.0.0.1:17373/mcp`。Pata 需要保持打开，首次默认关闭；启用后重启会自动恢复，手动停止后保持关闭。
+
+支持搜索与读取、新建笔记/任务/草稿、追加记录，以及带版本检查的草稿保存。启动后，本机程序可以访问启动时选定的资料库；更换资料库后需停止并重新启动服务。点击「停止服务」或退出 Pata 后，连接关闭。详细范围见 [MCP 服务说明](docs/10-settings/proposal.md#mcp-服务2026-10-23-补充)。
 
 当前技术基础为 Go + Wails v3 + React/TypeScript + Vditor，既有 Notes、Vault、Files、Activity 功能在阶段 1～9 已陆续实现。
 

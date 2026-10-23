@@ -16,7 +16,7 @@
 - 需要修改某个交付目标时，修改该阶段的 proposal 并更新对应完成标准；涉及产品边界的决定同步更新 `docs/01-validate/decisions.md`。
 - 不要把功能当做新阶段单独建目录，除非整个交付计划确实新增一个顺序实施步骤。
 - 保持 Markdown 数据源唯一、文件可恢复读取、不重复建模；Task/Today 源文件是 App 内部协议，用户主要通过 GUI 操作，未来 CLI 调用同一 Core；Notes Markdown 保持面向用户编辑。
-- **本阶段不实现 CLI/MCP/AI 集成**；未来 CLI 依赖运行中的 App Core，IPC/自动启动等在 CLI 需求阶段讨论，禁止私自扩大范围。
+- MCP 由「设置 → MCP」手动启停，默认关闭，仅服务本机 Agent，并复用运行中的 App 业务服务；范围和验收见 [阶段 10](docs/10-settings/proposal.md#mcp-服务2026-10-23-补充)。启用状态持久化，应用重启自动恢复。CLI、内置 AI、远程服务和独立后台程序仍不在当前范围内。
 - 阶段 8 的 DayPlan **目标路径**为根 `plans/`（须备份）；阶段 9 的 `files/` 亦为用户数据、不可当缓存清理。
 - 阶段 9 仅在 Today/Task Activity 与 Note 中导入、引用文件，`[[` 候选同时支持 Note 与 File；原生预览、按文件名搜索，不做 Files 导航、File 实体或自动清理。
 - **阶段 10（已完成）**：主窗口单页设置包含「外观 / 存储 / 语音转写」；侧边栏底部主题三按钮与 Vault 配置菜单收敛为单个设置齿轮。主题三态迁入设置并持久化；Vault 更换/重扫/Finder 打开迁入设置，但首次缺 Vault 仍直接引导、健康异常仍在主界面可见。API Key 存 macOS Keychain，地域固定北京、模型固定 `qwen-audio-3.1-asr-flash-filetrans`；不做地域/供应商/模型选择。文档见 [10 proposal](docs/10-settings/proposal.md)。

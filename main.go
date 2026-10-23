@@ -18,6 +18,7 @@ var trayIcon []byte
 func main() {
 	vaultService := NewVaultService()
 	windowService := newWindowService(vaultService)
+	mcpService := newMCPService(vaultService)
 
 	app := application.New(application.Options{
 		Name:        "Pata",
@@ -25,6 +26,7 @@ func main() {
 		Services: []application.Service{
 			application.NewService(vaultService),
 			application.NewService(windowService),
+			application.NewService(mcpService),
 		},
 		ShouldQuit: windowService.shouldQuit,
 		Assets: application.AssetOptions{
