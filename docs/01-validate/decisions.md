@@ -51,7 +51,7 @@
 | D45 | 阶段 12 保留 Pata 现有视觉和布局，仅局部优化基础组件、排版与交互一致性；shadcn/ui Nova 是工程参考，不整体换肤 | 避免为了统一技术栈让用户重新学习界面；坚持 Less is More、按需引入、不做全量重构。详见 [阶段 12](../12-frontend-foundation/proposal.md) |
 | D46 | UI 交互强调色优先跟随 macOS 系统设置，Pata 品牌绿主要用于品牌识别；成功/警告/错误使用独立语义色 | 在 Wails/WKWebView 实机验证 Accent 来源与更新；无法可靠读取时明确降级，不把固定绿/蓝冒充系统色，不为此增加新用户配置项。详见 [阶段 12](../12-frontend-foundation/proposal.md) |
 
-| D47 | 本机 MCP 在设置中启停，首次关闭，启用后重启恢复 | 支持任务、笔记和每日记录；仅监听回环地址，更换资料库后需重新启用。详见 [阶段 10](../10-settings/proposal.md#mcp) |
+| D47 | 通过运行中的 Pata 提供本机 MCP 服务 | 功能与使用方式见 [阶段 10](../10-settings/proposal.md#mcp) |
 
 ## 不轻易改变的设计约束
 
