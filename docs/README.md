@@ -22,7 +22,7 @@
 | 12 | [`12-frontend-foundation`](12-frontend-foundation/) · 前端基础设施与设计系统整理 | 保留 Pata 现有视觉，按需统一 Design Tokens/基础组件/键盘交互与拖拽体验，系统强调色优先（**已验收**） | [idea](12-frontend-foundation/idea.md) · [proposal](12-frontend-foundation/proposal.md) |
 | 13 | [`13-app-shell-activity`](13-app-shell-activity/) · App Shell 与 Activity 体验统一 | 应用级三栏与可调任务详情、Today/Task 统一 Activity 展示/输入/编辑（**已验收**） | [idea](13-app-shell-activity/idea.md) · [proposal](13-app-shell-activity/proposal.md) · [三栏设计](13-app-shell-activity/app-shell-inspector.md) |
 | 14 | [`14-activity-attribution`](14-activity-attribution/) · Agent 操作来源与任务生命周期记录 | Task 创建/完成/重开、普通 Activity、Note 的人/Agent 来源；MCP 任务状态操作（**代码与自动化已完成，界面人工验收待完成**） | [idea](14-activity-attribution/idea.md) · [proposal](14-activity-attribution/proposal.md) |
-| 15 | [`15-app-updater`](15-app-updater/) · 应用内更新与原生菜单 | 后台静默检查、设置旁下载进度与等待安装、签名发布/更新重启、macOS Pata 应用菜单（**设计已确认，待实施**） | [idea](15-app-updater/idea.md) · [proposal](15-app-updater/proposal.md) |
+| 15 | [`15-app-updater`](15-app-updater/) · 应用内更新与原生菜单 | 可关闭的后台检查、开发构建更新隔离、设置旁下载进度与等待安装、签名发布/重启、macOS Pata 应用菜单（**设计已确认，待实施**） | [idea](15-app-updater/idea.md) · [proposal](15-app-updater/proposal.md) |
 
 ## 阅读与维护约定
 
