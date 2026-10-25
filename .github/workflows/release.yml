@@ -44,11 +44,6 @@ jobs:
         run: |
           npm --prefix frontend run build
 
-      - name: Run Tests
-        run: |
-          go test ./...
-          npm --prefix frontend test
-
       - name: Extract Clean SemVer Version
         id: get_version
         run: |
@@ -64,13 +59,20 @@ jobs:
             echo "tag_name=v${CLEAN_VERSION}" >> $GITHUB_OUTPUT
           fi
 
-      - name: Build and Package macOS App
+      - name: Build macOS App Bundle
         env:
           VERSION: ${{ steps.get_version.outputs.version }}
           OFFICIAL_BUILD: 'true'
         run: |
-          # Build and package .app bundle
           wails3 task darwin:package OFFICIAL_BUILD=true VERSION=${VERSION}
+
+      - name: Run Tests
+        run: |
+          go test ./...
+          npm --prefix frontend test
+
+      - name: Package Release Assets
+        run: |
           # Package .app.zip for in-app updater
           wails3 task darwin:package:zip ARCH=arm64
           # Package .dmg for manual distribution
