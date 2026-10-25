@@ -2,6 +2,8 @@ name: Release
 
 on:
   push:
+    branches:
+      - main
     tags:
       - 'v*'
       - '[0-9]+.[0-9]+.[0-9]+*'
@@ -52,6 +54,11 @@ jobs:
             CLEAN_VERSION=$(node -p "require('./frontend/package.json').version")
           fi
           echo "version=${CLEAN_VERSION}" >> $GITHUB_OUTPUT
+          if [ "${{ github.ref_type }}" = "tag" ]; then
+            echo "tag_name=${RAW_TAG}" >> $GITHUB_OUTPUT
+          else
+            echo "tag_name=v${CLEAN_VERSION}" >> $GITHUB_OUTPUT
+          fi
 
       - name: Build and Package macOS App
         env:
@@ -69,9 +76,20 @@ jobs:
           # Generate SHA256 checksums
           wails3 task darwin:checksums
 
-      - name: Create GitHub Release
+      - name: Upload Build Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: pata-macos-${{ steps.get_version.outputs.version }}
+          path: |
+            bin/*.app.zip
+            bin/*.dmg
+            bin/SHA256SUMS
+
+      - name: Create or Update GitHub Release
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ steps.get_version.outputs.tag_name }}
+          name: "Pata v${{ steps.get_version.outputs.version }}"
           files: |
             bin/*.app.zip
             bin/*.dmg
