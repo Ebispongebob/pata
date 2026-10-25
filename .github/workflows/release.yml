@@ -4,6 +4,8 @@ on:
   push:
     tags:
       - 'v*'
+      - '[0-9]+.[0-9]+.[0-9]+*'
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -46,6 +48,9 @@ jobs:
         run: |
           RAW_TAG="${{ github.ref_name }}"
           CLEAN_VERSION="${RAW_TAG#v}"
+          if [ -z "${CLEAN_VERSION}" ] || [ "${RAW_TAG}" = "main" ]; then
+            CLEAN_VERSION=$(node -p "require('./frontend/package.json').version")
+          fi
           echo "version=${CLEAN_VERSION}" >> $GITHUB_OUTPUT
 
       - name: Build and Package macOS App
