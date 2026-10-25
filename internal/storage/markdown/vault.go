@@ -373,11 +373,25 @@ func (v *Vault) handleFSEvent(event fsnotify.Event) {
 		entity, parseErr := ParseMarkdown(path, data)
 		if parseErr != nil {
 			v.Index.mu.Lock()
-			v.Index.parseErrors = append(v.Index.parseErrors, ParseError{
-				Path:   path,
-				Reason: "external modification resulted in invalid markdown/frontmatter",
-				Err:    parseErr,
-			})
+			found := false
+			for i, pe := range v.Index.parseErrors {
+				if pe.Path == path {
+					v.Index.parseErrors[i] = ParseError{
+						Path:   path,
+						Reason: "external modification resulted in invalid markdown/frontmatter",
+						Err:    parseErr,
+					}
+					found = true
+					break
+				}
+			}
+			if !found {
+				v.Index.parseErrors = append(v.Index.parseErrors, ParseError{
+					Path:   path,
+					Reason: "external modification resulted in invalid markdown/frontmatter",
+					Err:    parseErr,
+				})
+			}
 			v.Index.mu.Unlock()
 
 			v.dispatch(VaultEvent{
@@ -401,11 +415,25 @@ func (v *Vault) handleFSEvent(event fsnotify.Event) {
 		if typeMismatchErr != nil {
 			v.Index.RemoveFile(path)
 			v.Index.mu.Lock()
-			v.Index.parseErrors = append(v.Index.parseErrors, ParseError{
-				Path:   path,
-				Reason: typeMismatchErr.Error(),
-				Err:    typeMismatchErr,
-			})
+			found := false
+			for i, pe := range v.Index.parseErrors {
+				if pe.Path == path {
+					v.Index.parseErrors[i] = ParseError{
+						Path:   path,
+						Reason: typeMismatchErr.Error(),
+						Err:    typeMismatchErr,
+					}
+					found = true
+					break
+				}
+			}
+			if !found {
+				v.Index.parseErrors = append(v.Index.parseErrors, ParseError{
+					Path:   path,
+					Reason: typeMismatchErr.Error(),
+					Err:    typeMismatchErr,
+				})
+			}
 			v.Index.mu.Unlock()
 
 			v.dispatch(VaultEvent{
