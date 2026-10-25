@@ -131,6 +131,14 @@ export function GetAudioURL(filePath: string): $CancellablePromise<string> {
 }
 
 /**
+ * GetAutoCheckUpdatesPreference returns the persisted preference for auto checking updates.
+ * If not explicitly set in config, it returns the provided defaultVal.
+ */
+export function GetAutoCheckUpdatesPreference(defaultVal: boolean): $CancellablePromise<boolean> {
+    return $Call.ByID(2860974391, defaultVal);
+}
+
+/**
  * GetDayPlan returns the DayPlan for a date. If no plan exists, an empty DayPlan is returned without error.
  */
 export function GetDayPlan(date: string): $CancellablePromise<markdown$0.DayPlan | null> {
@@ -328,6 +336,13 @@ export function SelectVaultDirectory(): $CancellablePromise<$models.VaultStatus>
  */
 export function SetASRKey(key: string): $CancellablePromise<void> {
     return $Call.ByID(296420522, key);
+}
+
+/**
+ * SetAutoCheckUpdatesPreference persists the auto update check preference.
+ */
+export function SetAutoCheckUpdatesPreference(enabled: boolean): $CancellablePromise<void> {
+    return $Call.ByID(462881675, enabled);
 }
 
 /**

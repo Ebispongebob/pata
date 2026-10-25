@@ -103,6 +103,17 @@ export interface UpdateActivityInput {
 }
 
 /**
+ * UpdateCheckResult is returned from CheckForUpdate.
+ */
+export interface UpdateCheckResult {
+    "supported": boolean;
+    "update_available": boolean;
+    "version": string;
+    "message"?: string;
+    "error"?: string;
+}
+
+/**
  * UpdateNoteInput defines parameters for updating an existing Note.
  * Note: tags and body follow full-replacement semantics (not partial patch).
  */
@@ -111,6 +122,45 @@ export interface UpdateNoteInput {
     "title": string;
     "tags"?: string[] | null;
     "body": string;
+}
+
+/**
+ * UpdateState represents the discrete UI states for updater.
+ */
+export enum UpdateState {
+    /**
+     * The Go zero value for the underlying type of the enum.
+     */
+    $zero = "",
+
+    UpdateStateIdle = "idle",
+    UpdateStateChecking = "checking",
+    UpdateStateAvailable = "available",
+    UpdateStateDownloading = "downloading",
+    UpdateStateStaging = "staging",
+    UpdateStateWaitingInstall = "waiting_install",
+    UpdateStateRestarting = "restarting",
+    UpdateStateError = "error",
+};
+
+/**
+ * UpdateStatus contains the full runtime state of the in-app updater.
+ */
+export interface UpdateStatus {
+    "state": UpdateState;
+    "version": string;
+    "available_version": string;
+    "official_build": boolean;
+    "auto_check_updates": boolean;
+
+    /**
+     * 0-100, or -1 if indeterminate
+     */
+    "progress_percent": number;
+    "bytes_written": number;
+    "total_bytes": number;
+    "error_message"?: string;
+    "manual_check_feedback"?: string;
 }
 
 /**

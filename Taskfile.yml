@@ -29,6 +29,16 @@ tasks:
     cmds:
       - task: "{{.GOOS}}:package"
 
+  package:zip:
+    summary: Packages a production update zip of the application
+    cmds:
+      - task: "{{.GOOS}}:package:zip"
+
+  checksums:
+    summary: Generates SHA256SUMS for release assets
+    cmds:
+      - task: "{{.GOOS}}:checksums"
+
   run:
     summary: Runs the application
     cmds:

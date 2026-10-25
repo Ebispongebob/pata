@@ -39,6 +39,7 @@ interface TodayViewProps {
   tagNames: string[];
   onVaultDataChanged: () => void;
   leaveGuardRef: React.MutableRefObject<(() => Promise<boolean>) | null>;
+  onDraftCheck?: (checker: () => boolean) => () => void;
 }
 
 function formatTimelineTime(isoString: string): string {
@@ -109,6 +110,7 @@ export function TodayView({
   tagNames,
   onVaultDataChanged,
   leaveGuardRef,
+  onDraftCheck,
 }: TodayViewProps) {
   const [todayStr, setTodayStr] = useState<string>(getLocalDateStr);
   const todayStrRef = useRef(todayStr);
@@ -497,6 +499,13 @@ export function TodayView({
     };
     return () => { leaveGuardRef.current = null; };
   }, [leaveGuardRef, quickActivityBody, editDirty, creatingActivity, editSaving, leavePrompt]);
+
+  useEffect(() => {
+    if (!onDraftCheck) return;
+    return onDraftCheck(() => {
+      return quickActivityBody.trim() !== '' || editDirty || creatingActivity || editSaving;
+    });
+  }, [onDraftCheck, quickActivityBody, editDirty, creatingActivity, editSaving]);
 
   const finishLeavePrompt = async (choice: 'save' | 'discard' | 'cancel') => {
     const resolve = leavePrompt;

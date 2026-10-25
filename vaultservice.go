@@ -26,9 +26,10 @@ import (
 
 // VaultConfig is the persisted single-vault choice (D18: 单 Vault) and app preferences.
 type VaultConfig struct {
-	MCPEnabled bool   `json:"mcp_enabled,omitempty"`
-	VaultPath  string `json:"vault_path"`
-	Theme      string `json:"theme,omitempty"`
+	AutoCheckUpdates *bool  `json:"auto_check_updates,omitempty"`
+	MCPEnabled       bool   `json:"mcp_enabled,omitempty"`
+	VaultPath        string `json:"vault_path"`
+	Theme            string `json:"theme,omitempty"`
 }
 
 const (
@@ -1788,6 +1789,33 @@ func (s *VaultService) SetThemePreference(theme string) error {
 		cfg.VaultPath = s.vault.RootPath
 	}
 	cfg.Theme = theme
+	return s.saveConfig(cfg)
+}
+
+// GetAutoCheckUpdatesPreference returns the persisted preference for auto checking updates.
+// If not explicitly set in config, it returns the provided defaultVal.
+func (s *VaultService) GetAutoCheckUpdatesPreference(defaultVal bool) (bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	cfg, err := s.loadConfig()
+	if err != nil || cfg.AutoCheckUpdates == nil {
+		return defaultVal, nil
+	}
+	return *cfg.AutoCheckUpdates, nil
+}
+
+// SetAutoCheckUpdatesPreference persists the auto update check preference.
+func (s *VaultService) SetAutoCheckUpdatesPreference(enabled bool) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	cfg, err := s.loadConfig()
+	if err != nil {
+		return fmt.Errorf("读取配置文件失败: %w", err)
+	}
+	if cfg.VaultPath == "" && s.vault != nil && s.vault.RootPath != "" {
+		cfg.VaultPath = s.vault.RootPath
+	}
+	cfg.AutoCheckUpdates = &enabled
 	return s.saveConfig(cfg)
 }
 

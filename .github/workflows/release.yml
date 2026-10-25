@@ -1,0 +1,76 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release-macos:
+    runs-on: macos-14
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+          cache: true
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install Wails v3 CLI
+        run: |
+          go install github.com/wailsapp/wails/v3/cmd/wails3@v3.0.0-beta.28
+
+      - name: Install Frontend Dependencies
+        run: |
+          npm --prefix frontend ci
+
+      - name: Run Tests
+        run: |
+          go test ./...
+          npm --prefix frontend test
+
+      - name: Extract Clean SemVer Version
+        id: get_version
+        run: |
+          RAW_TAG="${{ github.ref_name }}"
+          CLEAN_VERSION="${RAW_TAG#v}"
+          echo "version=${CLEAN_VERSION}" >> $GITHUB_OUTPUT
+
+      - name: Build and Package macOS App
+        env:
+          VERSION: ${{ steps.get_version.outputs.version }}
+          OFFICIAL_BUILD: 'true'
+        run: |
+          # Build frontend assets
+          npm --prefix frontend run build
+          # Build and package .app bundle
+          wails3 task darwin:package OFFICIAL_BUILD=true VERSION=${VERSION}
+          # Package .app.zip for in-app updater
+          wails3 task darwin:package:zip ARCH=arm64
+          # Package .dmg for manual distribution
+          wails3 task darwin:package:dmg
+          # Generate SHA256 checksums
+          wails3 task darwin:checksums
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            bin/*.app.zip
+            bin/*.dmg
+            bin/SHA256SUMS
+          draft: false
+          prerelease: false
+          generate_release_notes: true

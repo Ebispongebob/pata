@@ -83,6 +83,8 @@ export interface TaskDetailHandle {
   confirmLeave: () => Promise<boolean>;
   /** 丢弃表单并从磁盘重读（行内修改后同步）。 */
   reload: () => Promise<void>;
+  /** 查询当前是否有未提交的草稿（更新/重启门禁专用，不弹确认）。 */
+  hasDraft?: () => boolean;
 }
 
 export interface PlanDateContext {
@@ -460,7 +462,11 @@ export const TaskDetailPanel = forwardRef<TaskDetailHandle, TaskDetailPanelProps
     return true;
   }, [formDirty, saveTask, newActivityBody, editDirty]);
 
-  useImperativeHandle(ref, () => ({ confirmLeave, reload }), [confirmLeave, reload]);
+  const hasDraft = useCallback((): boolean => {
+    return formDirty || newActivityBody.trim() !== '' || editDirty || saving || editSaving;
+  }, [formDirty, newActivityBody, editDirty, saving, editSaving]);
+
+  useImperativeHandle(ref, () => ({ confirmLeave, reload, hasDraft }), [confirmLeave, reload, hasDraft]);
 
   const finishLeavePrompt = async (choice: 'save' | 'discard' | 'cancel') => {
     const resolve = leavePrompt;

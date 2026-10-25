@@ -18,6 +18,7 @@ import { MCPSettings } from './MCPSettings';
 import { Browser } from '@wailsio/runtime';
 import { Menu } from '@base-ui/react/menu';
 import * as VaultService from '../bindings/pata/vaultservice';
+import * as UpdaterService from '../bindings/pata/updaterservice';
 import { VaultStatus, VaultHealth, ASRConfigStatus } from '../bindings/pata/models';
 
 interface SettingsViewProps {
@@ -31,7 +32,7 @@ interface SettingsViewProps {
   health: VaultHealth | null;
   onOpenHealthModal: () => void;
   onBack: () => void;
-  initialSection?: 'appearance' | 'storage' | 'transcription' | null;
+  initialSection?: 'appearance' | 'storage' | 'transcription' | 'updater' | null;
 }
 
 export function SettingsView({
@@ -59,10 +60,45 @@ export function SettingsView({
   const [asrSaving, setAsrSaving] = useState(false);
   const [saveSuccessMsg, setSaveSuccessMsg] = useState(false);
 
+  // Auto check updates state
+  const [autoCheckUpdates, setAutoCheckUpdates] = useState(true);
+  const [autoCheckLoading, setAutoCheckLoading] = useState(true);
+  const [isOfficialBuild, setIsOfficialBuild] = useState(true);
+
   // Section refs for deep-linking
   const appearanceRef = useRef<HTMLDivElement>(null);
   const storageRef = useRef<HTMLDivElement>(null);
   const transcriptionRef = useRef<HTMLDivElement>(null);
+  const updaterRef = useRef<HTMLDivElement>(null);
+
+  // Load update settings
+  const loadUpdateSettings = useCallback(async () => {
+    try {
+      setAutoCheckLoading(true);
+      const status = await UpdaterService.GetUpdateStatus();
+      setAutoCheckUpdates(status.auto_check_updates);
+      setIsOfficialBuild(status.official_build);
+    } catch (err) {
+      console.error('Failed to load update status:', err);
+    } finally {
+      setAutoCheckLoading(false);
+    }
+  }, []);
+
+  const handleToggleAutoCheck = async () => {
+    const next = !autoCheckUpdates;
+    setAutoCheckUpdates(next);
+    try {
+      await UpdaterService.SetAutoCheckUpdates(next);
+    } catch (err) {
+      console.error('Failed to set auto check updates:', err);
+      setAutoCheckUpdates(!next);
+    }
+  };
+
+  useEffect(() => {
+    loadUpdateSettings();
+  }, [loadUpdateSettings]);
 
   // Load ASR configuration status
   const loadAsrStatus = useCallback(async () => {
@@ -91,6 +127,7 @@ export function SettingsView({
       if (initialSection === 'appearance') target = appearanceRef.current;
       else if (initialSection === 'storage') target = storageRef.current;
       else if (initialSection === 'transcription') target = transcriptionRef.current;
+      else if (initialSection === 'updater') target = updaterRef.current;
 
       if (target) {
         const prefersReducedMotion =
@@ -478,6 +515,46 @@ export function SettingsView({
                 <span>{asrError}</span>
               </div>
             )}
+          </div>
+        </section>
+
+        {/* Section 4: 更新 */}
+        <section
+          ref={updaterRef}
+          className="rounded-xl border border-stone-200/80 dark:border-stone-800/80 bg-white/70 dark:bg-stone-900/60 p-5 shadow-2xs space-y-4"
+        >
+          <h2 className="text-sm font-semibold text-stone-900 dark:text-stone-100">更新</h2>
+          <div className="flex items-center justify-between gap-4">
+            <div className="space-y-0.5">
+              <label
+                htmlFor="auto-check-updates-toggle"
+                className="text-xs font-medium text-stone-700 dark:text-stone-300 cursor-pointer"
+              >
+                自动检查更新
+              </label>
+              <p className="text-[11px] text-stone-400">
+                {isOfficialBuild
+                  ? '发现新版本时，在侧边栏提示更新'
+                  : '当前构建为开发版本，已禁用官方自动更新'}
+              </p>
+            </div>
+            <button
+              id="auto-check-updates-toggle"
+              type="button"
+              role="switch"
+              aria-checked={autoCheckUpdates}
+              disabled={autoCheckLoading || !isOfficialBuild}
+              onClick={handleToggleAutoCheck}
+              className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--pata-focus-ring)] disabled:opacity-50 ${
+                autoCheckUpdates && isOfficialBuild ? 'bg-[var(--pata-brand)]' : 'bg-stone-300 dark:bg-stone-700'
+              }`}
+            >
+              <span
+                className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-sm ring-0 transition duration-200 ease-in-out ${
+                  autoCheckUpdates && isOfficialBuild ? 'translate-x-4' : 'translate-x-0'
+                }`}
+              />
+            </button>
           </div>
         </section>
         </div>

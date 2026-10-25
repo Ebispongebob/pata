@@ -9,9 +9,13 @@ import {
   AlertTriangle,
   X,
   Settings,
+  Download,
+  Clock,
+  RefreshCw,
 } from 'lucide-react';
 import * as VaultService from '../bindings/pata/vaultservice';
-import { VaultStatus, VaultHealth } from '../bindings/pata/models';
+import * as UpdaterService from '../bindings/pata/updaterservice';
+import { VaultStatus, VaultHealth, UpdateStatus } from '../bindings/pata/models';
 import { TagOverviewItem } from '../bindings/pata/internal/storage/markdown/models';
 import { Dialog, DialogContent, DialogTitle } from './components/ui/dialog';
 import { Button } from './components/ui/button';
@@ -37,7 +41,7 @@ export default function App() {
 
   // Settings & Theme state
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-  const [settingsSection, setSettingsSection] = useState<'appearance' | 'storage' | 'transcription' | null>(null);
+  const [settingsSection, setSettingsSection] = useState<'appearance' | 'storage' | 'transcription' | 'updater' | null>(null);
   const [themeMode, setThemeMode] = useState<'system' | 'light' | 'dark'>(() => {
     try {
       const cached = localStorage.getItem('pata_theme');
@@ -49,6 +53,43 @@ export default function App() {
     }
     return 'system';
   });
+
+  // Updater & Toast state
+  const [updateStatus, setUpdateStatus] = useState<UpdateStatus | null>(null);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const toastTimerRef = useRef<number | null>(null);
+
+  const showToast = useCallback((msg: string) => {
+    if (toastTimerRef.current) {
+      window.clearTimeout(toastTimerRef.current);
+    }
+    setToastMessage(msg);
+    toastTimerRef.current = window.setTimeout(() => {
+      setToastMessage(null);
+      toastTimerRef.current = null;
+    }, 3200);
+  }, []);
+
+  // Central Draft Checking Registry
+  const draftCheckersRef = useRef<Map<string, () => boolean>>(new Map());
+  const registerDraftChecker = useCallback((id: string, checker: () => boolean) => {
+    draftCheckersRef.current.set(id, checker);
+    return () => {
+      draftCheckersRef.current.delete(id);
+    };
+  }, []);
+
+  const checkAllDrafts = useCallback((): boolean => {
+    if (detailRef.current?.hasDraft?.()) {
+      return true;
+    }
+    for (const checker of draftCheckersRef.current.values()) {
+      if (checker()) {
+        return true;
+      }
+    }
+    return false;
+  }, []);
 
   // Vault state (single vault, D18)
   const [vaultStatus, setVaultStatus] = useState<VaultStatus | null>(null);
@@ -89,13 +130,14 @@ export default function App() {
 
   // 只保护页面内的草稿；右侧 Inspector 的草稿由它自己保护。
   const leaveGuardRef = useRef<(() => Promise<boolean>) | null>(null);
-  const guarded = async (go: () => void) => {
+  const guarded = useCallback(async (go: () => void) => {
     if (leaveGuardRef.current && !(await leaveGuardRef.current())) {
       setIsSettingsOpen(false);
       return;
     }
     go();
-  };
+  }, []);
+
   const goNav = (nav: 'today' | 'tasks' | 'notes') => {
     void guarded(() => {
       setIsSettingsOpen(false);
@@ -103,12 +145,17 @@ export default function App() {
     });
   };
 
-  const handleOpenSettings = (section?: 'appearance' | 'storage' | 'transcription') => {
+  const handleOpenSettings = useCallback((section?: 'appearance' | 'storage' | 'transcription' | 'updater') => {
     void guarded(() => {
       setSettingsSection(section || null);
       setIsSettingsOpen(true);
     });
-  };
+  }, [guarded]);
+
+  const isSettingsOpenRef = useRef(isSettingsOpen);
+  isSettingsOpenRef.current = isSettingsOpen;
+  const handleOpenSettingsRef = useRef(handleOpenSettings);
+  handleOpenSettingsRef.current = handleOpenSettings;
 
   // 一个应用级 Inspector，跨工作区页面保持任务选择和草稿。
   const handleOpenTask = async (taskID: string, planContext?: { date: string; isToday: boolean }) => {
@@ -289,6 +336,183 @@ export default function App() {
       window.removeEventListener('keydown', handleKeyDown);
     };
   }, [isSettingsOpen]);
+
+  // Load updater status on startup and subscribe to updater/menu events
+  useEffect(() => {
+    void UpdaterService.GetUpdateStatus()
+      .then((st) => setUpdateStatus(st))
+      .catch((err) => console.error('Failed to get update status:', err));
+
+    const unsubState = Events.On('pata:updater:state-changed', (e: any) => {
+      const data = e?.data ?? e;
+      if (data) setUpdateStatus(data as UpdateStatus);
+    });
+
+    const unsubManualFeedback = Events.On('pata:updater:manual-feedback', (e: any) => {
+      const msg = typeof e?.data === 'string' ? e.data : (typeof e === 'string' ? e : '');
+      if (msg) showToast(msg);
+    });
+
+    const unsubReady = Events.On('pata:updater:ready-to-apply', async () => {
+      const hasDrafts = checkAllDrafts();
+      if (!hasDrafts) {
+        try {
+          await UpdaterService.ApplyUpdateAndRestart();
+        } catch (err: any) {
+          showToast(err?.message || '重启更新失败');
+        }
+      } else {
+        await UpdaterService.SetWaitingInstall();
+      }
+    });
+
+    const unsubMenuSettings = Events.On('menu:open-settings', () => {
+      if (!isSettingsOpenRef.current) {
+        handleOpenSettingsRef.current();
+      }
+    });
+
+    const unsubMenuCheckUpdates = Events.On('menu:check-updates', () => {
+      showToast('正在检查更新…');
+    });
+
+    return () => {
+      unsubState();
+      unsubManualFeedback();
+      unsubReady();
+      unsubMenuSettings();
+      unsubMenuCheckUpdates();
+    };
+  }, [checkAllDrafts, showToast]);
+
+  const handleStartDownload = async () => {
+    try {
+      await UpdaterService.StartDownload();
+    } catch (err: any) {
+      showToast(err?.message || '下载更新失败');
+    }
+  };
+
+  const handleWaitingInstallClick = async () => {
+    const hasDrafts = checkAllDrafts();
+    if (hasDrafts) {
+      showToast('请先保存当前编辑');
+    } else {
+      try {
+        await UpdaterService.ApplyUpdateAndRestart();
+      } catch (err: any) {
+        showToast(err?.message || '重启更新失败');
+      }
+    }
+  };
+
+  const handleRetryUpdate = async () => {
+    try {
+      await UpdaterService.StartDownload();
+    } catch (err: any) {
+      showToast(err?.message || '重试更新失败');
+    }
+  };
+
+  const handleTodayDraftCheck = useCallback(
+    (checker: () => boolean) => registerDraftChecker('today', checker),
+    [registerDraftChecker]
+  );
+
+  const handleNotesDraftCheck = useCallback(
+    (checker: () => boolean) => registerDraftChecker('notes', checker),
+    [registerDraftChecker]
+  );
+
+  const renderUpdateButton = () => {
+    if (!updateStatus) return null;
+    const { state, progress_percent, available_version, error_message } = updateStatus;
+
+    if (state === 'available') {
+      return (
+        <button
+          type="button"
+          onClick={handleStartDownload}
+          className="flex items-center space-x-1 px-2 py-1.5 rounded-md text-xs font-medium text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/50 hover:bg-emerald-100 dark:hover:bg-emerald-900/60 border border-emerald-300 dark:border-emerald-800 transition cursor-pointer shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--pata-focus-ring)]"
+          title={`发现新版本 v${available_version}，点击开始下载`}
+        >
+          <Download className="w-3.5 h-3.5 shrink-0" />
+          <span>更新</span>
+        </button>
+      );
+    }
+
+    if (state === 'downloading') {
+      return (
+        <button
+          type="button"
+          disabled
+          className="flex items-center space-x-1 px-2 py-1.5 rounded-md text-xs font-medium text-stone-700 dark:text-stone-300 bg-stone-100 dark:bg-stone-800 border border-stone-300 dark:border-stone-700 shrink-0 cursor-default"
+          title={progress_percent >= 0 ? `正在下载更新: ${progress_percent}%` : '正在下载更新...'}
+        >
+          <Download className="w-3.5 h-3.5 shrink-0 animate-bounce" />
+          <span>{progress_percent >= 0 ? `${progress_percent}%` : '下载中'}</span>
+        </button>
+      );
+    }
+
+    if (state === 'staging') {
+      return (
+        <button
+          type="button"
+          disabled
+          className="flex items-center space-x-1 px-2 py-1.5 rounded-md text-xs font-medium text-stone-700 dark:text-stone-300 bg-stone-100 dark:bg-stone-800 border border-stone-300 dark:border-stone-700 shrink-0 cursor-default"
+          title="校验与暂存中..."
+        >
+          <RefreshCw className="w-3.5 h-3.5 shrink-0 animate-spin" />
+          <span>100%</span>
+        </button>
+      );
+    }
+
+    if (state === 'waiting_install') {
+      return (
+        <button
+          type="button"
+          onClick={handleWaitingInstallClick}
+          className="flex items-center space-x-1 px-2 py-1.5 rounded-md text-xs font-medium text-amber-800 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/60 hover:bg-amber-100 dark:hover:bg-amber-900/60 border border-amber-300 dark:border-amber-800 transition cursor-pointer shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--pata-focus-ring)]"
+          title="更新已就绪，保存当前编辑后点击重启安装"
+        >
+          <Clock className="w-3.5 h-3.5 shrink-0" />
+          <span>等待安装</span>
+        </button>
+      );
+    }
+
+    if (state === 'restarting') {
+      return (
+        <button
+          type="button"
+          disabled
+          className="flex items-center space-x-1 px-2 py-1.5 rounded-md text-xs font-medium text-stone-600 dark:text-stone-400 bg-stone-100 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 shrink-0 cursor-default"
+        >
+          <RefreshCw className="w-3.5 h-3.5 shrink-0 animate-spin" />
+          <span>正在更新</span>
+        </button>
+      );
+    }
+
+    if (state === 'error') {
+      return (
+        <button
+          type="button"
+          onClick={handleRetryUpdate}
+          className="flex items-center space-x-1 px-2 py-1.5 rounded-md text-xs font-medium text-rose-700 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/60 hover:bg-rose-100 dark:hover:bg-rose-900/60 border border-rose-300 dark:border-rose-800 transition cursor-pointer shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--pata-focus-ring)]"
+          title={error_message ? `更新失败: ${error_message}，点击重试` : '更新失败，点击重试'}
+        >
+          <RefreshCw className="w-3.5 h-3.5 shrink-0" />
+          <span>重试更新</span>
+        </button>
+      );
+    }
+
+    return null;
+  };
 
   // Load persisted theme preference from Go backend
   useEffect(() => {
@@ -589,25 +813,29 @@ export default function App() {
 
         {/* Sidebar Footer: settings entry + persistent health warning if present */}
         {!sidebarCollapsed && (
-          <div className="relative p-2 flex items-center justify-between no-drag-region border-t border-stone-200/60 dark:border-stone-800/60">
-            <button
-              onClick={() => {
-                if (isSettingsOpen) {
-                  setIsSettingsOpen(false);
-                } else {
-                  handleOpenSettings();
-                }
-              }}
-              className={`flex items-center space-x-2 px-2.5 py-1.5 rounded-md text-xs font-medium transition cursor-pointer ${
-                isSettingsOpen
-                  ? 'bg-[var(--pata-brand)] text-white shadow-xs'
-                  : 'text-stone-600 dark:text-stone-400 hover:text-stone-900 dark:hover:text-stone-100 hover:bg-stone-200/60 dark:hover:bg-stone-800/60'
-              }`}
-              title="设置 (⌘,)"
-            >
-              <Settings className="w-4 h-4 shrink-0" />
-              <span>设置</span>
-            </button>
+          <div className="relative p-2 flex items-center justify-between no-drag-region border-t border-stone-200/60 dark:border-stone-800/60 gap-1.5">
+            <div className="flex items-center gap-1.5 min-w-0">
+              <button
+                onClick={() => {
+                  if (isSettingsOpen) {
+                    setIsSettingsOpen(false);
+                  } else {
+                    handleOpenSettings();
+                  }
+                }}
+                className={`flex items-center space-x-2 px-2.5 py-1.5 rounded-md text-xs font-medium transition cursor-pointer ${
+                  isSettingsOpen
+                    ? 'bg-[var(--pata-brand)] text-white shadow-xs'
+                    : 'text-stone-600 dark:text-stone-400 hover:text-stone-900 dark:hover:text-stone-100 hover:bg-stone-200/60 dark:hover:bg-stone-800/60'
+                }`}
+                title="设置 (⌘,)"
+              >
+                <Settings className="w-4 h-4 shrink-0" />
+                <span>设置</span>
+              </button>
+
+              {renderUpdateButton()}
+            </div>
 
             {(hasHealthIssues || rescanError || (vaultStatus?.configured && !vaultStatus?.open)) && (
               <button
@@ -668,6 +896,7 @@ export default function App() {
                 tagNames={tagNames}
                 onVaultDataChanged={refreshVault}
                 leaveGuardRef={leaveGuardRef}
+                onDraftCheck={handleTodayDraftCheck}
               />
             )}
 
@@ -700,6 +929,7 @@ export default function App() {
                 onOpenTask={handleOpenTask}
                 onEditingChange={setIsEditingNote}
                 leaveGuardRef={leaveGuardRef}
+                onDraftCheck={handleNotesDraftCheck}
                 onOpenSettings={handleOpenSettings}
                 tagNames={tagNames}
                 onVaultDataChanged={refreshVault}
@@ -875,6 +1105,17 @@ export default function App() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Non-blocking Toast Notification */}
+      {toastMessage && (
+        <div
+          role="status"
+          aria-live="polite"
+          className="absolute bottom-5 left-1/2 -translate-x-1/2 z-50 px-3.5 py-1.5 rounded-full bg-stone-900/90 dark:bg-stone-100/90 text-white dark:text-stone-900 text-xs font-medium shadow-lg backdrop-blur pointer-events-none transition-all duration-200"
+        >
+          {toastMessage}
+        </div>
+      )}
     </div>
   );
 }

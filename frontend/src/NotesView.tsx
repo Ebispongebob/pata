@@ -59,6 +59,7 @@ interface NotesViewProps {
   onOpenTask?: (taskId: string) => void;
   onEditingChange?: (isEditing: boolean) => void;
   leaveGuardRef?: React.MutableRefObject<(() => Promise<boolean>) | null>;
+  onDraftCheck?: (checker: () => boolean) => () => void;
   onOpenSettings?: (section?: 'appearance' | 'storage' | 'transcription') => void;
   tagNames?: string[];
   onVaultDataChanged?: () => void;
@@ -135,6 +136,7 @@ interface NoteEditorProps {
   onNoteUpdated: () => void;
   onNoteCreated?: (newId: string) => void;
   leaveGuardRef?: React.MutableRefObject<(() => Promise<boolean>) | null>;
+  onDraftCheck?: (checker: () => boolean) => () => void;
   onOpenSettings?: (section?: 'appearance' | 'storage' | 'transcription') => void;
   tagNames?: string[];
   onVaultDataChanged?: () => void;
@@ -150,6 +152,7 @@ function NoteEditor({
   onNoteUpdated,
   onNoteCreated,
   leaveGuardRef,
+  onDraftCheck,
   onOpenSettings,
   tagNames = [],
   onVaultDataChanged,
@@ -941,6 +944,18 @@ function NoteEditor({
     };
   }, [leaveGuardRef, isDirty, doSave, initialNote]);
 
+  useEffect(() => {
+    if (!onDraftCheck) return;
+    return onDraftCheck(() => {
+      if (isDeletedRef.current) return false;
+      if (hasConflictRef.current || saveStatus === 'saving') return true;
+      const currentTitle = editTitleRef.current.trim();
+      const currentTags = editTagsRef.current;
+      const currentBody = vditorRef.current ? vditorRef.current.getValue() : (initialNote?.body ?? '');
+      return isDirty(currentTitle, currentTags, currentBody);
+    });
+  }, [onDraftCheck, isDirty, saveStatus, initialNote]);
+
   // ---- `[[` 笔记候选 + 链接点击 ----
   const syncPicker = () => {
     const sel = window.getSelection();
@@ -1727,6 +1742,7 @@ export function NotesView({
   onOpenTask,
   onEditingChange,
   leaveGuardRef,
+  onDraftCheck,
   onOpenSettings,
   tagNames = [],
   onVaultDataChanged,
@@ -2031,6 +2047,7 @@ export function NotesView({
         }}
         onNoteCreated={handleNoteCreated}
         leaveGuardRef={leaveGuardRef}
+        onDraftCheck={onDraftCheck}
         onOpenSettings={onOpenSettings}
         tagNames={tagNames}
         onVaultDataChanged={onVaultDataChanged}
