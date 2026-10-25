@@ -40,6 +40,10 @@ jobs:
         run: |
           npm --prefix frontend ci
 
+      - name: Build Frontend Assets
+        run: |
+          npm --prefix frontend run build
+
       - name: Run Tests
         run: |
           go test ./...
@@ -65,8 +69,6 @@ jobs:
           VERSION: ${{ steps.get_version.outputs.version }}
           OFFICIAL_BUILD: 'true'
         run: |
-          # Build frontend assets
-          npm --prefix frontend run build
           # Build and package .app bundle
           wails3 task darwin:package OFFICIAL_BUILD=true VERSION=${VERSION}
           # Package .app.zip for in-app updater
