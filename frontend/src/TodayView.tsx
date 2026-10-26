@@ -631,8 +631,8 @@ export function TodayView({
       <WorkspacePage>
         <div className="space-y-5">
           {/* Date bar */}
-          <div className="flex items-center justify-between gap-3 h-12">
-            <div className="flex items-center gap-2 min-w-0">
+          <div className="flex items-center justify-between gap-3 h-12 drag-region select-none">
+            <div className="no-drag-region flex items-center gap-2 min-w-0">
               <div className="flex items-center">
                 <button
                   onClick={() => void confirmDateChange((d) => shiftDateStr(d, -1))}
@@ -656,7 +656,7 @@ export function TodayView({
             {!isToday && (
               <button
                 onClick={() => void confirmDateChange(todayStr)}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-stone-200 dark:border-stone-800 hover:bg-stone-100 dark:hover:bg-stone-800 text-stone-600 dark:text-stone-300 text-xs font-medium transition shrink-0"
+                className="no-drag-region flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-stone-200 dark:border-stone-800 hover:bg-stone-100 dark:hover:bg-stone-800 text-stone-600 dark:text-stone-300 text-xs font-medium transition shrink-0 cursor-pointer"
               >
                 <RotateCcw className="w-3.5 h-3.5" />
                 <span>回到今天</span>

@@ -668,17 +668,17 @@ export const TaskDetailPanel = forwardRef<TaskDetailHandle, TaskDetailPanelProps
   return (
     <div className="h-full flex flex-col min-h-0 bg-stone-50/50 dark:bg-stone-900/50 select-text">
       {/* 1. Top Navigation Bar */}
-      <div className="flex items-center justify-between px-6 py-3 border-b border-stone-200/80 dark:border-stone-800/80 shrink-0">
+      <div className="flex items-center justify-between px-6 py-3 border-b border-stone-200/80 dark:border-stone-800/80 shrink-0 drag-region select-none">
         <button
           type="button"
           onClick={handleCloseClick}
-          className="p-1.5 -ml-1.5 rounded-md text-stone-500 hover:text-stone-800 dark:hover:text-stone-200 hover:bg-stone-200/60 dark:hover:bg-stone-800/60 transition"
+          className="no-drag-region p-1.5 -ml-1.5 rounded-md text-stone-500 hover:text-stone-800 dark:hover:text-stone-200 hover:bg-stone-200/60 dark:hover:bg-stone-800/60 transition cursor-pointer"
           title={closeLabel}
         >
           <ArrowRight className="w-4 h-4" />
         </button>
 
-        <div className="flex items-center space-x-1">
+        <div className="no-drag-region flex items-center space-x-1">
           {saving && (
             <span className="text-[11px] text-stone-400 dark:text-stone-500 mr-1 select-none animate-pulse">
               保存中...

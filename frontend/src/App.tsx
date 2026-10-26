@@ -438,7 +438,7 @@ export default function App() {
     [registerDraftChecker]
   );
 
-  const renderUpdateButton = () => {
+  const renderUpdateButton = (collapsed: boolean = false) => {
     if (!updateStatus) return null;
     const { state, progress_percent, available_version, error_message } = updateStatus;
 
@@ -447,11 +447,12 @@ export default function App() {
         <button
           type="button"
           onClick={handleStartDownload}
-          className="flex items-center space-x-1 px-2 py-1.5 rounded-md text-xs font-medium text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/50 hover:bg-emerald-100 dark:hover:bg-emerald-900/60 border border-emerald-300 dark:border-emerald-800 transition cursor-pointer shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--pata-focus-ring)]"
+          aria-label={`发现新版本 v${available_version}，点击开始下载`}
+          className={`flex items-center ${collapsed ? 'w-full justify-center' : 'space-x-1'} px-2 py-1.5 rounded-md text-xs font-medium text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/50 hover:bg-emerald-100 dark:hover:bg-emerald-900/60 border border-emerald-300 dark:border-emerald-800 transition cursor-pointer shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--pata-focus-ring)]`}
           title={`发现新版本 v${available_version}，点击开始下载`}
         >
           <Download className="w-3.5 h-3.5 shrink-0" />
-          <span>更新</span>
+          <span className={collapsed ? 'sr-only' : undefined}>更新</span>
         </button>
       );
     }
@@ -461,11 +462,14 @@ export default function App() {
         <button
           type="button"
           disabled
-          className="flex items-center space-x-1 px-2 py-1.5 rounded-md text-xs font-medium text-stone-700 dark:text-stone-300 bg-stone-100 dark:bg-stone-800 border border-stone-300 dark:border-stone-700 shrink-0 cursor-default"
+          aria-label={progress_percent >= 0 ? `正在下载更新: ${progress_percent}%` : '正在下载更新...'}
+          className={`flex items-center ${collapsed ? 'w-full justify-center' : 'space-x-1'} px-2 py-1.5 rounded-md text-xs font-medium text-stone-700 dark:text-stone-300 bg-stone-100 dark:bg-stone-800 border border-stone-300 dark:border-stone-700 shrink-0 cursor-default`}
           title={progress_percent >= 0 ? `正在下载更新: ${progress_percent}%` : '正在下载更新...'}
         >
           <Download className="w-3.5 h-3.5 shrink-0 animate-bounce" />
-          <span>{progress_percent >= 0 ? `${progress_percent}%` : '下载中'}</span>
+          <span className={collapsed ? 'text-[10px] font-mono ml-1' : undefined}>
+            {progress_percent >= 0 ? `${progress_percent}%` : (collapsed ? '…' : '下载中')}
+          </span>
         </button>
       );
     }
@@ -475,11 +479,12 @@ export default function App() {
         <button
           type="button"
           disabled
-          className="flex items-center space-x-1 px-2 py-1.5 rounded-md text-xs font-medium text-stone-700 dark:text-stone-300 bg-stone-100 dark:bg-stone-800 border border-stone-300 dark:border-stone-700 shrink-0 cursor-default"
+          aria-label="校验与暂存中..."
+          className={`flex items-center ${collapsed ? 'w-full justify-center' : 'space-x-1'} px-2 py-1.5 rounded-md text-xs font-medium text-stone-700 dark:text-stone-300 bg-stone-100 dark:bg-stone-800 border border-stone-300 dark:border-stone-700 shrink-0 cursor-default`}
           title="校验与暂存中..."
         >
           <RefreshCw className="w-3.5 h-3.5 shrink-0 animate-spin" />
-          <span>100%</span>
+          <span className={collapsed ? 'text-[10px] font-mono ml-1' : undefined}>100%</span>
         </button>
       );
     }
@@ -489,11 +494,12 @@ export default function App() {
         <button
           type="button"
           onClick={handleWaitingInstallClick}
-          className="flex items-center space-x-1 px-2 py-1.5 rounded-md text-xs font-medium text-amber-800 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/60 hover:bg-amber-100 dark:hover:bg-amber-900/60 border border-amber-300 dark:border-amber-800 transition cursor-pointer shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--pata-focus-ring)]"
+          aria-label="更新已就绪，保存当前编辑后点击重启安装"
+          className={`flex items-center ${collapsed ? 'w-full justify-center' : 'space-x-1'} px-2 py-1.5 rounded-md text-xs font-medium text-amber-800 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/60 hover:bg-amber-100 dark:hover:bg-amber-900/60 border border-amber-300 dark:border-amber-800 transition cursor-pointer shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--pata-focus-ring)]`}
           title="更新已就绪，保存当前编辑后点击重启安装"
         >
           <Clock className="w-3.5 h-3.5 shrink-0" />
-          <span>等待安装</span>
+          <span className={collapsed ? 'sr-only' : undefined}>等待安装</span>
         </button>
       );
     }
@@ -503,10 +509,11 @@ export default function App() {
         <button
           type="button"
           disabled
-          className="flex items-center space-x-1 px-2 py-1.5 rounded-md text-xs font-medium text-stone-600 dark:text-stone-400 bg-stone-100 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 shrink-0 cursor-default"
+          aria-label="正在更新"
+          className={`flex items-center ${collapsed ? 'w-full justify-center' : 'space-x-1'} px-2 py-1.5 rounded-md text-xs font-medium text-stone-600 dark:text-stone-400 bg-stone-100 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 shrink-0 cursor-default`}
         >
           <RefreshCw className="w-3.5 h-3.5 shrink-0 animate-spin" />
-          <span>正在更新</span>
+          <span className={collapsed ? 'sr-only' : undefined}>正在更新</span>
         </button>
       );
     }
@@ -516,8 +523,18 @@ export default function App() {
         <button
           type="button"
           onClick={handleRetryUpdate}
-          className="flex items-center space-x-1 px-2 py-1.5 rounded-md text-xs font-medium text-rose-700 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/60 hover:bg-rose-100 dark:hover:bg-rose-900/60 border border-rose-300 dark:border-rose-800 transition cursor-pointer shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--pata-focus-ring)]"
+          aria-label={error_message ? `更新失败: ${error_message}，点击重试` : '更新失败，点击重试'}
+          className={`flex items-center ${collapsed ? 'w-full justify-center' : 'space-x-1'} px-2 py-1.5 rounded-md text-xs font-medium text-rose-700 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/60 hover:bg-rose-100 dark:hover:bg-rose-900/60 border border-rose-300 dark:border-rose-800 transition cursor-pointer shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--pata-focus-ring)]`}
           title={error_message ? `更新失败: ${error_message}，点击重试` : '更新失败，点击重试'}
+        >
+          <RefreshCw className="w-3.5 h-3.5 shrink-0" />
+          <span className={collapsed ? 'sr-only' : undefined}>重试更新</span>
+        </button>
+      );
+    }
+
+    return null;
+  };
         >
           <RefreshCw className="w-3.5 h-3.5 shrink-0" />
           <span>重试更新</span>
@@ -678,6 +695,12 @@ export default function App() {
       {/* 4px top edge guard: prevents native window resize from triggering wails:drag */}
       <div className="absolute top-0 left-0 right-0 h-1 no-drag-region z-30 pointer-events-auto" />
 
+      {/* Top window drag strip above main workspace: ensures window is draggable when sidebar is collapsed */}
+      <div
+        style={{ left: `${sidebarCollapsed ? 88 : sidebarWidth}px` }}
+        className="absolute top-1 right-0 h-7 drag-region z-10 pointer-events-auto"
+      />
+
       {/* Left column: lights+logo strip above sidebar, unified background */}
       <div
         style={{ width: `${sidebarCollapsed ? 88 : sidebarWidth}px` }}
@@ -696,7 +719,11 @@ export default function App() {
           title={sidebarCollapsed ? '展开侧栏' : '收起侧栏'}
           aria-expanded={!sidebarCollapsed}
           aria-controls="sidebar-navigation"
-          className={`absolute z-20 h-8 flex items-center justify-center rounded-md text-stone-500 dark:text-stone-400 hover:bg-stone-200/60 dark:hover:bg-stone-800/60 cursor-pointer no-drag-region ${sidebarCollapsed ? 'top-[60px] left-2 right-2' : 'top-[10px] right-2 w-8'}`}
+          className={`absolute z-20 h-8 flex items-center justify-center rounded-md text-stone-500 dark:text-stone-400 hover:bg-stone-200/60 dark:hover:bg-stone-800/60 cursor-pointer no-drag-region ${
+            sidebarCollapsed
+              ? 'top-[60px] left-2 right-2 bg-stone-100/95 dark:bg-stone-950/95 backdrop-blur border border-stone-200/70 dark:border-stone-800/70 shadow-2xs'
+              : 'top-[10px] right-2 w-8'
+          }`}
         >
           <Icon className="w-4 h-4" iconNode={[
             ['path', { d: 'M4 5h16M4 12h5M4 19h5' }],
@@ -788,8 +815,17 @@ export default function App() {
 
           {/* Tags section */}
           {sidebarCollapsed && (
-            <button type="button" onClick={() => setSidebarCollapsed(false)} aria-label="展开侧栏查看标签" title="展开侧栏查看标签"
-              className={`w-full flex items-center justify-center px-2.5 py-2 rounded-md cursor-pointer ${activeNav === 'tag' ? 'bg-emerald-100/70 dark:bg-emerald-950/60 text-emerald-900 dark:text-emerald-200' : 'text-stone-500 dark:text-stone-400 hover:bg-stone-200/60 dark:hover:bg-stone-800/60'}`}>
+            <button
+              type="button"
+              onClick={() => setSidebarCollapsed(false)}
+              aria-label="展开侧栏查看标签"
+              title="展开侧栏查看标签"
+              className={`w-full flex items-center justify-center px-2.5 py-2 rounded-md transition-colors cursor-pointer ${
+                activeNav === 'tag'
+                  ? 'bg-[var(--pata-brand)] text-white shadow-xs'
+                  : 'text-stone-500 dark:text-stone-400 hover:bg-stone-200/60 dark:hover:bg-stone-800/60'
+              }`}
+            >
               <Hash className="w-4 h-4" />
             </button>
           )}
@@ -856,7 +892,7 @@ export default function App() {
 
         {/* Sidebar Footer: settings entry + persistent health warning if present */}
         <div className={`relative p-2 flex items-center no-drag-region border-t border-stone-200/60 dark:border-stone-800/60 gap-1.5 ${sidebarCollapsed ? 'flex-col' : 'justify-between'}`}>
-          <div className={`flex items-center gap-1.5 min-w-0 ${sidebarCollapsed ? 'w-full flex-col [&_span]:sr-only' : ''}`}>
+          <div className={`flex items-center gap-1.5 min-w-0 ${sidebarCollapsed ? 'w-full flex-col' : ''}`}>
             <button
               onClick={() => {
                 if (isSettingsOpen) {
@@ -877,7 +913,7 @@ export default function App() {
               {!sidebarCollapsed && <span>设置</span>}
             </button>
 
-            {renderUpdateButton()}
+            {renderUpdateButton(sidebarCollapsed)}
           </div>
 
           {(hasHealthIssues || rescanError || (vaultStatus?.configured && !vaultStatus?.open)) && (
