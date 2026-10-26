@@ -230,7 +230,7 @@ export function SettingsView({
             <span>返回</span>
           </button>
           <span className="text-stone-300 dark:text-stone-700">|</span>
-          <h1 className="text-sm font-semibold text-stone-900 dark:text-stone-100">应用设置</h1>
+          <h1 className="settings-title">应用设置</h1>
         </div>
       </div>
 
@@ -240,12 +240,12 @@ export function SettingsView({
           {/* Section 1: 外观 */}
         <section
           ref={appearanceRef}
-          className="rounded-xl border border-stone-200/80 dark:border-stone-800/80 bg-white/70 dark:bg-stone-900/60 p-5 shadow-2xs space-y-4"
+          className="settings-card"
         >
-          <h2 className="text-sm font-semibold text-stone-900 dark:text-stone-100">外观</h2>
+          <h2 className="settings-title">外观</h2>
 
           <div>
-            <label className="text-xs font-medium text-stone-700 dark:text-stone-300 block mb-2">
+            <label className="settings-label block mb-2">
               主题模式
             </label>
             <div className="grid grid-cols-3 gap-3">
@@ -295,13 +295,13 @@ export function SettingsView({
         {/* Section 2: 存储 */}
         <section
           ref={storageRef}
-          className="rounded-xl border border-stone-200/80 dark:border-stone-800/80 bg-white/70 dark:bg-stone-900/60 p-5 shadow-2xs space-y-4"
+          className="settings-card"
         >
-          <h2 className="text-sm font-semibold text-stone-900 dark:text-stone-100">存储</h2>
+          <h2 className="settings-title">存储</h2>
 
           {/* Current Path */}
           <div className="space-y-1.5">
-            <label className="block text-xs font-medium text-stone-700 dark:text-stone-300">
+            <label className="block settings-label">
               当前 Vault 目录
             </label>
 
@@ -369,7 +369,7 @@ export function SettingsView({
               type="button"
               onClick={onSelectVault}
               disabled={vaultBusy}
-              className="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg border border-stone-300 dark:border-stone-700 hover:bg-stone-100 dark:hover:bg-stone-800 disabled:opacity-50 text-xs font-medium text-stone-800 dark:text-stone-200 transition cursor-pointer"
+              className="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg border border-stone-300 dark:border-stone-700 hover:bg-stone-100 dark:hover:bg-stone-800 disabled:opacity-50 settings-label transition cursor-pointer"
             >
               <FolderOpen className="w-3.5 h-3.5" />
               <span>{vaultStatus?.configured ? '更换目录' : '选择目录'}</span>
@@ -381,7 +381,7 @@ export function SettingsView({
               type="button"
               onClick={handleOpenInFinder}
               disabled={vaultBusy || !vaultStatus?.configured}
-              className="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg border border-stone-300 dark:border-stone-700 hover:bg-stone-100 dark:hover:bg-stone-800 disabled:opacity-50 text-xs font-medium text-stone-800 dark:text-stone-200 transition cursor-pointer"
+              className="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg border border-stone-300 dark:border-stone-700 hover:bg-stone-100 dark:hover:bg-stone-800 disabled:opacity-50 settings-label transition cursor-pointer"
               title="在系统 Finder 中打开当前 Vault 目录"
             >
               <ExternalLink className="w-3.5 h-3.5" />
@@ -419,14 +419,14 @@ export function SettingsView({
         {/* Section 3: 语音转写 */}
         <section
           ref={transcriptionRef}
-          className="rounded-xl border border-stone-200/80 dark:border-stone-800/80 bg-white/70 dark:bg-stone-900/60 p-5 shadow-2xs space-y-4"
+          className="settings-card"
         >
-          <h2 className="text-sm font-semibold text-stone-900 dark:text-stone-100">语音转写</h2>
+          <h2 className="settings-title">语音转写</h2>
 
           {/* API Key Configuration Block */}
           <div className="space-y-3 pt-1">
             <div className="flex items-center justify-between">
-              <label className="text-xs font-medium text-stone-700 dark:text-stone-300">
+              <label className="settings-label">
                 API Key 凭据
               </label>
               <button
@@ -440,7 +440,7 @@ export function SettingsView({
             </div>
 
             {asrLoading ? (
-              <div className="text-xs text-stone-400 py-2">加载 Keychain 配置状态...</div>
+              <div className="settings-description py-2">加载 Keychain 配置状态...</div>
             ) : asrStatus?.configured && !isReplacingKey ? (
               /* Configured State */
               <div className="flex items-center justify-between gap-3 py-1">
@@ -457,7 +457,7 @@ export function SettingsView({
                     setApiKeyInput('');
                     setAsrError(null);
                   }}
-                  className="shrink-0 px-3 py-1.5 rounded-lg border border-stone-300 dark:border-stone-700 hover:bg-stone-100 dark:hover:bg-stone-800 text-xs font-medium text-stone-700 dark:text-stone-300 transition cursor-pointer"
+                  className="shrink-0 px-3 py-1.5 rounded-lg border border-stone-300 dark:border-stone-700 hover:bg-stone-100 dark:hover:bg-stone-800 settings-label transition cursor-pointer"
                 >
                   更换 API Key
                 </button>
@@ -494,14 +494,14 @@ export function SettingsView({
                         setApiKeyInput('');
                         setAsrError(null);
                       }}
-                      className="px-3 py-2 rounded-lg border border-stone-300 dark:border-stone-700 hover:bg-stone-100 dark:hover:bg-stone-800 text-xs text-stone-600 dark:text-stone-300 transition cursor-pointer"
+                      className="px-3 py-2 rounded-lg border border-stone-300 dark:border-stone-700 hover:bg-stone-100 dark:hover:bg-stone-800 text-xs font-medium text-stone-600 dark:text-stone-300 transition cursor-pointer"
                     >
                       取消
                     </button>
                   )}
                 </div>
 
-                <div className="text-[11px] text-stone-400">
+                <div className="settings-description">
                   写入 macOS Keychain，不落任何文件与日志。
                 </div>
               </form>
@@ -526,18 +526,18 @@ export function SettingsView({
         {/* Section 4: 更新 */}
         <section
           ref={updaterRef}
-          className="rounded-xl border border-stone-200/80 dark:border-stone-800/80 bg-white/70 dark:bg-stone-900/60 p-5 shadow-2xs space-y-4"
+          className="settings-card"
         >
-          <h2 className="text-sm font-semibold text-stone-900 dark:text-stone-100">更新</h2>
+          <h2 className="settings-title">更新</h2>
           <div className="flex items-center justify-between gap-4">
             <div className="space-y-0.5">
               <label
                 htmlFor="auto-check-updates-toggle"
-                className="text-xs font-medium text-stone-700 dark:text-stone-300 cursor-pointer"
+                className="settings-label cursor-pointer"
               >
                 自动检查更新
               </label>
-              <p className="text-[11px] text-stone-400">
+              <p className="settings-description">
                 {isOfficialBuild
                   ? '发现新版本时，在侧边栏提示更新'
                   : '当前构建为开发版本，已禁用官方自动更新'}

@@ -23,23 +23,23 @@ export function AccentColorSettings({ color, ready, status, error, onChange, onR
   };
   return <fieldset aria-label="主题强调色设置" disabled={!ready} className="space-y-3 pt-4 border-t border-stone-200/80 dark:border-stone-800/80">
     <div className="flex items-center justify-between gap-3">
-      <span className="text-xs font-medium text-stone-700 dark:text-stone-300">主题强调色</span>
-      <button type="button" onClick={() => { setChannels(accentRGB('').map(String)); setInvalid(false); onChange(''); }} className="text-xs text-stone-500 hover:text-stone-900 dark:hover:text-stone-100 cursor-pointer">恢复默认颜色</button>
+      <span className="settings-label">主题强调色</span>
+      <button type="button" onClick={() => { setChannels(accentRGB('').map(String)); setInvalid(false); onChange(''); }} className="settings-description hover:text-stone-900 dark:hover:text-stone-100 cursor-pointer">恢复默认颜色</button>
     </div>
     <div className="flex flex-wrap items-end gap-3">
-      <label className="text-xs text-stone-500 space-y-1">
+      <label className="settings-label space-y-1">
         <span className="block">选取颜色</span>
         <input type="color" aria-label="主题强调色" value={color || DEFAULT_ACCENT} onChange={(event) => onChange(event.target.value)} className="block w-12 h-9 p-0.5 rounded-md border border-stone-200 dark:border-stone-700 bg-transparent cursor-pointer" />
       </label>
-      {['红色 R', '绿色 G', '蓝色 B'].map((label, index) => <label key={label} className="text-xs text-stone-500 space-y-1">
+      {['红色 R', '绿色 G', '蓝色 B'].map((label, index) => <label key={label} className="settings-label space-y-1">
         <span className="block">{label}</span>
         <input type="number" aria-label={label} aria-invalid={invalid} min="0" max="255" step="1" value={channels[index]} onChange={(event) => changeChannel(index, event.target.value)}
-          className="block w-20 h-9 px-2 rounded-md border border-stone-200 dark:border-stone-700 bg-white dark:bg-stone-950 text-stone-800 dark:text-stone-200 tabular-nums" />
+          className="block w-20 h-9 px-2 rounded-md border border-stone-200 dark:border-stone-700 bg-white dark:bg-stone-950 text-stone-800 dark:text-stone-200 font-normal tabular-nums" />
       </label>)}
-      <span className="pb-2 text-xs font-mono text-stone-500">{(color || DEFAULT_ACCENT).toUpperCase()}</span>
+      <span className="pb-2 settings-description font-mono">{(color || DEFAULT_ACCENT).toUpperCase()}</span>
     </div>
-    {invalid && <p role="alert" className="text-xs text-rose-600">RGB 各项须为 0–255 的整数，当前输入尚未应用。</p>}
+    {invalid && <p role="alert" className="text-xs text-rose-600 dark:text-rose-400">RGB 各项须为 0–255 的整数，当前输入尚未应用。</p>}
     <p aria-live="polite" className="sr-only">{status === 'loading' ? '读取主题色…' : status === 'saving' ? '正在保存…' : status === 'saved' ? color ? '已保存自定义颜色' : '使用默认颜色' : ''}</p>
-    {error && <div role="alert" className="flex items-center gap-3 text-xs text-rose-600"><span>{error}</span><button type="button" onClick={onRetry} className="underline cursor-pointer shrink-0">重试保存</button></div>}
+    {error && <div role="alert" className="flex items-center gap-3 text-xs text-rose-600 dark:text-rose-400"><span>{error}</span><button type="button" onClick={onRetry} className="underline cursor-pointer shrink-0">重试保存</button></div>}
   </fieldset>;
 }

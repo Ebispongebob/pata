@@ -1,6 +1,36 @@
 @import "tailwindcss";
 @custom-variant dark (&:where(.dark, .dark *));
 
+@layer components {
+  .settings-card {
+    @apply rounded-xl border border-stone-200/80 dark:border-stone-800/80 bg-white/70 dark:bg-stone-900/60 p-5 shadow-2xs space-y-4;
+    font-size: 12px;
+    line-height: 20px;
+    color: var(--pata-foreground);
+  }
+
+  .settings-title {
+    font-size: 14px;
+    line-height: 20px;
+    font-weight: 600;
+    color: var(--pata-foreground);
+  }
+
+  .settings-label {
+    @apply text-stone-700 dark:text-stone-300;
+    font-size: 12px;
+    line-height: 20px;
+    font-weight: 500;
+  }
+
+  .settings-description {
+    font-size: 12px;
+    line-height: 20px;
+    font-weight: 400;
+    color: var(--pata-muted-foreground);
+  }
+}
+
 :root {
   --wails-draggable: no-drag;
   color-scheme: light dark;

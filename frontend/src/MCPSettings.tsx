@@ -69,14 +69,14 @@ export function MCPSettings() {
   return (
     <section
       aria-labelledby="mcp-heading"
-      className="rounded-xl border border-stone-200/80 dark:border-stone-800/80 bg-white/70 dark:bg-stone-900/60 p-5 shadow-2xs space-y-3"
+      className="settings-card"
     >
       <div className="flex items-center justify-between gap-3">
         <div className="flex min-w-0 items-center gap-2.5">
           <Plug className="h-4 w-4 shrink-0 text-stone-600 dark:text-stone-300" />
           <div className="min-w-0">
-            <h2 id="mcp-heading" className="text-sm font-semibold text-stone-900 dark:text-stone-100">MCP 服务</h2>
-            <div role="status" className="mt-1 flex items-center gap-1.5 text-xs text-stone-500 dark:text-stone-400">
+            <h2 id="mcp-heading" className="settings-title">MCP 服务</h2>
+            <div role="status" className="mt-1 flex items-center gap-1.5 settings-description">
               {status?.running ? (
                 <>
                   <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" aria-hidden="true" />
@@ -110,8 +110,8 @@ export function MCPSettings() {
       {status?.running && (
         <div className="flex items-center justify-between gap-3 border-t border-stone-200/80 pt-3 dark:border-stone-800/80">
           <div className="min-w-0">
-            <div className="text-xs font-medium text-stone-800 dark:text-stone-200">Agent 接入</div>
-            <p className="mt-1 text-xs text-stone-500 dark:text-stone-400">在支持 MCP 的客户端中使用</p>
+            <div className="settings-label">Agent 接入</div>
+            <p className="mt-1 settings-description">在支持 MCP 的客户端中使用</p>
           </div>
           <div className="group relative shrink-0">
             <Button
@@ -130,7 +130,7 @@ export function MCPSettings() {
               className="absolute right-0 top-full z-30 hidden w-[min(28rem,calc(100vw-3rem))] pt-2 group-hover:block group-focus-within:block"
             >
               <div className="rounded-lg border border-stone-200 bg-white p-3 shadow-lg dark:border-stone-700 dark:bg-stone-900">
-                <p className="mb-1.5 text-xs font-medium text-stone-800 dark:text-stone-200">Agent 接入指令</p>
+                <p className="mb-1.5 settings-label">Agent 接入指令</p>
                 <p className="select-text break-words text-xs leading-relaxed text-stone-600 dark:text-stone-300">{prompt}</p>
               </div>
             </div>
