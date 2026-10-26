@@ -855,33 +855,34 @@ export default function App() {
         </div>
 
         {/* Sidebar Footer: settings entry + persistent health warning if present */}
-        <div className={`relative p-2 flex items-center no-drag-region border-t border-stone-200/60 dark:border-stone-800/60 ${sidebarCollapsed ? 'flex-col gap-1' : 'justify-between'}`}>
-          <button
-            onClick={() => {
-              if (isSettingsOpen) {
-                setIsSettingsOpen(false);
-              } else {
-                handleOpenSettings();
-              }
-            }}
-            aria-label="设置"
-            className={`flex items-center ${sidebarCollapsed ? 'w-full justify-center' : 'space-x-2'} px-2.5 py-1.5 rounded-md text-xs font-medium transition cursor-pointer ${
-              isSettingsOpen
-                ? 'bg-[var(--pata-brand)] text-white shadow-xs'
-                : 'text-stone-600 dark:text-stone-400 hover:text-stone-900 dark:hover:text-stone-100 hover:bg-stone-200/60 dark:hover:bg-stone-800/60'
-            }`}
-            title="设置 (⌘,)"
-          >
-            <Settings className="w-4 h-4 shrink-0" />
-            {!sidebarCollapsed && <span>设置</span>}
-          </button>
+        <div className={`relative p-2 flex items-center no-drag-region border-t border-stone-200/60 dark:border-stone-800/60 gap-1.5 ${sidebarCollapsed ? 'flex-col' : 'justify-between'}`}>
+          <div className={`flex items-center gap-1.5 min-w-0 ${sidebarCollapsed ? 'w-full flex-col [&_span]:sr-only' : ''}`}>
+            <button
+              onClick={() => {
+                if (isSettingsOpen) {
+                  setIsSettingsOpen(false);
+                } else {
+                  handleOpenSettings();
+                }
+              }}
+              aria-label="设置"
+              className={`flex items-center ${sidebarCollapsed ? 'w-full justify-center' : 'space-x-2'} px-2.5 py-1.5 rounded-md text-xs font-medium transition cursor-pointer ${
+                isSettingsOpen
+                  ? 'bg-[var(--pata-brand)] text-white shadow-xs'
+                  : 'text-stone-600 dark:text-stone-400 hover:text-stone-900 dark:hover:text-stone-100 hover:bg-stone-200/60 dark:hover:bg-stone-800/60'
+              }`}
+              title="设置 (⌘,)"
+            >
+              <Settings className="w-4 h-4 shrink-0" />
+              {!sidebarCollapsed && <span>设置</span>}
+            </button>
 
-          {renderUpdateButton()}
+            {renderUpdateButton()}
+          </div>
 
           {(hasHealthIssues || rescanError || (vaultStatus?.configured && !vaultStatus?.open)) && (
             <button
               onClick={() => {
-                healthTriggerRef.current = document.activeElement as HTMLElement | null;
                 setShowHealthModal(true);
               }}
               aria-label="Vault 状态与健康异常诊断"
