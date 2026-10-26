@@ -11,3 +11,6 @@ build/android/overlay.json
 build/android/gen/
 /pata
 .DS_Store
+.env
+.env.*
+!.env.example
