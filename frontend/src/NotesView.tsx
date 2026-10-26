@@ -778,7 +778,6 @@ function NoteEditor({
       if (isNewDraftRef.current) return;
       const data = ev.data as { op?: string; path?: string; entity_id?: string; type?: string } | undefined;
       if (data?.entity_id === currentNoteIdRef.current) {
-        const isAudioTranscript = isAudioTranscriptNote(initialNoteRef.current);
         const bodyNow = vditorRef.current ? vditorRef.current.getValue() : (initialNoteRef.current?.body ?? '');
         const titleNow = editTitleRef.current;
         const tagsNow = editTagsRef.current;
