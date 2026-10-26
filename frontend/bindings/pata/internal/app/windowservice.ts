@@ -15,32 +15,32 @@ import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wails
 import * as $models from "./models.js";
 
 export function CompleteRequest(ticket: string, allowed: boolean): $CancellablePromise<void> {
-    return $Call.ByID(3085535091, ticket, allowed);
+    return $Call.ByID(521171996, ticket, allowed);
 }
 
 export function FinishVaultChange(): $CancellablePromise<void> {
-    return $Call.ByID(516698294);
+    return $Call.ByID(747215189);
 }
 
 export function GetDraftWindowState(): $CancellablePromise<$models.DraftWindowState> {
-    return $Call.ByID(487864679);
+    return $Call.ByID(4045411396);
 }
 
 /**
  * OpenDraftWindow 复用单个独立工作区，并将指定草稿交给该窗口打开。
  */
 export function OpenDraftWindow(vaultPath: string, id: string): $CancellablePromise<void> {
-    return $Call.ByID(2062640408, vaultPath, id);
+    return $Call.ByID(2140648959, vaultPath, id);
 }
 
 export function PrepareVaultChange(): $CancellablePromise<void> {
-    return $Call.ByID(2020649380);
+    return $Call.ByID(153303761);
 }
 
 export function ShowMainWindow(): $CancellablePromise<void> {
-    return $Call.ByID(1120989693);
+    return $Call.ByID(2972419860);
 }
 
 export function WindowReady(): $CancellablePromise<void> {
-    return $Call.ByID(3151900744);
+    return $Call.ByID(2359049671);
 }

@@ -52,7 +52,7 @@ export function CreateAudioNoteData(name: string, base64Data: string): $Cancella
 }
 
 export function CreateDraft(vaultPath: string): $CancellablePromise<$models.Draft | null> {
-    return $Call.ByID(1447551672, vaultPath);
+    return $Call.ByID(3860041469, vaultPath);
 }
 
 /**
@@ -80,7 +80,7 @@ export function DeleteActivity(id: string): $CancellablePromise<void> {
  * DeleteDraft 检查客户端版本后删除原文；已删除的草稿不会被重复删除或重新创建。
  */
 export function DeleteDraft(vaultPath: string, id: string, version: string): $CancellablePromise<void> {
-    return $Call.ByID(2491903957, vaultPath, id, version);
+    return $Call.ByID(3767049388, vaultPath, id, version);
 }
 
 /**
@@ -124,7 +124,7 @@ export function GetASRTaskStatus(noteID: string): $CancellablePromise<asr$0.ASRT
  * GetAccentColorPreference 返回主题强调色；空值使用应用默认配色。
  */
 export function GetAccentColorPreference(): $CancellablePromise<string> {
-    return $Call.ByID(3274213929);
+    return $Call.ByID(557994346);
 }
 
 /**
@@ -171,7 +171,7 @@ export function GetDayTimeline(date: string): $CancellablePromise<$models.Timeli
 }
 
 export function GetDraft(vaultPath: string, id: string): $CancellablePromise<$models.Draft | null> {
-    return $Call.ByID(944747678, vaultPath, id);
+    return $Call.ByID(985435733, vaultPath, id);
 }
 
 /**
@@ -270,7 +270,7 @@ export function ListByTag(tag: string): $CancellablePromise<markdown$0.EntityRef
  * ListDrafts 仅列出 drafts/ 中由应用管理的文本，不进入 Notes 索引。
  */
 export function ListDrafts(vaultPath: string): $CancellablePromise<($models.Draft | null)[] | null> {
-    return $Call.ByID(2015021269, vaultPath);
+    return $Call.ByID(2275252850, vaultPath);
 }
 
 /**
@@ -347,7 +347,7 @@ export function SaveDayPlan(date: string, taskIDs: string[] | null): $Cancellabl
  * SaveDraft 比较客户端读取的版本，避免重扫或另一编辑者更新后覆盖内容。
  */
 export function SaveDraft(input: $models.SaveDraftInput): $CancellablePromise<$models.Draft | null> {
-    return $Call.ByID(330828823, input);
+    return $Call.ByID(4052302146, input);
 }
 
 /**
@@ -381,17 +381,17 @@ export function SetASRKey(key: string): $CancellablePromise<void> {
 }
 
 /**
+ * SetAccentColorPreference 仅保存应用强调色，不修改 Vault 业务数据。
+ */
+export function SetAccentColorPreference(color: string): $CancellablePromise<void> {
+    return $Call.ByID(1007755526, color);
+}
+
+/**
  * SetAutoCheckUpdatesPreference persists the auto update check preference.
  */
 export function SetAutoCheckUpdatesPreference(enabled: boolean): $CancellablePromise<void> {
     return $Call.ByID(1402327522, enabled);
-}
-
-/**
- * SetAccentColorPreference 仅保存应用强调色，不修改 Vault 业务数据。
- */
-export function SetAccentColorPreference(color: string): $CancellablePromise<void> {
-    return $Call.ByID(2067846917, color);
 }
 
 /**

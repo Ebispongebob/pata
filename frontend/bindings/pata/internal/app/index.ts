@@ -21,7 +21,6 @@ export type {
     CreateActivityInput,
     CreateNoteInput,
     CreateTaskInput,
-    MCPStatus,
     Draft,
     DraftWindowState,
     MCPStatus,

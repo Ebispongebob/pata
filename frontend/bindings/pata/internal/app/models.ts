@@ -67,14 +67,6 @@ export interface CreateTaskInput {
     "note_refs"?: { [_ in string]?: string } | null;
 }
 
-export interface MCPStatus {
-    "enabled": boolean;
-    "running": boolean;
-    "endpoint": string;
-    "vaultChanged": boolean;
-    "error": string;
-}
-
 /**
  * Draft 为独立文本草稿；磁盘仅保存原文，列表属性从文件名、首行和修改时间得到。
  */
