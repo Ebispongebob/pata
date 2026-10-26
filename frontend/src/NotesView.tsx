@@ -7,7 +7,6 @@ import {
   Bot,
   Plus,
   AlertCircle,
-  RefreshCw,
   FolderOpen,
   ArrowLeft,
   Loader2,
@@ -31,6 +30,7 @@ import { formatStatusAction } from './activityUtils';
 import { TranscriptViewer, TranscriptViewerRef } from './TranscriptViewer';
 import { TagChipEditor } from './TagChipEditor';
 import { validateTag, hasTag, dedupeTags, formatDraftText } from './tagUtils';
+import { copyToClipboard } from './clipboardUtils';
 import {
   CandidateItem,
   FileRef,
@@ -189,6 +189,27 @@ function NoteEditor({
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<boolean>(false);
   const [isDeleting, setIsDeleting] = useState<boolean>(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const toastTimerRef = useRef<number | null>(null);
+
+  const showToast = useCallback((msg: string) => {
+    if (toastTimerRef.current) {
+      window.clearTimeout(toastTimerRef.current);
+    }
+    setToastMessage(msg);
+    toastTimerRef.current = window.setTimeout(() => {
+      setToastMessage(null);
+      toastTimerRef.current = null;
+    }, 2000);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (toastTimerRef.current) {
+        window.clearTimeout(toastTimerRef.current);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     if (!moreMenuOpen) return;
@@ -394,6 +415,7 @@ function NoteEditor({
         title: currentTitle,
         tags: currentTags,
         body: currentBody,
+        force: force,
       };
 
       const updated = await VaultService.UpdateNote(input);
@@ -419,7 +441,7 @@ function NoteEditor({
       if (isConflict) {
         hasConflictRef.current = true;
         setSaveStatus('conflict');
-        setConflictError('文件已被外部修改（保存冲突）。自动保存已停止，当前本地草稿尚未写盘。为防内容丢失，建议先复制草稿到剪贴板后再重新加载或返回。');
+        setConflictError('外部文件已更新（本地有未保存修改）');
         if (debounceTimerRef.current) {
           window.clearTimeout(debounceTimerRef.current);
           debounceTimerRef.current = null;
@@ -558,7 +580,6 @@ function NoteEditor({
   // Listen to ASR status events and task updates
   useEffect(() => {
     let unlistenStatus: (() => void) | undefined;
-    let unlistenVault: (() => void) | undefined;
     let active = true;
 
     if (isAudioTranscriptNote(initialNote)) {
@@ -607,29 +628,11 @@ function NoteEditor({
         }
       });
       unlistenStatus = () => subStatus();
-
-      const subVault = Events.On('vault:changed', (event: any) => {
-        if (!active) return;
-        if (event.data && event.data.entity_id === noteId && event.data.op === 'update') {
-          VaultService.GetNote(noteId).then((updated) => {
-            if (active && updated) {
-              setInitialNote(updated);
-              lastSavedStateRef.current = {
-                title: updated.title,
-                tags: updated.tags || [],
-                body: updated.body || '',
-              };
-            }
-          });
-        }
-      });
-      unlistenVault = () => subVault();
     }
 
     return () => {
       active = false;
       if (unlistenStatus) unlistenStatus();
-      if (unlistenVault) unlistenVault();
     };
   }, [noteId, isAudioTranscriptNote(initialNote)]);
 
@@ -769,19 +772,101 @@ function NoteEditor({
     };
   }, [loadingNote]);
 
-  // Subscribe to vault:changed: if hitting current note, trigger conflict path
+  // Subscribe to vault:changed: if hitting current note, handle silent reload or conflict; if hitting files, refresh image tags
   useEffect(() => {
     const unsubscribe = Events.On('vault:changed', (ev) => {
       if (isNewDraftRef.current) return;
       const data = ev.data as { op?: string; path?: string; entity_id?: string; type?: string } | undefined;
       if (data?.entity_id === currentNoteIdRef.current) {
+        const isAudioTranscript = isAudioTranscriptNote(initialNoteRef.current);
+        const bodyNow = vditorRef.current ? vditorRef.current.getValue() : (initialNoteRef.current?.body ?? '');
+        const titleNow = editTitleRef.current;
+        const tagsNow = editTagsRef.current;
+        const dirty = isDirtyRef.current(titleNow, tagsNow, bodyNow);
+
+        if (!dirty) {
+          // Clean state: silently update in place without banner or error
+          VaultService.GetNote(currentNoteIdRef.current)
+            .then((updated) => {
+              if (!updated || updated.id !== currentNoteIdRef.current) return;
+
+              // Check if user started editing while GetNote was in flight
+              const isAudioTranscriptNow = isAudioTranscriptNote(initialNoteRef.current);
+              const curBody = vditorRef.current ? vditorRef.current.getValue() : (initialNoteRef.current?.body ?? '');
+              const curTitle = editTitleRef.current;
+              const curTags = editTagsRef.current;
+              if (isDirtyRef.current(curTitle, curTags, curBody)) {
+                hasConflictRef.current = true;
+                if (debounceTimerRef.current) {
+                  window.clearTimeout(debounceTimerRef.current);
+                  debounceTimerRef.current = null;
+                }
+                setSaveStatus('conflict');
+                setConflictError('外部文件已更新（本地有未保存修改）');
+                return;
+              }
+
+              setInitialNote(updated);
+              initialNoteRef.current = updated;
+              lastSavedStateRef.current = {
+                title: updated.title,
+                tags: updated.tags || [],
+                body: updated.body || '',
+              };
+              setEditTitle(updated.title);
+              editTitleRef.current = updated.title;
+              setEditTags(updated.tags || []);
+              editTagsRef.current = updated.tags || [];
+              if (vditorRef.current && !isAudioTranscriptNow) {
+                vditorRef.current.setValue(updated.body || '');
+              }
+              setSaveStatus('saved');
+              setConflictError(null);
+              hasConflictRef.current = false;
+            })
+            .catch((err) => {
+              console.warn('Failed to silently reload clean note:', err);
+            });
+          return;
+        }
+
+        // Dirty state: pause auto-save and show conflict action bar
         hasConflictRef.current = true;
         if (debounceTimerRef.current) {
           window.clearTimeout(debounceTimerRef.current);
           debounceTimerRef.current = null;
         }
         setSaveStatus('conflict');
-        setConflictError('外部检测到文件变动，自动保存已停止，当前本地草稿尚未写盘。为防内容丢失，建议先复制草稿到剪贴板后再重新加载或返回。');
+        setConflictError('外部文件已更新（本地有未保存修改）');
+      }
+      if (data?.type === 'file' || data?.entity_id?.startsWith('files/')) {
+        const container = vditorContainerRef.current;
+        if (!container) return;
+        const rawFileName = data.entity_id ? data.entity_id.split('/').pop() : '';
+        if (!rawFileName) return;
+        let fileName = rawFileName;
+        try {
+          fileName = decodeURIComponent(rawFileName);
+        } catch {
+          // keep raw
+        }
+
+        const imgs = container.querySelectorAll<HTMLImageElement>('img');
+        const now = Date.now();
+        imgs.forEach((img) => {
+          const currentSrc = img.getAttribute('src') || '';
+          const clean = currentSrc.split('?')[0].split('#')[0];
+          const rawSegment = clean.split('/').pop() || '';
+          let srcName = rawSegment;
+          try {
+            srcName = decodeURIComponent(rawSegment);
+          } catch {
+            // keep raw
+          }
+          if (srcName === fileName || rawSegment === rawFileName) {
+            img.src = `${clean}?_t=${now}`;
+          }
+        });
       }
     });
     return () => {
@@ -1129,11 +1214,17 @@ function NoteEditor({
       : (vditorRef.current ? vditorRef.current.getValue() : '');
     const draftText = formatDraftText(currentTitle, currentTags, currentBody);
     try {
-      await navigator.clipboard.writeText(draftText);
-      setCopiedDraft(true);
-      setTimeout(() => setCopiedDraft(false), 2500);
+      const ok = await copyToClipboard(draftText);
+      if (ok) {
+        setCopiedDraft(true);
+        setTimeout(() => setCopiedDraft(false), 2500);
+        showToast('草稿已复制到剪贴板');
+      } else {
+        showToast('复制草稿失败');
+      }
     } catch (err) {
       console.error('Failed to copy draft to clipboard:', err);
+      showToast('复制草稿失败');
     }
   };
 
@@ -1152,6 +1243,14 @@ function NoteEditor({
       return;
     }
     try {
+      const bodyNow = isAudioTranscriptNote(initialNoteRef.current)
+        ? (initialNoteRef.current?.body ?? '')
+        : (vditorRef.current ? vditorRef.current.getValue() : '');
+      if (isDirtyRef.current(editTitleRef.current, editTagsRef.current, bodyNow)) {
+        const draftText = formatDraftText(editTitleRef.current, editTagsRef.current, bodyNow);
+        await copyToClipboard(draftText);
+      }
+
       const diskNote = await VaultService.GetNote(currentNoteIdRef.current);
       if (!diskNote) return;
 
@@ -1163,7 +1262,7 @@ function NoteEditor({
       setTitleError(null);
 
       const body = diskNote.body ?? '';
-      if (vditorRef.current) {
+      if (vditorRef.current && !isAudioTranscriptNote(diskNote)) {
         vditorRef.current.setValue(body);
       }
 
@@ -1177,9 +1276,25 @@ function NoteEditor({
       setConflictError(null);
       setSaveStatus('saved');
       onNoteUpdatedRef.current();
+      showToast('已载入外部版本（原未保存草稿已备份至剪贴板）');
     } catch (err: any) {
       console.error('Failed to reload note:', err);
       setConflictError(`重新加载失败: ${err?.message || err}`);
+    }
+  };
+
+  const handleResolveConflictKeepMine = async () => {
+    try {
+      const saved = await doSave(true);
+      if (saved) {
+        hasConflictRef.current = false;
+        setConflictError(null);
+        setSaveStatus('saved');
+        showToast('已用本地草稿覆盖外部版本');
+      }
+    } catch (err: any) {
+      console.error('Failed to overwrite note:', err);
+      showToast(err?.message || '覆盖失败');
     }
   };
 
@@ -1220,6 +1335,46 @@ function NoteEditor({
       setDeleteError(`删除失败: ${err?.message || err}`);
     } finally {
       setIsDeleting(false);
+    }
+  };
+
+  const handleCopyAbsolutePath = async () => {
+    setMoreMenuOpen(false);
+    const targetId = currentNoteIdRef.current || noteId;
+    if (!targetId || isNewDraftRef.current) {
+      showToast('草稿尚未保存，暂无文件路径');
+      return;
+    }
+    try {
+      const path = await VaultService.GetNotePath(targetId);
+      if (!path) {
+        showToast('获取笔记路径失败');
+        return;
+      }
+      const ok = await copyToClipboard(path);
+      if (ok) {
+        showToast('已复制绝对路径');
+      } else {
+        showToast('复制到剪贴板失败');
+      }
+    } catch (err: any) {
+      console.error('Failed to copy note path:', err);
+      showToast(err?.message || '复制路径失败');
+    }
+  };
+
+  const handleOpenInFinder = async () => {
+    setMoreMenuOpen(false);
+    const targetId = currentNoteIdRef.current || noteId;
+    if (!targetId || isNewDraftRef.current) {
+      showToast('草稿尚未保存，暂无文件路径');
+      return;
+    }
+    try {
+      await VaultService.RevealNoteInFinder(targetId);
+    } catch (err: any) {
+      console.error('Failed to reveal note in Finder:', err);
+      showToast(err?.message || '在 Finder 中打开失败');
     }
   };
 
@@ -1297,14 +1452,35 @@ function NoteEditor({
               <MoreHorizontal className="w-4 h-4" />
             </button>
             {moreMenuOpen && (
-              <div className="absolute right-0 top-full mt-1 w-32 rounded-lg border border-stone-200 dark:border-stone-800 bg-white dark:bg-stone-900 shadow-lg py-1 z-30">
+              <div className="absolute right-0 top-full mt-1 w-40 rounded-lg border border-stone-200 dark:border-stone-800 bg-white dark:bg-stone-900 shadow-lg py-1 z-30">
+                <button
+                  type="button"
+                  onClick={handleCopyAbsolutePath}
+                  disabled={isNewDraftRef.current}
+                  className="w-full flex items-center space-x-2 px-3 py-1.5 text-xs text-stone-700 dark:text-stone-300 hover:bg-stone-100 dark:hover:bg-stone-800 transition text-left cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap"
+                  title={isNewDraftRef.current ? '草稿尚未保存，暂无文件路径' : undefined}
+                >
+                  <Copy className="w-3.5 h-3.5 text-stone-400 shrink-0" />
+                  <span>复制绝对路径</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handleOpenInFinder}
+                  disabled={isNewDraftRef.current}
+                  className="w-full flex items-center space-x-2 px-3 py-1.5 text-xs text-stone-700 dark:text-stone-300 hover:bg-stone-100 dark:hover:bg-stone-800 transition text-left cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap"
+                  title={isNewDraftRef.current ? '草稿尚未保存，暂无文件路径' : undefined}
+                >
+                  <FolderOpen className="w-3.5 h-3.5 text-stone-400 shrink-0" />
+                  <span>在 Finder 中打开</span>
+                </button>
+                <div className="my-1 border-t border-stone-100 dark:border-stone-800" />
                 <button
                   type="button"
                   onClick={() => {
                     setMoreMenuOpen(false);
                     setShowDeleteConfirm(true);
                   }}
-                  className="w-full flex items-center space-x-2 px-3 py-1.5 text-xs text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition text-left cursor-pointer"
+                  className="w-full flex items-center space-x-2 px-3 py-1.5 text-xs text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition text-left cursor-pointer whitespace-nowrap"
                 >
                   <Trash2 className="w-3.5 h-3.5 shrink-0" />
                   <span>删除笔记</span>
@@ -1315,40 +1491,37 @@ function NoteEditor({
         </div>
       </div>
 
-      {/* Conflict Warning Banner (Stops auto-save) */}
+      {/* Conflict Action Bar: 外部变动且本地有未保存内容时的选择条 */}
       {(hasConflictRef.current || conflictError) && (
-        <div className="p-3.5 rounded-xl border border-amber-300 dark:border-amber-800/80 bg-amber-50 dark:bg-amber-950/40 text-amber-900 dark:text-amber-200 text-xs flex items-center justify-between gap-3 shadow-xs shrink-0">
-          <div className="flex items-center space-x-2.5 min-w-0">
-            <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
-            <span className="font-medium">
-              {conflictError ||
-                '文件已被外部修改（保存冲突）。自动保存已停止，当前本地草稿尚未写盘。为防内容丢失，建议先复制草稿到剪贴板后再重新加载或返回。'}
+        <div className="px-3.5 py-2 rounded-lg border border-amber-200 dark:border-amber-900/60 bg-amber-50/90 dark:bg-amber-950/40 text-xs flex items-center justify-between gap-3 shadow-xs shrink-0 animate-in fade-in duration-150">
+          <div className="flex items-center space-x-2 min-w-0">
+            <AlertCircle className="w-4 h-4 text-amber-600 dark:text-amber-500 shrink-0" />
+            <span className="text-amber-900 dark:text-amber-200 font-medium truncate">
+              {conflictError || '外部文件已更新（本地有未保存修改）'}
             </span>
           </div>
-          <div className="flex items-center space-x-2 shrink-0">
+          <div className="flex items-center space-x-1.5 shrink-0">
             <button
               type="button"
               onClick={handleCopyDraft}
-              className="flex items-center space-x-1 px-3 py-1 rounded-md bg-stone-700 hover:bg-stone-800 text-white text-xs font-medium transition shadow-2xs"
-              title="将当前编辑器中的草稿（标题、标签与正文）复制到剪贴板"
+              className="px-2.5 py-1 rounded-md text-stone-600 dark:text-stone-300 hover:text-stone-900 dark:hover:text-stone-100 hover:bg-amber-100/70 dark:hover:bg-amber-900/50 transition cursor-pointer font-medium"
+              title="将未写盘草稿复制到剪贴板"
             >
-              {copiedDraft ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
-              <span>{copiedDraft ? '已复制草稿' : '复制草稿到剪贴板'}</span>
+              {copiedDraft ? '已复制' : '复制草稿'}
             </button>
             <button
               type="button"
               onClick={() => setShowReloadConfirm(true)}
-              className="flex items-center space-x-1 px-3 py-1 rounded-md bg-amber-600 hover:bg-amber-700 text-white text-xs font-medium transition shadow-2xs"
+              className="px-2.5 py-1 rounded-md border border-amber-300/80 dark:border-amber-800 hover:bg-amber-100 dark:hover:bg-amber-900/60 text-amber-900 dark:text-amber-200 transition cursor-pointer font-medium"
             >
-              <RefreshCw className="w-3 h-3" />
-              <span>重新加载（丢弃本地改动）</span>
+              载入外部版本
             </button>
             <button
               type="button"
-              onClick={handleAbandonAndReturn}
-              className="px-2.5 py-1 rounded-md border border-amber-300 dark:border-amber-700 hover:bg-amber-100 dark:hover:bg-amber-900/40 text-xs transition"
+              onClick={handleResolveConflictKeepMine}
+              className="px-2.5 py-1 rounded-md bg-stone-900 dark:bg-stone-100 hover:bg-stone-800 dark:hover:bg-white text-white dark:text-stone-900 transition cursor-pointer font-medium shadow-2xs"
             >
-              放弃保存返回
+              用本地草稿覆盖
             </button>
           </div>
         </div>
@@ -1543,9 +1716,9 @@ function NoteEditor({
       <ConfirmDialog
         open={showReloadConfirm}
         variant="warning"
-        title="确认重新加载？"
-        description="重新加载将从磁盘读取最新的笔记内容，您当前在编辑器中未保存的本地修改将被全部丢弃。"
-        confirmText="确认重新加载"
+        title="载入外部版本"
+        description="确定载入外部文件的最新内容吗？本地未保存的修改将被覆盖（我们会自动将当前草稿备份到剪贴板）。"
+        confirmText="载入并覆盖本地"
         cancelText="取消"
         onCancel={() => setShowReloadConfirm(false)}
         onConfirm={handleConfirmReload}
@@ -1727,6 +1900,19 @@ function NoteEditor({
         }}
         onConfirm={handleConfirmDelete}
       />
+
+      {/* Non-blocking Toast Notification */}
+      {toastMessage && createPortal(
+        <div
+          role="status"
+          aria-live="polite"
+          className="pata-fade fixed bottom-6 left-1/2 -translate-x-1/2 z-50 px-3.5 py-1.5 rounded-full bg-stone-900/90 dark:bg-stone-100/90 text-white dark:text-stone-900 text-xs font-medium shadow-lg backdrop-blur pointer-events-none transition-all duration-200 flex items-center space-x-1.5"
+        >
+          <Check className="w-3.5 h-3.5 text-emerald-400 dark:text-emerald-600 shrink-0" />
+          <span>{toastMessage}</span>
+        </div>,
+        document.body
+      )}
     </div>
   );
 }
@@ -1780,6 +1966,27 @@ export function NotesView({
   const [noteToDelete, setNoteToDelete] = useState<Note | null>(null);
   const [isDeletingFromList, setIsDeletingFromList] = useState(false);
   const [deleteListError, setDeleteListError] = useState<string | null>(null);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const toastTimerRef = useRef<number | null>(null);
+
+  const showToast = useCallback((msg: string) => {
+    if (toastTimerRef.current) {
+      window.clearTimeout(toastTimerRef.current);
+    }
+    setToastMessage(msg);
+    toastTimerRef.current = window.setTimeout(() => {
+      setToastMessage(null);
+      toastTimerRef.current = null;
+    }, 2000);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (toastTimerRef.current) {
+        window.clearTimeout(toastTimerRef.current);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     if (!contextMenu) return;
@@ -2274,14 +2481,61 @@ export function NotesView({
       {contextMenu && createPortal(
         <div
           ref={contextMenuRef}
-          className="pata-fade fixed z-50 rounded-lg border border-stone-200 dark:border-stone-800 bg-white dark:bg-stone-900 shadow-xl py-1 min-w-[130px]"
+          className="pata-fade fixed z-50 rounded-lg border border-stone-200 dark:border-stone-800 bg-white dark:bg-stone-900 shadow-xl py-1 min-w-[140px]"
           style={{
-            left: `${Math.min(contextMenu.x, window.innerWidth - 140)}px`,
-            top: `${Math.min(contextMenu.y, window.innerHeight - 50)}px`,
+            left: `${Math.min(contextMenu.x, window.innerWidth - 150)}px`,
+            top: `${Math.min(contextMenu.y, window.innerHeight - 110)}px`,
           }}
           onMouseDown={(e) => e.stopPropagation()}
           onClick={(e) => e.stopPropagation()}
         >
+          <button
+            type="button"
+            onClick={async (e) => {
+              e.stopPropagation();
+              const note = contextMenu.note;
+              setContextMenu(null);
+              try {
+                const path = await VaultService.GetNotePath(note.id);
+                if (path) {
+                  const ok = await copyToClipboard(path);
+                  if (ok) {
+                    showToast('已复制绝对路径');
+                  } else {
+                    showToast('复制到剪贴板失败');
+                  }
+                } else {
+                  showToast('获取笔记路径失败');
+                }
+              } catch (err: any) {
+                console.error('Failed to copy note path:', err);
+                showToast(err?.message || '复制路径失败');
+              }
+            }}
+            className="w-full flex items-center space-x-2 px-3 py-1.5 text-xs text-stone-700 dark:text-stone-300 hover:bg-stone-100 dark:hover:bg-stone-800 transition text-left cursor-pointer whitespace-nowrap"
+          >
+            <Copy className="w-3.5 h-3.5 text-stone-400 shrink-0" />
+            <span>复制绝对路径</span>
+          </button>
+          <button
+            type="button"
+            onClick={async (e) => {
+              e.stopPropagation();
+              const note = contextMenu.note;
+              setContextMenu(null);
+              try {
+                await VaultService.RevealNoteInFinder(note.id);
+              } catch (err: any) {
+                console.error('Failed to reveal note in Finder:', err);
+                showToast(err?.message || '在 Finder 中打开失败');
+              }
+            }}
+            className="w-full flex items-center space-x-2 px-3 py-1.5 text-xs text-stone-700 dark:text-stone-300 hover:bg-stone-100 dark:hover:bg-stone-800 transition text-left cursor-pointer whitespace-nowrap"
+          >
+            <FolderOpen className="w-3.5 h-3.5 text-stone-400 shrink-0" />
+            <span>在 Finder 中打开</span>
+          </button>
+          <div className="my-1 border-t border-stone-100 dark:border-stone-800" />
           <button
             type="button"
             onClick={(e) => {
@@ -2290,7 +2544,7 @@ export function NotesView({
               setContextMenu(null);
               setNoteToDelete(note);
             }}
-            className="w-full flex items-center space-x-2 px-3 py-1.5 text-xs text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition text-left cursor-pointer"
+            className="w-full flex items-center space-x-2 px-3 py-1.5 text-xs text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition text-left cursor-pointer whitespace-nowrap"
           >
             <Trash2 className="w-3.5 h-3.5 shrink-0" />
             <span>删除笔记</span>
@@ -2322,6 +2576,19 @@ export function NotesView({
         }}
         onConfirm={handleConfirmDeleteFromList}
       />
+
+      {/* Non-blocking Toast Notification */}
+      {toastMessage && createPortal(
+        <div
+          role="status"
+          aria-live="polite"
+          className="pata-fade fixed bottom-6 left-1/2 -translate-x-1/2 z-50 px-3.5 py-1.5 rounded-full bg-stone-900/90 dark:bg-stone-100/90 text-white dark:text-stone-900 text-xs font-medium shadow-lg backdrop-blur pointer-events-none transition-all duration-200 flex items-center space-x-1.5"
+        >
+          <Check className="w-3.5 h-3.5 text-emerald-400 dark:text-emerald-600 shrink-0" />
+          <span>{toastMessage}</span>
+        </div>,
+        document.body
+      )}
     </div>
   );
 }
