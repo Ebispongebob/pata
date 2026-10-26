@@ -9,6 +9,8 @@ import {
   X,
   AlertCircle,
   FolderOpen,
+  Circle,
+  CheckCircle2,
 } from 'lucide-react';
 import * as VaultService from '../bindings/pata/vaultservice';
 import { Task, TaskStatus } from '../bindings/pata/internal/storage/markdown/models';
@@ -21,6 +23,8 @@ import { ActivityComposer } from './ActivityComposer';
 import { ActivityItem } from './ActivityItem';
 import { NoteRefMap, pruneRefs, sameRefs, useNoteRefs } from './noteRefs';
 import { getLocalDateStr, followTodayOnDateChange } from './todayDate';
+import { formatActivityTimestamp } from './taskTimeline';
+import { splitAndSortTasksForPicker } from './taskPicker';
 
 interface TodayViewProps {
   vaultStatus: VaultStatus | null;
@@ -316,14 +320,8 @@ export function TodayView({
       .filter((t): t is Task => !!t && t.status !== TaskStatus.TaskStatusDone && !currentSet.has(t.id));
   }, [selectedDate, todayStr, dayPlanTaskIds, yesterdayTaskIds, taskMap]);
 
-  const availableTasksToAdd = useMemo(() => {
-    const currentSet = new Set(dayPlanTaskIds);
-    const query = addSearch.trim().toLowerCase();
-    return tasks.filter((t) => {
-      if (currentSet.has(t.id)) return false;
-      if (!query) return true;
-      return t.title.toLowerCase().includes(query) || (t.tags ?? []).some((tag) => tag.toLowerCase().includes(query));
-    });
+  const { uncompletedTasks, completedTasks, totalAvailableCount } = useMemo(() => {
+    return splitAndSortTasksForPicker(tasks, dayPlanTaskIds, addSearch);
   }, [tasks, dayPlanTaskIds, addSearch]);
 
   // 当前选中任务由 App Shell 管理；Today 只提供计划上下文。
@@ -925,29 +923,115 @@ export function TodayView({
               />
             </div>
 
-            <div className="max-h-60 overflow-y-auto space-y-1.5 pr-1">
-              {availableTasksToAdd.length === 0 ? (
+            <div className="max-h-72 overflow-y-auto space-y-4 pr-1">
+              {totalAvailableCount === 0 ? (
                 <div className="py-8 text-center text-xs text-stone-400">
                   {tasks.length === 0 ? '任务池为空' : '没有可添加的任务（已全部加入或无匹配项）'}
                 </div>
               ) : (
-                availableTasksToAdd.map((t) => (
-                  <button
-                    key={t.id}
-                    type="button"
-                    onMouseDown={(e) => e.preventDefault()}
-                    onClick={async () => {
-                      await handleAddExisting(t.id);
-                      setAddModalOpen(false);
-                    }}
-                    className="w-full text-left p-2.5 rounded-lg border border-stone-100 dark:border-stone-800 hover:border-emerald-500/60 hover:bg-stone-50 dark:hover:bg-stone-800/50 transition flex items-center justify-between gap-2"
-                  >
-                    <div className="flex items-center gap-2 min-w-0">
-                      <span className="text-xs truncate text-stone-900 dark:text-stone-100">{t.title}</span>
+                <>
+                  {/* 第一块：未完成 */}
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between px-1">
+                      <span className="text-[11px] font-semibold text-stone-500 dark:text-stone-400">
+                        未完成 ({uncompletedTasks.length})
+                      </span>
                     </div>
-                    <Plus className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                  </button>
-                ))
+                    {uncompletedTasks.length === 0 ? (
+                      <div className="py-3 text-center text-xs text-stone-400 dark:text-stone-500 rounded-lg bg-stone-50/60 dark:bg-stone-800/30">
+                        暂无未完成任务
+                      </div>
+                    ) : (
+                      <div className="space-y-1.5">
+                        {uncompletedTasks.map((t) => (
+                          <button
+                            key={t.id}
+                            type="button"
+                            onMouseDown={(e) => e.preventDefault()}
+                            onClick={async () => {
+                              await handleAddExisting(t.id);
+                              setAddModalOpen(false);
+                            }}
+                            className="w-full text-left p-2.5 rounded-lg border border-stone-100 dark:border-stone-800 hover:border-emerald-500/60 hover:bg-stone-50 dark:hover:bg-stone-800/50 transition flex items-center justify-between gap-2 group"
+                          >
+                            <div className="flex items-center gap-2 min-w-0 flex-1">
+                              <Circle className="w-3.5 h-3.5 text-stone-400 shrink-0" />
+                              <span className="text-xs truncate text-stone-900 dark:text-stone-100">{t.title}</span>
+                              {(t.tags ?? []).length > 0 && (
+                                <span className="hidden sm:inline-flex items-center gap-1 shrink-0">
+                                  {(t.tags ?? []).map((tag) => (
+                                    <span key={tag} className="text-[10px] text-stone-400">
+                                      #{tag}
+                                    </span>
+                                  ))}
+                                </span>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-2 shrink-0">
+                              {t.created_at && (
+                                <span className="text-[10px] font-mono text-stone-400">
+                                  {formatActivityTimestamp(t.created_at)}
+                                </span>
+                              )}
+                              <Plus className="w-3.5 h-3.5 text-emerald-600 group-hover:scale-110 transition-transform" />
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* 第二块：已完成 */}
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between px-1 pt-1">
+                      <span className="text-[11px] font-semibold text-stone-500 dark:text-stone-400">
+                        已完成 ({completedTasks.length})
+                      </span>
+                    </div>
+                    {completedTasks.length === 0 ? (
+                      <div className="py-3 text-center text-xs text-stone-400 dark:text-stone-500 rounded-lg bg-stone-50/60 dark:bg-stone-800/30">
+                        暂无已完成任务
+                      </div>
+                    ) : (
+                      <div className="space-y-1.5">
+                        {completedTasks.map((t) => (
+                          <button
+                            key={t.id}
+                            type="button"
+                            onMouseDown={(e) => e.preventDefault()}
+                            onClick={async () => {
+                              await handleAddExisting(t.id);
+                              setAddModalOpen(false);
+                            }}
+                            className="w-full text-left p-2.5 rounded-lg border border-stone-100 dark:border-stone-800/80 bg-stone-50/40 dark:bg-stone-900/40 hover:border-emerald-500/60 hover:bg-stone-50 dark:hover:bg-stone-800/50 transition flex items-center justify-between gap-2 group opacity-85 hover:opacity-100"
+                          >
+                            <div className="flex items-center gap-2 min-w-0 flex-1">
+                              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-500 shrink-0" />
+                              <span className="text-xs truncate line-through text-stone-400 dark:text-stone-500">{t.title}</span>
+                              {(t.tags ?? []).length > 0 && (
+                                <span className="hidden sm:inline-flex items-center gap-1 shrink-0 opacity-60">
+                                  {(t.tags ?? []).map((tag) => (
+                                    <span key={tag} className="text-[10px] text-stone-400">
+                                      #{tag}
+                                    </span>
+                                  ))}
+                                </span>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-2 shrink-0">
+                              {t.created_at && (
+                                <span className="text-[10px] font-mono text-stone-400">
+                                  {formatActivityTimestamp(t.created_at)}
+                                </span>
+                              )}
+                              <Plus className="w-3.5 h-3.5 text-emerald-600 group-hover:scale-110 transition-transform" />
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </>
               )}
             </div>
 
