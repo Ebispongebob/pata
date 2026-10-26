@@ -89,6 +89,9 @@ func TestAssetMiddleware_ServeFilesAndMedia(t *testing.T) {
 		if rec.Code != http.StatusOK {
 			t.Fatalf("expected 200, got %d", rec.Code)
 		}
+		if !strings.Contains(rec.Header().Get("Cache-Control"), "no-cache") {
+			t.Errorf("expected Cache-Control header to contain no-cache, got %q", rec.Header().Get("Cache-Control"))
+		}
 		if !bytes.Equal(rec.Body.Bytes(), pngBytes) {
 			t.Errorf("served body does not match expected bytes")
 		}

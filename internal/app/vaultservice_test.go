@@ -1489,6 +1489,27 @@ func TestVaultService_UpdateNote_PreserveCreatedAtAndBaselineConflict(t *testing
 	if err == nil || !strings.Contains(err.Error(), "conflict") {
 		t.Fatalf("expected conflict error on external edit, got: %v", err)
 	}
+
+	// 4. Force overwrite bypasses baseline conflict check
+	forced, err := s.UpdateNote(UpdateNoteInput{
+		ID:    created.ID,
+		Title: "强制覆盖标题",
+		Body:  "强制覆盖正文",
+		Force: true,
+	})
+	if err != nil {
+		t.Fatalf("UpdateNote with Force=true failed: %v", err)
+	}
+	if forced.Title != "强制覆盖标题" {
+		t.Fatalf("expected forced title '强制覆盖标题', got %q", forced.Title)
+	}
+	diskBytesAfterForced, err := os.ReadFile(notePath)
+	if err != nil {
+		t.Fatalf("read disk after force failed: %v", err)
+	}
+	if !strings.Contains(string(diskBytesAfterForced), "强制覆盖标题") {
+		t.Fatalf("disk missing forced content: %s", string(diskBytesAfterForced))
+	}
 }
 
 func TestVaultService_ListNotes_OrderingAndCloneIsolation(t *testing.T) {

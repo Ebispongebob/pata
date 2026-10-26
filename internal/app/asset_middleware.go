@@ -61,5 +61,10 @@ func serveVaultAsset(w http.ResponseWriter, r *http.Request, vs *VaultService, r
 		return
 	}
 
+	// Disable caching so local disk file edits/replacements are immediately visible
+	w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
+	w.Header().Set("Pragma", "no-cache")
+	w.Header().Set("Expires", "0")
+
 	http.ServeFile(w, r, absPath)
 }

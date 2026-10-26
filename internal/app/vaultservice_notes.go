@@ -23,6 +23,7 @@ type UpdateNoteInput struct {
 	Title string   `json:"title"`
 	Tags  []string `json:"tags,omitempty"`
 	Body  string   `json:"body"`
+	Force bool     `json:"force,omitempty"`
 }
 
 // cleanNoteRefs drops blank entries. Bindings to missing notes are kept on purpose:
@@ -228,7 +229,15 @@ func (s *VaultService) UpdateNote(input UpdateNoteInput) (*markdown.Note, error)
 	}
 	existing.UpdatedAt = now
 
-	baseline := noteBaseline(v, existing)
+	var baseline *markdown.FileBaseline
+	if input.Force {
+		path := v.ResolveEntityPath(existing)
+		if b, _, err := markdown.ReadBaseline(path); err == nil {
+			baseline = b
+		}
+	} else {
+		baseline = noteBaseline(v, existing)
+	}
 	newBaseline, err := v.SaveEntity(existing, baseline)
 	if err != nil {
 		return nil, err
