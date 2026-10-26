@@ -13,8 +13,7 @@ import {
   Clock,
   RefreshCw,
   FilePenLine,
-  PanelLeftClose,
-  PanelLeftOpen,
+  Icon,
 } from 'lucide-react';
 import * as VaultService from '../bindings/pata/internal/app/vaultservice';
 import * as UpdaterService from '../bindings/pata/internal/app/updaterservice';
@@ -757,12 +756,26 @@ export default function App() {
         style={{ width: `${sidebarCollapsed ? 88 : sidebarWidth}px` }}
         className="relative shrink-0 flex flex-col bg-stone-100/80 dark:bg-stone-950/80 backdrop-blur select-none"
       >
-        <div className="h-[52px] shrink-0 drag-region flex items-center pl-[84px] select-none overflow-hidden">
+        <div className="h-[52px] shrink-0 drag-region flex items-center pl-[84px] pr-12 select-none overflow-hidden">
           <div aria-hidden={sidebarCollapsed} className={`flex items-center gap-2 ${sidebarCollapsed ? 'invisible' : ''}`}>
             <PataLogo ref={titlebarLogoRef} className="w-6 h-6 shrink-0" />
             <span className="text-sm font-medium text-stone-600 dark:text-stone-300">Pata</span>
           </div>
         </div>
+        <button
+          type="button"
+          onClick={() => setSidebarCollapsed((collapsed) => !collapsed)}
+          aria-label={sidebarCollapsed ? '展开侧栏' : '收起侧栏'}
+          title={sidebarCollapsed ? '展开侧栏' : '收起侧栏'}
+          aria-expanded={!sidebarCollapsed}
+          aria-controls="sidebar-navigation"
+          className={`absolute z-20 h-8 flex items-center justify-center rounded-md text-stone-500 dark:text-stone-400 hover:bg-stone-200/60 dark:hover:bg-stone-800/60 cursor-pointer no-drag-region ${sidebarCollapsed ? 'top-[60px] left-2 right-2' : 'top-[10px] right-2 w-8'}`}
+        >
+          <Icon className="w-4 h-4" iconNode={[
+            ['path', { d: 'M4 5h16M4 12h5M4 19h5' }],
+            ['path', { d: sidebarCollapsed ? 'm14 11 7 5-7 5Z' : 'm21 11-7 5 7 5Z', fill: 'currentColor', strokeWidth: 0 }],
+          ]} />
+        </button>
 
       {/* Sidebar */}
       <aside
@@ -783,19 +796,8 @@ export default function App() {
         )}
 
         {/* Primary Navigation */}
-        <div className="flex-1 overflow-y-auto px-2 py-2 space-y-0.5">
+        <div className={`flex-1 overflow-y-auto px-2 pb-2 space-y-0.5 ${sidebarCollapsed ? 'pt-12' : 'pt-2'}`}>
           <div className={`flex gap-1 mb-2 ${sidebarCollapsed ? 'flex-col' : ''}`}>
-            <button
-              type="button"
-              onClick={() => setSidebarCollapsed((collapsed) => !collapsed)}
-              aria-label={sidebarCollapsed ? '展开侧栏' : '收起侧栏'}
-              title={sidebarCollapsed ? '展开侧栏' : '收起侧栏'}
-              aria-expanded={!sidebarCollapsed}
-              aria-controls="sidebar-navigation"
-              className={`h-8 shrink-0 flex items-center justify-center rounded-md text-stone-500 dark:text-stone-400 hover:bg-stone-200/60 dark:hover:bg-stone-800/60 cursor-pointer no-drag-region ${sidebarCollapsed ? 'w-full' : 'w-8'}`}
-            >
-              {sidebarCollapsed ? <PanelLeftOpen className="w-4 h-4" /> : <PanelLeftClose className="w-4 h-4" />}
-            </button>
             {/* Quick Search */}
             <button
               onClick={() => searchActionRef.current()}
