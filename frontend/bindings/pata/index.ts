@@ -27,5 +27,6 @@ export type {
     UpdateStatus,
     UpdateTaskInput,
     VaultHealth,
-    VaultStatus
+    VaultStatus,
+    WindowStateConfig
 } from "./models.js";

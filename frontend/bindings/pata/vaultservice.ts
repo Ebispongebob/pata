@@ -202,6 +202,13 @@ export function GetVaultStatus(): $CancellablePromise<$models.VaultStatus> {
 }
 
 /**
+ * GetWindowStatePreference returns the persisted window dimensions and state.
+ */
+export function GetWindowStatePreference(): $CancellablePromise<$models.WindowStateConfig | null> {
+    return $Call.ByID(3466423529);
+}
+
+/**
  * ImportFile safely copies an external file into the vault's files/ directory without overwriting.
  */
 export function ImportFile(sourcePath: string): $CancellablePromise<markdown$0.FileResource | null> {
@@ -360,6 +367,13 @@ export function SetThemePreference(theme: string): $CancellablePromise<void> {
 }
 
 /**
+ * SetWindowStatePreference sets the window state preference directly.
+ */
+export function SetWindowStatePreference(state: $models.WindowStateConfig): $CancellablePromise<void> {
+    return $Call.ByID(735557877, state);
+}
+
+/**
  * StartAudioTranscription triggers or retries transcription on an existing Note.
  */
 export function StartAudioTranscription(noteID: string): $CancellablePromise<void> {
@@ -385,4 +399,12 @@ export function UpdateNote(input: $models.UpdateNoteInput): $CancellablePromise<
  */
 export function UpdateTask(input: $models.UpdateTaskInput): $CancellablePromise<markdown$0.Task | null> {
     return $Call.ByID(12384053, input);
+}
+
+/**
+ * UpdateWindowState safely updates the persisted window state from runtime events,
+ * applying debounce jitter filtering and preserving unmaximised bounds.
+ */
+export function UpdateWindowState(w: number, h: number, isMaximised: boolean): $CancellablePromise<void> {
+    return $Call.ByID(4037094657, w, h, isMaximised);
 }

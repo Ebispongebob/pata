@@ -200,3 +200,12 @@ export interface VaultStatus {
     "taskCount": number;
     "error"?: string;
 }
+
+/**
+ * WindowStateConfig stores persisted window dimensions and state.
+ */
+export interface WindowStateConfig {
+    "width"?: number;
+    "height"?: number;
+    "is_maximised"?: boolean;
+}
