@@ -197,12 +197,20 @@ func (s *UpdaterService) initUpdater(app *application.App) error {
 
 	app.Event.On(updater.EventError, func(e *application.CustomEvent) {
 		msg := "更新处理失败"
+		var stage updater.Stage
 		if e != nil && e.Data != nil {
 			if info, ok := e.Data.(updater.ErrorInfo); ok {
 				msg = info.Message
+				stage = info.Stage
 			} else if info, ok := e.Data.(*updater.ErrorInfo); ok && info != nil {
 				msg = info.Message
+				stage = info.Stage
 			}
+		}
+		// Errors in StageCheck (e.g. rate limit, network timeout) are handled by CheckForUpdate
+		// directly and must not transition the global download state to UpdateStateError during background check.
+		if stage == updater.StageCheck {
+			return
 		}
 		s.handleError(msg)
 	})

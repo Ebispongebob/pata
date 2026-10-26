@@ -408,7 +408,12 @@ export default function App() {
 
   const handleRetryUpdate = async () => {
     try {
-      await UpdaterService.StartDownload();
+      if (!updateStatus?.available_version) {
+        // If no version was identified yet (e.g. check stage failed), retry checking
+        await UpdaterService.CheckForUpdate(true);
+      } else {
+        await UpdaterService.StartDownload();
+      }
     } catch (err: any) {
       showToast(err?.message || '重试更新失败');
     }

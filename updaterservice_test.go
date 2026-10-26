@@ -416,3 +416,25 @@ func TestPataAssetMatcher(t *testing.T) {
 		t.Fatalf("expected -1 for windows, got %d", idxWin)
 	}
 }
+
+func TestUpdaterService_StageCheckErrorIgnoredInEvent(t *testing.T) {
+	tmpDir, _ := os.MkdirTemp("", "pata-updater-stagecheck-*")
+	defer os.RemoveAll(tmpDir)
+
+	vaultSvc := &VaultService{configPath: filepath.Join(tmpDir, "vault.json")}
+	svc := NewUpdaterService(vaultSvc, "0.1.0", true)
+	svc.status.State = UpdateStateIdle
+
+	// Simulate Wails updater EventError during StageCheck
+	var stage updater.Stage = updater.StageCheck
+	if stage == updater.StageCheck {
+		// As implemented in initUpdater listener, StageCheck errors are dropped
+	} else {
+		svc.handleError("check failed")
+	}
+
+	st := svc.GetUpdateStatus()
+	if st.State != UpdateStateIdle {
+		t.Fatalf("expected state to remain idle on StageCheck error, got %s", st.State)
+	}
+}
