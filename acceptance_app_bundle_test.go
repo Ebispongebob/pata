@@ -31,6 +31,13 @@ func TestAcceptance_AppBundle_CompliesWithMacOSPackagingAndCodeSign(t *testing.T
 		t.Fatalf("codesign verification failed: %s, err: %v", string(out), err)
 	}
 
+	verCmd := exec.Command(execPath, "--version")
+	if out, err := verCmd.CombinedOutput(); err != nil {
+		t.Fatalf("executing %s --version failed: %s, err: %v", execPath, string(out), err)
+	} else if !strings.Contains(string(out), "Pata") {
+		t.Fatalf("expected --version output to contain 'Pata', got: %s", string(out))
+	}
+
 	// 2. Verify Info.plist contains valid bundle identifier
 	plistPath := filepath.Join(appPath, "Contents", "Info.plist")
 	plistData, err := os.ReadFile(plistPath)

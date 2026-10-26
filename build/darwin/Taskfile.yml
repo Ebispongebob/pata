@@ -6,6 +6,8 @@ includes:
 vars:
   # Docker image for cross-compilation (used when building on non-macOS)
   CROSS_IMAGE: wails-cross
+  OFFICIAL_BUILD: '{{.OFFICIAL_BUILD | default (env "OFFICIAL_BUILD")}}'
+  VERSION: '{{.VERSION | default (env "VERSION")}}'
 
 tasks:
   build:

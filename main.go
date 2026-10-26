@@ -2,8 +2,10 @@ package main
 
 import (
 	"embed"
+	"fmt"
 	"log"
 	"net/http"
+	"os"
 	"runtime"
 	"strings"
 
@@ -66,6 +68,11 @@ func setupApplicationMenu(app *application.App, mainWindow *application.WebviewW
 }
 
 func main() {
+	if len(os.Args) > 1 && (os.Args[1] == "--version" || os.Args[1] == "-v" || os.Args[1] == "version") {
+		fmt.Printf("Pata %s (official_build: %s)\n", Version, OfficialBuild)
+		return
+	}
+
 	vaultService := NewVaultService()
 	mcpService := newMCPService(vaultService)
 	updaterService := NewUpdaterService(vaultService, Version, OfficialBuild == "true")

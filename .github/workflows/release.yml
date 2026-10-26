@@ -15,6 +15,8 @@ permissions:
 jobs:
   release-macos:
     runs-on: macos-14
+    env:
+      OFFICIAL_BUILD: 'true'
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -72,13 +74,18 @@ jobs:
           npm --prefix frontend test
 
       - name: Package Release Assets
+        env:
+          VERSION: ${{ steps.get_version.outputs.version }}
+          OFFICIAL_BUILD: 'true'
         run: |
           # Package .app.zip for in-app updater
-          wails3 task darwin:package:zip ARCH=arm64
+          wails3 task darwin:package:zip ARCH=arm64 OFFICIAL_BUILD=true VERSION=${VERSION}
           # Package .dmg for manual distribution
-          wails3 task darwin:package:dmg
+          wails3 task darwin:package:dmg OFFICIAL_BUILD=true VERSION=${VERSION}
           # Generate SHA256 checksums
           wails3 task darwin:checksums
+          # Verify binary has official_build enabled
+          ./bin/pata.app/Contents/MacOS/pata --version | grep "official_build: true"
 
       - name: Upload Build Artifacts
         uses: actions/upload-artifact@v4
