@@ -8,8 +8,11 @@ import (
 	"os"
 	"runtime"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
+	"github.com/wailsapp/wails/v3/pkg/events"
 )
 
 //go:embed all:frontend/dist
@@ -108,13 +111,21 @@ func main() {
 		},
 	})
 
+	savedWindow, _ := vaultService.GetWindowStatePreference()
+	winWidth, winHeight := OpenWindowSize(savedWindow)
+	startState := application.WindowStateNormal
+	if savedWindow != nil && savedWindow.IsMaximised {
+		startState = application.WindowStateMaximised
+	}
+
 	// Create window with MacTitleBarHiddenInset according to macos-native spec
 	mainWindow := app.Window.NewWithOptions(application.WebviewWindowOptions{
-		Title:     "Pata",
-		Width:     1120,
-		Height:    740,
-		MinWidth:  800,
-		MinHeight: 520,
+		Title:      "Pata",
+		Width:      winWidth,
+		Height:     winHeight,
+		MinWidth:   MinWindowWidth,
+		MinHeight:  MinWindowHeight,
+		StartState: startState,
 		Mac: application.MacWindow{
 			Backdrop: application.MacBackdropTranslucent,
 			TitleBar: application.MacTitleBarHiddenInset,
@@ -122,6 +133,9 @@ func main() {
 		BackgroundColour: application.NewRGB(250, 250, 248),
 		URL:              "/",
 	})
+
+	tracker := newWindowStateTracker(mainWindow, vaultService)
+	tracker.attach(app)
 
 	// Configure macOS standard application menu
 	appMenu := setupApplicationMenu(app, mainWindow, updaterService)
@@ -146,4 +160,68 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+}
+
+type windowStateTracker struct {
+	window       *application.WebviewWindow
+	vaultService *VaultService
+	mu           sync.Mutex
+	timer        *time.Timer
+}
+
+func newWindowStateTracker(window *application.WebviewWindow, vaultService *VaultService) *windowStateTracker {
+	return &windowStateTracker{
+		window:       window,
+		vaultService: vaultService,
+	}
+}
+
+func (t *windowStateTracker) scheduleSave(delay time.Duration) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if t.timer != nil {
+		t.timer.Stop()
+	}
+	t.timer = time.AfterFunc(delay, t.saveNow)
+}
+
+func (t *windowStateTracker) saveNow() {
+	t.mu.Lock()
+	if t.timer != nil {
+		t.timer.Stop()
+		t.timer = nil
+	}
+	t.mu.Unlock()
+
+	if t.window == nil {
+		return
+	}
+	// Do not save when fullscreen or minimised
+	if t.window.IsFullscreen() || t.window.IsMinimised() {
+		return
+	}
+	w, h := t.window.Size()
+	if w < MinWindowWidth || h < MinWindowHeight {
+		return
+	}
+	isMax := t.window.IsMaximised()
+	_ = t.vaultService.UpdateWindowState(w, h, isMax)
+}
+
+func (t *windowStateTracker) attach(app *application.App) {
+	t.window.OnWindowEvent(events.Common.WindowDidResize, func(*application.WindowEvent) {
+		t.scheduleSave(400 * time.Millisecond)
+	})
+	t.window.OnWindowEvent(events.Common.WindowMaximise, func(*application.WindowEvent) {
+		t.scheduleSave(200 * time.Millisecond)
+	})
+	t.window.OnWindowEvent(events.Common.WindowUnMaximise, func(*application.WindowEvent) {
+		t.scheduleSave(200 * time.Millisecond)
+	})
+	t.window.OnWindowEvent(events.Common.WindowClosing, func(*application.WindowEvent) {
+		t.saveNow()
+	})
+	app.OnShutdown(func() {
+		t.saveNow()
+	})
 }

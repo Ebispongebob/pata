@@ -14,9 +14,9 @@ import (
 )
 
 var (
-	// Version is the current application version (SemVer, e.g. "0.1.0").
+	// Version is the current application version (SemVer, e.g. "0.1.1").
 	// Can be injected at build time via -ldflags "-X main.Version=x.y.z".
-	Version = "0.1.0"
+	Version = "0.1.1"
 
 	// OfficialBuild indicates whether this binary is an official release distribution.
 	// Can be injected at build time via -ldflags "-X main.OfficialBuild=true".

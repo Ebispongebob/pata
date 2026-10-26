@@ -203,3 +203,133 @@ func TestChangingVaultPreservesTheme(t *testing.T) {
 		t.Fatalf("expected theme 'dark' preserved across vault update, got %q", theme)
 	}
 }
+
+func TestWindowStatePreference(t *testing.T) {
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "pata", "vault.json")
+
+	svc := &VaultService{
+		configPath: configPath,
+		keychain:   keychain.NewMemoryStore(),
+	}
+
+	// 1. Initial state is nil, OpenWindowSize returns defaults
+	state, err := svc.GetWindowStatePreference()
+	if err != nil {
+		t.Fatalf("GetWindowStatePreference failed: %v", err)
+	}
+	if state != nil {
+		t.Fatalf("expected nil state initially, got %+v", state)
+	}
+	w, h := OpenWindowSize(state)
+	if w != DefaultWindowWidth || h != DefaultWindowHeight {
+		t.Fatalf("expected default %dx%d, got %dx%d", DefaultWindowWidth, DefaultWindowHeight, w, h)
+	}
+
+	// 2. OpenWindowSize boundary checks
+	w, h = OpenWindowSize(&WindowStateConfig{Width: 400, Height: 300})
+	if w != MinWindowWidth || h != MinWindowHeight {
+		t.Fatalf("expected clamped min %dx%d, got %dx%d", MinWindowWidth, MinWindowHeight, w, h)
+	}
+
+	w, h = OpenWindowSize(&WindowStateConfig{Width: 1440, Height: 900})
+	if w != 1440 || h != 900 {
+		t.Fatalf("expected 1440x900, got %dx%d", w, h)
+	}
+
+	// 3. Set and get window state
+	err = svc.SetWindowStatePreference(WindowStateConfig{
+		Width:       1350,
+		Height:      880,
+		IsMaximised: false,
+	})
+	if err != nil {
+		t.Fatalf("SetWindowStatePreference failed: %v", err)
+	}
+
+	state, err = svc.GetWindowStatePreference()
+	if err != nil || state == nil {
+		t.Fatalf("GetWindowStatePreference failed: %v", err)
+	}
+	if state.Width != 1350 || state.Height != 880 || state.IsMaximised {
+		t.Fatalf("expected 1350x880 non-maximised, got %+v", state)
+	}
+
+	// 4. Persistence across service instances
+	svc2 := &VaultService{
+		configPath: configPath,
+		keychain:   keychain.NewMemoryStore(),
+	}
+	state2, err := svc2.GetWindowStatePreference()
+	if err != nil || state2 == nil {
+		t.Fatalf("GetWindowStatePreference on svc2 failed: %v", err)
+	}
+	if state2.Width != 1350 || state2.Height != 880 {
+		t.Fatalf("expected persisted 1350x880, got %+v", state2)
+	}
+}
+
+func TestWindowStateUpdateAndJitter(t *testing.T) {
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "pata", "vault.json")
+
+	svc := &VaultService{
+		configPath: configPath,
+		keychain:   keychain.NewMemoryStore(),
+	}
+
+	// 1. Initial update writes dimensions
+	if err := svc.UpdateWindowState(1200, 800, false); err != nil {
+		t.Fatalf("UpdateWindowState failed: %v", err)
+	}
+	st, _ := svc.GetWindowStatePreference()
+	if st.Width != 1200 || st.Height != 800 || st.IsMaximised {
+		t.Fatalf("expected 1200x800, got %+v", st)
+	}
+
+	// 2. Small jitter within 2 points does not overwrite
+	// (Check modtime doesn't change or config keeps 1200x800)
+	if err := svc.UpdateWindowState(1199, 801, false); err != nil {
+		t.Fatalf("UpdateWindowState jitter failed: %v", err)
+	}
+	st, _ = svc.GetWindowStatePreference()
+	if st.Width != 1200 || st.Height != 800 {
+		t.Fatalf("expected jitter to be ignored, got %+v", st)
+	}
+
+	// 3. Significant resize updates dimensions
+	if err := svc.UpdateWindowState(1400, 950, false); err != nil {
+		t.Fatalf("UpdateWindowState failed: %v", err)
+	}
+	st, _ = svc.GetWindowStatePreference()
+	if st.Width != 1400 || st.Height != 950 {
+		t.Fatalf("expected 1400x950, got %+v", st)
+	}
+
+	// 4. Maximising retains unmaximised dimensions but sets IsMaximised = true
+	if err := svc.UpdateWindowState(1920, 1080, true); err != nil {
+		t.Fatalf("UpdateWindowState maximised failed: %v", err)
+	}
+	st, _ = svc.GetWindowStatePreference()
+	if st.Width != 1400 || st.Height != 950 || !st.IsMaximised {
+		t.Fatalf("expected preserved dimensions 1400x950 with IsMaximised=true, got %+v", st)
+	}
+
+	// 5. Unmaximising restores IsMaximised = false
+	if err := svc.UpdateWindowState(1400, 950, false); err != nil {
+		t.Fatalf("UpdateWindowState unmaximised failed: %v", err)
+	}
+	st, _ = svc.GetWindowStatePreference()
+	if st.IsMaximised {
+		t.Fatalf("expected IsMaximised=false, got %+v", st)
+	}
+
+	// 6. Invalid dimensions (< Min) are ignored
+	if err := svc.UpdateWindowState(100, 100, false); err != nil {
+		t.Fatalf("UpdateWindowState invalid failed: %v", err)
+	}
+	st, _ = svc.GetWindowStatePreference()
+	if st.Width != 1400 || st.Height != 950 {
+		t.Fatalf("expected invalid dimensions ignored, got %+v", st)
+	}
+}

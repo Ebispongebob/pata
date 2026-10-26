@@ -24,12 +24,20 @@ import (
 	"pata/internal/storage/markdown"
 )
 
+// WindowStateConfig stores persisted window dimensions and state.
+type WindowStateConfig struct {
+	Width       int  `json:"width,omitempty"`
+	Height      int  `json:"height,omitempty"`
+	IsMaximised bool `json:"is_maximised,omitempty"`
+}
+
 // VaultConfig is the persisted single-vault choice (D18: 单 Vault) and app preferences.
 type VaultConfig struct {
-	AutoCheckUpdates *bool  `json:"auto_check_updates,omitempty"`
-	MCPEnabled       bool   `json:"mcp_enabled,omitempty"`
-	VaultPath        string `json:"vault_path"`
-	Theme            string `json:"theme,omitempty"`
+	AutoCheckUpdates *bool              `json:"auto_check_updates,omitempty"`
+	MCPEnabled       bool               `json:"mcp_enabled,omitempty"`
+	VaultPath        string             `json:"vault_path"`
+	Theme            string             `json:"theme,omitempty"`
+	Window           *WindowStateConfig `json:"window,omitempty"`
 }
 
 const (
@@ -1816,6 +1824,120 @@ func (s *VaultService) SetAutoCheckUpdatesPreference(enabled bool) error {
 		cfg.VaultPath = s.vault.RootPath
 	}
 	cfg.AutoCheckUpdates = &enabled
+	return s.saveConfig(cfg)
+}
+
+const (
+	DefaultWindowWidth  = 1120
+	DefaultWindowHeight = 740
+	MinWindowWidth      = 800
+	MinWindowHeight     = 520
+)
+
+// OpenWindowSize returns the width and height to open the window at, based on
+// saved configuration and minimum limits.
+func OpenWindowSize(saved *WindowStateConfig) (int, int) {
+	if saved == nil {
+		return DefaultWindowWidth, DefaultWindowHeight
+	}
+	w, h := saved.Width, saved.Height
+	if w <= 0 {
+		w = DefaultWindowWidth
+	}
+	if h <= 0 {
+		h = DefaultWindowHeight
+	}
+	return max(w, MinWindowWidth), max(h, MinWindowHeight)
+}
+
+func absInt(n int) int {
+	if n < 0 {
+		return -n
+	}
+	return n
+}
+
+// GetWindowStatePreference returns the persisted window dimensions and state.
+func (s *VaultService) GetWindowStatePreference() (*WindowStateConfig, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	cfg, err := s.loadConfig()
+	if err != nil || cfg.Window == nil {
+		return nil, err
+	}
+	windowCopy := *cfg.Window
+	return &windowCopy, nil
+}
+
+// SetWindowStatePreference sets the window state preference directly.
+func (s *VaultService) SetWindowStatePreference(state WindowStateConfig) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	cfg, err := s.loadConfig()
+	if err != nil {
+		return fmt.Errorf("读取配置文件失败: %w", err)
+	}
+	if cfg.VaultPath == "" && s.vault != nil && s.vault.RootPath != "" {
+		cfg.VaultPath = s.vault.RootPath
+	}
+	if state.Width < MinWindowWidth {
+		state.Width = MinWindowWidth
+	}
+	if state.Height < MinWindowHeight {
+		state.Height = MinWindowHeight
+	}
+	cfg.Window = &state
+	return s.saveConfig(cfg)
+}
+
+// UpdateWindowState safely updates the persisted window state from runtime events,
+// applying debounce jitter filtering and preserving unmaximised bounds.
+func (s *VaultService) UpdateWindowState(w, h int, isMaximised bool) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	cfg, err := s.loadConfig()
+	if err != nil {
+		return err
+	}
+	if cfg.VaultPath == "" && s.vault != nil && s.vault.RootPath != "" {
+		cfg.VaultPath = s.vault.RootPath
+	}
+
+	current := cfg.Window
+	if isMaximised {
+		if current == nil {
+			current = &WindowStateConfig{
+				Width:       DefaultWindowWidth,
+				Height:      DefaultWindowHeight,
+				IsMaximised: true,
+			}
+		} else {
+			if current.IsMaximised {
+				return nil
+			}
+			current.IsMaximised = true
+		}
+		cfg.Window = current
+		return s.saveConfig(cfg)
+	}
+
+	if w < MinWindowWidth || h < MinWindowHeight {
+		return nil
+	}
+
+	// Avoid jitter within 2 points (macOS window bounds rounding)
+	if current != nil && !current.IsMaximised {
+		if absInt(current.Width-w) <= 2 && absInt(current.Height-h) <= 2 {
+			return nil
+		}
+	}
+
+	cfg.Window = &WindowStateConfig{
+		Width:       w,
+		Height:      h,
+		IsMaximised: false,
+	}
 	return s.saveConfig(cfg)
 }
 

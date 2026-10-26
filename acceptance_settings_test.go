@@ -216,3 +216,92 @@ func TestAcceptance_Settings_VaultRescanAndFinderInspection(t *testing.T) {
 		t.Errorf("expected error on closed vault, got %v", err)
 	}
 }
+
+// TestAcceptance_Settings_WindowStatePersistenceAcrossReopenAndReinstall verifies that:
+// 1. Fresh install defaults to standard window dimensions (1120x740).
+// 2. Resized window dimensions persist across app closes, reopens, and reinstalls without resetting.
+// 3. Other user settings (vault_path, theme, mcp_enabled) are preserved alongside window state.
+func TestAcceptance_Settings_WindowStatePersistenceAcrossReopenAndReinstall(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "pata-settings-window-*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	configPath := filepath.Join(tmpDir, "config", "vault.json")
+	vaultDir := filepath.Join(tmpDir, "vault")
+	_ = os.MkdirAll(vaultDir, 0755)
+
+	// Step 1: Fresh install - no config file exists yet
+	svc1 := &VaultService{
+		configPath: configPath,
+		keychain:   keychain.NewMemoryStore(),
+	}
+	st, err := svc1.GetWindowStatePreference()
+	if err != nil {
+		t.Fatalf("GetWindowStatePreference failed on fresh install: %v", err)
+	}
+	if st != nil {
+		t.Fatalf("expected nil window state on fresh install, got %+v", st)
+	}
+	w, h := OpenWindowSize(st)
+	if w != DefaultWindowWidth || h != DefaultWindowHeight {
+		t.Fatalf("fresh install must default to %dx%d, got %dx%d", DefaultWindowWidth, DefaultWindowHeight, w, h)
+	}
+
+	// Configure a vault and theme
+	if _, err := svc1.openVault(vaultDir); err != nil {
+		t.Fatalf("openVault failed: %v", err)
+	}
+	cfg, _ := svc1.loadConfig()
+	cfg.VaultPath = vaultDir
+	cfg.Theme = "dark"
+	cfg.MCPEnabled = true
+	_ = svc1.saveConfig(cfg)
+
+	// Step 2: User resizes window to 1380x860 during session
+	if err := svc1.UpdateWindowState(1380, 860, false); err != nil {
+		t.Fatalf("UpdateWindowState failed: %v", err)
+	}
+
+	// Verify vault.json has the window state alongside theme & vault_path
+	savedCfg, err := svc1.loadConfig()
+	if err != nil {
+		t.Fatalf("loadConfig failed: %v", err)
+	}
+	if savedCfg.Window == nil || savedCfg.Window.Width != 1380 || savedCfg.Window.Height != 860 {
+		t.Fatalf("expected window state 1380x860 in config, got %+v", savedCfg.Window)
+	}
+	if savedCfg.VaultPath != vaultDir || savedCfg.Theme != "dark" || !savedCfg.MCPEnabled {
+		t.Fatalf("expected other preferences preserved, got %+v", savedCfg)
+	}
+
+	// Step 3: Simulate closing app and reopening (svc2 represents reopened app)
+	svc2 := &VaultService{
+		configPath: configPath,
+		keychain:   keychain.NewMemoryStore(),
+	}
+	reopenedState, err := svc2.GetWindowStatePreference()
+	if err != nil || reopenedState == nil {
+		t.Fatalf("failed to retrieve window state on reopen: %v", err)
+	}
+	reopenedW, reopenedH := OpenWindowSize(reopenedState)
+	if reopenedW != 1380 || reopenedH != 860 {
+		t.Fatalf("reopened window size reset unexpectedly: expected 1380x860, got %dx%d", reopenedW, reopenedH)
+	}
+
+	// Step 4: Simulate reinstalling app (binary replaced, config file in Application Support persists)
+	// New instance svc3 represents app after reinstall
+	svc3 := &VaultService{
+		configPath: configPath,
+		keychain:   keychain.NewMemoryStore(),
+	}
+	reinstalledState, err := svc3.GetWindowStatePreference()
+	if err != nil || reinstalledState == nil {
+		t.Fatalf("failed to retrieve window state after reinstall: %v", err)
+	}
+	reinstalledW, reinstalledH := OpenWindowSize(reinstalledState)
+	if reinstalledW != 1380 || reinstalledH != 860 {
+		t.Fatalf("reinstalled window size reset to initial: expected 1380x860, got %dx%d", reinstalledW, reinstalledH)
+	}
+}
