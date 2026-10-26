@@ -47,8 +47,12 @@ test('笔记右上角更多菜单包含复制绝对路径与在 Finder 中打开
 test('笔记外部冲突处理：干净状态下静默重载，脏状态下提供极简操作条与覆盖选项', () => {
   const notesSrc = fs.readFileSync(new URL('./NotesView.tsx', import.meta.url), 'utf-8');
   assert.ok(notesSrc.includes('!dirty'), '应先判断当前编辑器是否处于干净状态');
+  assert.ok(notesSrc.includes('isDirtyRef.current(curTitle, curTags, curBody)'), '静默重载在异步返回后应二次检查脏状态防丢输入');
   assert.ok(notesSrc.includes('用本地草稿覆盖'), '冲突栏应提供用本地草稿覆盖按钮');
   assert.ok(notesSrc.includes('载入外部版本'), '冲突栏应提供载入外部版本按钮');
   assert.ok(notesSrc.includes('handleResolveConflictKeepMine'), '应包含覆盖外部保存的逻辑');
+  assert.ok(!notesSrc.includes('subVault = Events.On(\'vault:changed\''), '音频播放器内不应存在多余的重复 vault:changed 监听器');
+  assert.ok(!notesSrc.includes('currentSrc.includes(fileName)'), '图片刷新不应使用模糊的前缀/子串匹配');
+  assert.ok(notesSrc.includes('srcName === fileName'), '图片刷新应对文件名作精确比对与 URL 解码');
   assert.ok(!notesSrc.includes('自动保存已停止，当前本地草稿尚未写盘。为防内容丢失'), '不应再使用旧的长篇恐吓说明文案');
 });

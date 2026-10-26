@@ -580,7 +580,6 @@ function NoteEditor({
   // Listen to ASR status events and task updates
   useEffect(() => {
     let unlistenStatus: (() => void) | undefined;
-    let unlistenVault: (() => void) | undefined;
     let active = true;
 
     if (isAudioTranscriptNote(initialNote)) {
@@ -629,29 +628,11 @@ function NoteEditor({
         }
       });
       unlistenStatus = () => subStatus();
-
-      const subVault = Events.On('vault:changed', (event: any) => {
-        if (!active) return;
-        if (event.data && event.data.entity_id === noteId && event.data.op === 'update') {
-          VaultService.GetNote(noteId).then((updated) => {
-            if (active && updated) {
-              setInitialNote(updated);
-              lastSavedStateRef.current = {
-                title: updated.title,
-                tags: updated.tags || [],
-                body: updated.body || '',
-              };
-            }
-          });
-        }
-      });
-      unlistenVault = () => subVault();
     }
 
     return () => {
       active = false;
       if (unlistenStatus) unlistenStatus();
-      if (unlistenVault) unlistenVault();
     };
   }, [noteId, isAudioTranscriptNote(initialNote)]);
 
@@ -807,7 +788,24 @@ function NoteEditor({
           // Clean state: silently update in place without banner or error
           VaultService.GetNote(currentNoteIdRef.current)
             .then((updated) => {
-              if (!updated) return;
+              if (!updated || updated.id !== currentNoteIdRef.current) return;
+
+              // Check if user started editing while GetNote was in flight
+              const isAudioTranscriptNow = isAudioTranscriptNote(initialNoteRef.current);
+              const curBody = vditorRef.current ? vditorRef.current.getValue() : (initialNoteRef.current?.body ?? '');
+              const curTitle = editTitleRef.current;
+              const curTags = editTagsRef.current;
+              if (isDirtyRef.current(curTitle, curTags, curBody)) {
+                hasConflictRef.current = true;
+                if (debounceTimerRef.current) {
+                  window.clearTimeout(debounceTimerRef.current);
+                  debounceTimerRef.current = null;
+                }
+                setSaveStatus('conflict');
+                setConflictError('外部文件已更新（本地有未保存修改）');
+                return;
+              }
+
               setInitialNote(updated);
               initialNoteRef.current = updated;
               lastSavedStateRef.current = {
@@ -819,7 +817,7 @@ function NoteEditor({
               editTitleRef.current = updated.title;
               setEditTags(updated.tags || []);
               editTagsRef.current = updated.tags || [];
-              if (vditorRef.current && !isAudioTranscript) {
+              if (vditorRef.current && !isAudioTranscriptNow) {
                 vditorRef.current.setValue(updated.body || '');
               }
               setSaveStatus('saved');
@@ -844,15 +842,28 @@ function NoteEditor({
       if (data?.type === 'file' || data?.entity_id?.startsWith('files/')) {
         const container = vditorContainerRef.current;
         if (!container) return;
-        const fileName = data.entity_id ? data.entity_id.split('/').pop() : '';
-        if (!fileName) return;
+        const rawFileName = data.entity_id ? data.entity_id.split('/').pop() : '';
+        if (!rawFileName) return;
+        let fileName = rawFileName;
+        try {
+          fileName = decodeURIComponent(rawFileName);
+        } catch {
+          // keep raw
+        }
 
         const imgs = container.querySelectorAll<HTMLImageElement>('img');
         const now = Date.now();
         imgs.forEach((img) => {
           const currentSrc = img.getAttribute('src') || '';
-          if (currentSrc.includes(fileName)) {
-            const clean = currentSrc.split('?')[0];
+          const clean = currentSrc.split('?')[0].split('#')[0];
+          const rawSegment = clean.split('/').pop() || '';
+          let srcName = rawSegment;
+          try {
+            srcName = decodeURIComponent(rawSegment);
+          } catch {
+            // keep raw
+          }
+          if (srcName === fileName || rawSegment === rawFileName) {
             img.src = `${clean}?_t=${now}`;
           }
         });
