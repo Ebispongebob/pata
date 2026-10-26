@@ -535,15 +535,6 @@ export default function App() {
 
     return null;
   };
-        >
-          <RefreshCw className="w-3.5 h-3.5 shrink-0" />
-          <span>重试更新</span>
-        </button>
-      );
-    }
-
-    return null;
-  };
 
   // Load persisted theme preference from Go backend
   useEffect(() => {
