@@ -96,6 +96,15 @@ jobs:
             bin/*.dmg
             bin/SHA256SUMS
 
+      - name: Prepare Clean Release Notes
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG_NAME: ${{ steps.get_version.outputs.tag_name }}
+        run: |
+          # If the release already exists, clear existing notes so generate_release_notes
+          # won't append duplicate text on re-runs.
+          gh release edit "${TAG_NAME}" --notes "" 2>/dev/null || true
+
       - name: Create or Update GitHub Release
         uses: softprops/action-gh-release@v2
         with:
