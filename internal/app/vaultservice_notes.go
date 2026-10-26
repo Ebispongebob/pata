@@ -2,6 +2,7 @@ package app
 
 import (
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
@@ -112,6 +113,46 @@ func (s *VaultService) GetNote(id string) (*markdown.Note, error) {
 		return nil, fmt.Errorf("笔记不存在: %s", trimmedID)
 	}
 	return note, nil
+}
+
+// GetNotePath returns the absolute filesystem path for a note by its ID.
+func (s *VaultService) GetNotePath(id string) (string, error) {
+	s.mu.Lock()
+	v := s.vault
+	s.mu.Unlock()
+	if v == nil {
+		return "", fmt.Errorf("尚未打开 Vault")
+	}
+
+	trimmedID := strings.TrimSpace(id)
+	if trimmedID == "" {
+		return "", fmt.Errorf("笔记 ID 不能为空")
+	}
+
+	note, ok := v.Index.GetNote(trimmedID)
+	if !ok {
+		return "", fmt.Errorf("笔记不存在: %s", trimmedID)
+	}
+
+	path := v.ResolveEntityPath(note)
+	if path == "" {
+		return "", fmt.Errorf("无法获取笔记文件路径")
+	}
+
+	if _, err := os.Stat(path); err != nil {
+		return "", fmt.Errorf("笔记文件不存在或已移动: %w", err)
+	}
+
+	return path, nil
+}
+
+// RevealNoteInFinder reveals the note file inside Finder (or native file explorer).
+func (s *VaultService) RevealNoteInFinder(id string) error {
+	path, err := s.GetNotePath(id)
+	if err != nil {
+		return err
+	}
+	return s.RevealInFinder(path)
 }
 
 // CreateNote creates a new Note, writes it safely as Markdown, and updates the index.

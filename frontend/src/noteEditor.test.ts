@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
 
 import { componentCallbacks } from '../scripts/componentCallbacks.ts';
 
@@ -31,4 +32,14 @@ test('getNoteExcerpt: strips leading duplicate title heading and cleans markdown
   // Strip complex markdown tokens
   const body3 = '> 引用文字\n- [ ] 待办项\n~~删除文字~~';
   assert.equal(getNoteExcerpt('测试', body3), '引用文字 - 待办项 删除文字');
+});
+
+test('笔记右上角更多菜单包含复制绝对路径与在 Finder 中打开操作', () => {
+  const notesSrc = fs.readFileSync(new URL('./NotesView.tsx', import.meta.url), 'utf-8');
+  assert.ok(notesSrc.includes('复制绝对路径'), '应包含复制绝对路径菜单项');
+  assert.ok(notesSrc.includes('在 Finder 中打开'), '应包含在 Finder 中打开菜单项');
+  assert.ok(notesSrc.includes('VaultService.GetNotePath'), '应调用 GetNotePath 获取绝对路径');
+  assert.ok(notesSrc.includes('VaultService.RevealNoteInFinder'), '应调用 RevealNoteInFinder 打开文件');
+  assert.ok(notesSrc.includes('copyToClipboard'), '应使用 copyToClipboard 复制路径');
+  assert.ok(notesSrc.includes("showToast('已复制绝对路径')"), '复制成功应弹出 Toast 提示');
 });

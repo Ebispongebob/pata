@@ -20,6 +20,7 @@ import { Menu } from '@base-ui/react/menu';
 import * as VaultService from '../bindings/pata/internal/app/vaultservice';
 import * as UpdaterService from '../bindings/pata/internal/app/updaterservice';
 import { VaultStatus, VaultHealth, ASRConfigStatus } from '../bindings/pata/internal/app/models';
+import { copyToClipboard } from './clipboardUtils';
 
 interface SettingsViewProps {
   themeMode: 'system' | 'light' | 'dark';
@@ -152,9 +153,11 @@ export function SettingsView({
   const handleCopyPath = async () => {
     if (!vaultStatus?.path) return;
     try {
-      await navigator.clipboard.writeText(vaultStatus.path);
-      setCopiedPath(true);
-      setTimeout(() => setCopiedPath(false), 2000);
+      const ok = await copyToClipboard(vaultStatus.path);
+      if (ok) {
+        setCopiedPath(true);
+        setTimeout(() => setCopiedPath(false), 2000);
+      }
     } catch (err) {
       console.error('Failed to copy path:', err);
     }

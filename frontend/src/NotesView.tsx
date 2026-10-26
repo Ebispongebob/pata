@@ -31,6 +31,7 @@ import { formatStatusAction } from './activityUtils';
 import { TranscriptViewer, TranscriptViewerRef } from './TranscriptViewer';
 import { TagChipEditor } from './TagChipEditor';
 import { validateTag, hasTag, dedupeTags, formatDraftText } from './tagUtils';
+import { copyToClipboard } from './clipboardUtils';
 import {
   CandidateItem,
   FileRef,
@@ -189,6 +190,27 @@ function NoteEditor({
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<boolean>(false);
   const [isDeleting, setIsDeleting] = useState<boolean>(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const toastTimerRef = useRef<number | null>(null);
+
+  const showToast = useCallback((msg: string) => {
+    if (toastTimerRef.current) {
+      window.clearTimeout(toastTimerRef.current);
+    }
+    setToastMessage(msg);
+    toastTimerRef.current = window.setTimeout(() => {
+      setToastMessage(null);
+      toastTimerRef.current = null;
+    }, 2000);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (toastTimerRef.current) {
+        window.clearTimeout(toastTimerRef.current);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     if (!moreMenuOpen) return;
@@ -1129,11 +1151,17 @@ function NoteEditor({
       : (vditorRef.current ? vditorRef.current.getValue() : '');
     const draftText = formatDraftText(currentTitle, currentTags, currentBody);
     try {
-      await navigator.clipboard.writeText(draftText);
-      setCopiedDraft(true);
-      setTimeout(() => setCopiedDraft(false), 2500);
+      const ok = await copyToClipboard(draftText);
+      if (ok) {
+        setCopiedDraft(true);
+        setTimeout(() => setCopiedDraft(false), 2500);
+        showToast('草稿已复制到剪贴板');
+      } else {
+        showToast('复制草稿失败');
+      }
     } catch (err) {
       console.error('Failed to copy draft to clipboard:', err);
+      showToast('复制草稿失败');
     }
   };
 
@@ -1223,6 +1251,46 @@ function NoteEditor({
     }
   };
 
+  const handleCopyAbsolutePath = async () => {
+    setMoreMenuOpen(false);
+    const targetId = currentNoteIdRef.current || noteId;
+    if (!targetId || isNewDraftRef.current) {
+      showToast('草稿尚未保存，暂无文件路径');
+      return;
+    }
+    try {
+      const path = await VaultService.GetNotePath(targetId);
+      if (!path) {
+        showToast('获取笔记路径失败');
+        return;
+      }
+      const ok = await copyToClipboard(path);
+      if (ok) {
+        showToast('已复制绝对路径');
+      } else {
+        showToast('复制到剪贴板失败');
+      }
+    } catch (err: any) {
+      console.error('Failed to copy note path:', err);
+      showToast(err?.message || '复制路径失败');
+    }
+  };
+
+  const handleOpenInFinder = async () => {
+    setMoreMenuOpen(false);
+    const targetId = currentNoteIdRef.current || noteId;
+    if (!targetId || isNewDraftRef.current) {
+      showToast('草稿尚未保存，暂无文件路径');
+      return;
+    }
+    try {
+      await VaultService.RevealNoteInFinder(targetId);
+    } catch (err: any) {
+      console.error('Failed to reveal note in Finder:', err);
+      showToast(err?.message || '在 Finder 中打开失败');
+    }
+  };
+
   if (loadingNote) {
     return (
       <div className="flex items-center justify-center py-24 text-xs text-stone-400">
@@ -1297,14 +1365,35 @@ function NoteEditor({
               <MoreHorizontal className="w-4 h-4" />
             </button>
             {moreMenuOpen && (
-              <div className="absolute right-0 top-full mt-1 w-32 rounded-lg border border-stone-200 dark:border-stone-800 bg-white dark:bg-stone-900 shadow-lg py-1 z-30">
+              <div className="absolute right-0 top-full mt-1 w-40 rounded-lg border border-stone-200 dark:border-stone-800 bg-white dark:bg-stone-900 shadow-lg py-1 z-30">
+                <button
+                  type="button"
+                  onClick={handleCopyAbsolutePath}
+                  disabled={isNewDraftRef.current}
+                  className="w-full flex items-center space-x-2 px-3 py-1.5 text-xs text-stone-700 dark:text-stone-300 hover:bg-stone-100 dark:hover:bg-stone-800 transition text-left cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap"
+                  title={isNewDraftRef.current ? '草稿尚未保存，暂无文件路径' : undefined}
+                >
+                  <Copy className="w-3.5 h-3.5 text-stone-400 shrink-0" />
+                  <span>复制绝对路径</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handleOpenInFinder}
+                  disabled={isNewDraftRef.current}
+                  className="w-full flex items-center space-x-2 px-3 py-1.5 text-xs text-stone-700 dark:text-stone-300 hover:bg-stone-100 dark:hover:bg-stone-800 transition text-left cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap"
+                  title={isNewDraftRef.current ? '草稿尚未保存，暂无文件路径' : undefined}
+                >
+                  <FolderOpen className="w-3.5 h-3.5 text-stone-400 shrink-0" />
+                  <span>在 Finder 中打开</span>
+                </button>
+                <div className="my-1 border-t border-stone-100 dark:border-stone-800" />
                 <button
                   type="button"
                   onClick={() => {
                     setMoreMenuOpen(false);
                     setShowDeleteConfirm(true);
                   }}
-                  className="w-full flex items-center space-x-2 px-3 py-1.5 text-xs text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition text-left cursor-pointer"
+                  className="w-full flex items-center space-x-2 px-3 py-1.5 text-xs text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition text-left cursor-pointer whitespace-nowrap"
                 >
                   <Trash2 className="w-3.5 h-3.5 shrink-0" />
                   <span>删除笔记</span>
@@ -1727,6 +1816,19 @@ function NoteEditor({
         }}
         onConfirm={handleConfirmDelete}
       />
+
+      {/* Non-blocking Toast Notification */}
+      {toastMessage && createPortal(
+        <div
+          role="status"
+          aria-live="polite"
+          className="pata-fade fixed bottom-6 left-1/2 -translate-x-1/2 z-50 px-3.5 py-1.5 rounded-full bg-stone-900/90 dark:bg-stone-100/90 text-white dark:text-stone-900 text-xs font-medium shadow-lg backdrop-blur pointer-events-none transition-all duration-200 flex items-center space-x-1.5"
+        >
+          <Check className="w-3.5 h-3.5 text-emerald-400 dark:text-emerald-600 shrink-0" />
+          <span>{toastMessage}</span>
+        </div>,
+        document.body
+      )}
     </div>
   );
 }
@@ -1780,6 +1882,27 @@ export function NotesView({
   const [noteToDelete, setNoteToDelete] = useState<Note | null>(null);
   const [isDeletingFromList, setIsDeletingFromList] = useState(false);
   const [deleteListError, setDeleteListError] = useState<string | null>(null);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const toastTimerRef = useRef<number | null>(null);
+
+  const showToast = useCallback((msg: string) => {
+    if (toastTimerRef.current) {
+      window.clearTimeout(toastTimerRef.current);
+    }
+    setToastMessage(msg);
+    toastTimerRef.current = window.setTimeout(() => {
+      setToastMessage(null);
+      toastTimerRef.current = null;
+    }, 2000);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (toastTimerRef.current) {
+        window.clearTimeout(toastTimerRef.current);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     if (!contextMenu) return;
@@ -2274,14 +2397,61 @@ export function NotesView({
       {contextMenu && createPortal(
         <div
           ref={contextMenuRef}
-          className="pata-fade fixed z-50 rounded-lg border border-stone-200 dark:border-stone-800 bg-white dark:bg-stone-900 shadow-xl py-1 min-w-[130px]"
+          className="pata-fade fixed z-50 rounded-lg border border-stone-200 dark:border-stone-800 bg-white dark:bg-stone-900 shadow-xl py-1 min-w-[140px]"
           style={{
-            left: `${Math.min(contextMenu.x, window.innerWidth - 140)}px`,
-            top: `${Math.min(contextMenu.y, window.innerHeight - 50)}px`,
+            left: `${Math.min(contextMenu.x, window.innerWidth - 150)}px`,
+            top: `${Math.min(contextMenu.y, window.innerHeight - 110)}px`,
           }}
           onMouseDown={(e) => e.stopPropagation()}
           onClick={(e) => e.stopPropagation()}
         >
+          <button
+            type="button"
+            onClick={async (e) => {
+              e.stopPropagation();
+              const note = contextMenu.note;
+              setContextMenu(null);
+              try {
+                const path = await VaultService.GetNotePath(note.id);
+                if (path) {
+                  const ok = await copyToClipboard(path);
+                  if (ok) {
+                    showToast('已复制绝对路径');
+                  } else {
+                    showToast('复制到剪贴板失败');
+                  }
+                } else {
+                  showToast('获取笔记路径失败');
+                }
+              } catch (err: any) {
+                console.error('Failed to copy note path:', err);
+                showToast(err?.message || '复制路径失败');
+              }
+            }}
+            className="w-full flex items-center space-x-2 px-3 py-1.5 text-xs text-stone-700 dark:text-stone-300 hover:bg-stone-100 dark:hover:bg-stone-800 transition text-left cursor-pointer whitespace-nowrap"
+          >
+            <Copy className="w-3.5 h-3.5 text-stone-400 shrink-0" />
+            <span>复制绝对路径</span>
+          </button>
+          <button
+            type="button"
+            onClick={async (e) => {
+              e.stopPropagation();
+              const note = contextMenu.note;
+              setContextMenu(null);
+              try {
+                await VaultService.RevealNoteInFinder(note.id);
+              } catch (err: any) {
+                console.error('Failed to reveal note in Finder:', err);
+                showToast(err?.message || '在 Finder 中打开失败');
+              }
+            }}
+            className="w-full flex items-center space-x-2 px-3 py-1.5 text-xs text-stone-700 dark:text-stone-300 hover:bg-stone-100 dark:hover:bg-stone-800 transition text-left cursor-pointer whitespace-nowrap"
+          >
+            <FolderOpen className="w-3.5 h-3.5 text-stone-400 shrink-0" />
+            <span>在 Finder 中打开</span>
+          </button>
+          <div className="my-1 border-t border-stone-100 dark:border-stone-800" />
           <button
             type="button"
             onClick={(e) => {
@@ -2290,7 +2460,7 @@ export function NotesView({
               setContextMenu(null);
               setNoteToDelete(note);
             }}
-            className="w-full flex items-center space-x-2 px-3 py-1.5 text-xs text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition text-left cursor-pointer"
+            className="w-full flex items-center space-x-2 px-3 py-1.5 text-xs text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition text-left cursor-pointer whitespace-nowrap"
           >
             <Trash2 className="w-3.5 h-3.5 shrink-0" />
             <span>删除笔记</span>
@@ -2322,6 +2492,19 @@ export function NotesView({
         }}
         onConfirm={handleConfirmDeleteFromList}
       />
+
+      {/* Non-blocking Toast Notification */}
+      {toastMessage && createPortal(
+        <div
+          role="status"
+          aria-live="polite"
+          className="pata-fade fixed bottom-6 left-1/2 -translate-x-1/2 z-50 px-3.5 py-1.5 rounded-full bg-stone-900/90 dark:bg-stone-100/90 text-white dark:text-stone-900 text-xs font-medium shadow-lg backdrop-blur pointer-events-none transition-all duration-200 flex items-center space-x-1.5"
+        >
+          <Check className="w-3.5 h-3.5 text-emerald-400 dark:text-emerald-600 shrink-0" />
+          <span>{toastMessage}</span>
+        </div>,
+        document.body
+      )}
     </div>
   );
 }

@@ -167,6 +167,13 @@ export function GetNoteBacklinks(noteID: string): $CancellablePromise<markdown$0
 }
 
 /**
+ * GetNotePath returns the absolute filesystem path for a note by its ID.
+ */
+export function GetNotePath(id: string): $CancellablePromise<string> {
+    return $Call.ByID(2508540945, id);
+}
+
+/**
  * GetTagOverview returns aggregated counts of all unique tags across tasks, notes, and activities.
  */
 export function GetTagOverview(): $CancellablePromise<markdown$0.TagOverviewItem[] | null> {
@@ -305,6 +312,13 @@ export function RescanVault(): $CancellablePromise<void> {
  */
 export function RevealInFinder(filePath: string): $CancellablePromise<void> {
     return $Call.ByID(2212397164, filePath);
+}
+
+/**
+ * RevealNoteInFinder reveals the note file inside Finder (or native file explorer).
+ */
+export function RevealNoteInFinder(id: string): $CancellablePromise<void> {
+    return $Call.ByID(1872258140, id);
 }
 
 /**
