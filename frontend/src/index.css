@@ -8,7 +8,7 @@
   --color-interaction-300: color-mix(in srgb, var(--pata-accent) 35%, white);
   --color-interaction-400: color-mix(in srgb, var(--pata-accent) 55%, white);
   --color-interaction-500: color-mix(in srgb, var(--pata-accent) 80%, white);
-  --color-interaction-600: var(--pata-accent);
+  --color-interaction-600: color-mix(in srgb, var(--pata-accent) 90%, white);
   --color-interaction-700: var(--pata-accent);
   --color-interaction-800: color-mix(in srgb, var(--pata-accent) 80%, black);
   --color-interaction-900: color-mix(in srgb, var(--pata-accent) 50%, black);

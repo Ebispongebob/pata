@@ -44,6 +44,16 @@ test('Design Tokens: 核心语义色、字体栈与变量定义完备', () => {
   assert.ok(cssContent.includes('--pata-focus-ring: AccentColor;'), '焦点环跟随系统 AccentColor');
   assert.ok(cssContent.includes('--pata-brand: #047857;'), '浅色品牌绿为 emerald-700');
   assert.ok(cssContent.includes('--pata-brand: #10b981;'), '深色品牌绿为 emerald-500');
+
+  // 4. 交互色阶完备且各色阶不重复，确保悬停态与分割线层级明确
+  assert.ok(
+    cssContent.includes('--color-interaction-600: color-mix(in srgb, var(--pata-accent) 90%, white);'),
+    '600 色阶应比 700 纯强调色更浅以提供明确的悬停与分割线对比'
+  );
+  assert.ok(
+    cssContent.includes('--color-interaction-700: var(--pata-accent);'),
+    '700 色阶作为主交互强调色'
+  );
 });
 
 test('可访问键盘焦点: 恢复可见的 :focus-visible，局部隔离编辑器', () => {

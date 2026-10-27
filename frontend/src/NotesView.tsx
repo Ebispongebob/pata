@@ -2526,7 +2526,7 @@ export function NotesView({
                 <button
                   type="button"
                   onClick={() => setCreateMenuOpen((v) => !v)}
-                  className="flex items-center justify-center px-1 py-1 rounded-r-md bg-interaction-700 hover:bg-interaction-800 border-l border-interaction-600 text-white text-xs transition cursor-pointer"
+                  className="flex items-center justify-center px-1 py-1 rounded-r-md bg-interaction-700 hover:bg-interaction-800 border-l border-white/20 text-white text-xs transition cursor-pointer"
                   title="更多新建选项"
                 >
                   <ChevronDown className="w-3.5 h-3.5" />
