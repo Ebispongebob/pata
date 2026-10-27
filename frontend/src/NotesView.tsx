@@ -1500,7 +1500,7 @@ function NoteEditor({
   }
 
   return (
-    <div className="flex-1 min-w-0 min-h-0 flex flex-col h-full max-w-3xl mx-auto p-6 space-y-2 overflow-hidden">
+    <div className="flex-1 min-w-0 min-h-0 flex flex-col h-full p-6 space-y-2 overflow-hidden">
       {/* Top Header / Status Toolbar */}
       <div className="flex items-center justify-between pb-1 shrink-0 drag-region">
         <div className="no-drag-region flex items-center space-x-2 shrink-0">
@@ -2502,7 +2502,7 @@ export function NotesView({
       {!listCollapsed && (
         <aside
           style={{ width: listWidth }}
-          className="shrink-0 h-full min-h-0 flex flex-col border-r border-stone-200/70 dark:border-stone-800/70 bg-stone-100/40 dark:bg-stone-900/40 select-none overflow-hidden"
+          className="shrink-0 h-full min-h-0 flex flex-col bg-stone-100/40 dark:bg-stone-900/40 select-none overflow-hidden"
           aria-label="笔记列表"
         >
           {/* Top Action Bar */}
@@ -2755,7 +2755,7 @@ export function NotesView({
           onPointerMove={handleDividerPointerMove}
           onPointerUp={handleDividerPointerUp}
           onPointerCancel={handleDividerPointerUp}
-          className="relative z-10 w-1.5 shrink-0 cursor-col-resize touch-none no-drag-region focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[var(--pata-accent)] before:absolute before:inset-y-0 before:left-[2px] before:w-px before:bg-stone-200 dark:before:bg-stone-800 hover:before:bg-stone-400 dark:hover:before:bg-stone-600"
+          className="relative z-10 w-px shrink-0 bg-stone-200/70 dark:bg-stone-800/70 hover:bg-stone-400 dark:hover:bg-stone-600 cursor-col-resize touch-none no-drag-region focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[var(--pata-accent)] before:absolute before:inset-y-0 before:-left-1.5 before:w-3 before:cursor-col-resize before:touch-none"
           title="拖拽调整笔记列表宽度"
         />
       )}
