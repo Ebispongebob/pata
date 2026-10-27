@@ -2,9 +2,7 @@ package app
 
 import (
 	"embed"
-	"net/http"
 	"runtime"
-	"strings"
 	"sync"
 	"time"
 
@@ -76,22 +74,8 @@ func Run(assets embed.FS, trayIcon []byte, version string, officialBuild bool) e
 			application.NewService(updaterService),
 		},
 		Assets: application.AssetOptions{
-			Handler: application.AssetFileServerFS(assets),
-			Middleware: func(next http.Handler) http.Handler {
-				return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-					if strings.HasPrefix(r.URL.Path, "/vault-audio/") {
-						relPath := strings.TrimPrefix(r.URL.Path, "/vault-audio/")
-						absPath, err := vaultService.resolveSafeFilePath(relPath)
-						if err != nil {
-							http.NotFound(w, r)
-							return
-						}
-						http.ServeFile(w, r, absPath)
-						return
-					}
-					next.ServeHTTP(w, r)
-				})
-			},
+			Handler:    application.AssetFileServerFS(assets),
+			Middleware: createAssetMiddleware(vaultService),
 		},
 		Mac: application.MacOptions{
 			ApplicationShouldTerminateAfterLastWindowClosed: true,

@@ -2,7 +2,9 @@ package app
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -1312,6 +1314,109 @@ func TestVaultService_NoteCRUDAndValidation(t *testing.T) {
 	}
 }
 
+func TestVaultService_GetNotePathAndRevealInFinder(t *testing.T) {
+	sClosed := &VaultService{}
+	if _, err := sClosed.GetNotePath("n-1"); err == nil {
+		t.Fatalf("expected error on closed vault for GetNotePath")
+	}
+	if err := sClosed.RevealNoteInFinder("n-1"); err == nil {
+		t.Fatalf("expected error on closed vault for RevealNoteInFinder")
+	}
+
+	vaultDir := t.TempDir()
+	s := &VaultService{}
+	if _, err := s.openVault(vaultDir); err != nil {
+		t.Fatalf("openVault failed: %v", err)
+	}
+	defer func() {
+		if s.stopWatcher != nil {
+			s.stopWatcher()
+		}
+	}()
+
+	// 1. Empty ID validation
+	if _, err := s.GetNotePath("   "); err == nil {
+		t.Fatalf("expected error for empty ID on GetNotePath")
+	}
+	if err := s.RevealNoteInFinder("   "); err == nil {
+		t.Fatalf("expected error for empty ID on RevealNoteInFinder")
+	}
+
+	// 2. Non-existent note validation
+	if _, err := s.GetNotePath("n-nonexistent"); err == nil || !strings.Contains(err.Error(), "笔记不存在: n-nonexistent") {
+		t.Fatalf("expected '笔记不存在: n-nonexistent', got: %v", err)
+	}
+	if err := s.RevealNoteInFinder("n-nonexistent"); err == nil || !strings.Contains(err.Error(), "笔记不存在: n-nonexistent") {
+		t.Fatalf("expected '笔记不存在: n-nonexistent', got: %v", err)
+	}
+
+	// 3. Create note and verify GetNotePath
+	created, err := s.CreateNote(CreateNoteInput{
+		Title: "测试笔记路径",
+		Body:  "正文内容",
+	})
+	if err != nil {
+		t.Fatalf("CreateNote failed: %v", err)
+	}
+
+	notePath, err := s.GetNotePath(created.ID)
+	if err != nil {
+		t.Fatalf("GetNotePath failed: %v", err)
+	}
+	if !filepath.IsAbs(notePath) {
+		t.Fatalf("expected absolute path, got: %s", notePath)
+	}
+	if !strings.HasPrefix(notePath, vaultDir) {
+		t.Fatalf("expected notePath to be inside vaultDir %s, got %s", vaultDir, notePath)
+	}
+	if fi, err := os.Stat(notePath); err != nil || fi.IsDir() {
+		t.Fatalf("expected file to exist on disk at %s, err: %v", notePath, err)
+	}
+
+	// 4. Test RevealNoteInFinder with stubbed launcher
+	var capturedCmd *exec.Cmd
+	s.launcher = func(cmd *exec.Cmd) error {
+		capturedCmd = cmd
+		return nil
+	}
+
+	if err := s.RevealNoteInFinder(created.ID); err != nil {
+		t.Fatalf("RevealNoteInFinder failed: %v", err)
+	}
+	if capturedCmd == nil {
+		t.Fatalf("expected RevealNoteInFinder to invoke launcher")
+	}
+	if runtime.GOOS == "darwin" {
+		if capturedCmd.Path != "open" && filepath.Base(capturedCmd.Path) != "open" {
+			t.Fatalf("expected 'open' command on darwin, got: %s", capturedCmd.Path)
+		}
+		hasR := false
+		hasPath := false
+		for _, arg := range capturedCmd.Args {
+			if arg == "-R" {
+				hasR = true
+			}
+			if arg == notePath {
+				hasPath = true
+			}
+		}
+		if !hasR || !hasPath {
+			t.Fatalf("expected open -R %s, got args: %v", notePath, capturedCmd.Args)
+		}
+	}
+
+	// 5. File removed on disk -> GetNotePath and RevealNoteInFinder fail with missing file error
+	if err := os.Remove(notePath); err != nil {
+		t.Fatalf("failed to remove note file: %v", err)
+	}
+	if _, err := s.GetNotePath(created.ID); err == nil || !strings.Contains(err.Error(), "不存在") {
+		t.Fatalf("expected file missing error on GetNotePath, got: %v", err)
+	}
+	if err := s.RevealNoteInFinder(created.ID); err == nil || !strings.Contains(err.Error(), "不存在") {
+		t.Fatalf("expected file missing error on RevealNoteInFinder, got: %v", err)
+	}
+}
+
 func TestVaultService_UpdateNote_PreserveCreatedAtAndBaselineConflict(t *testing.T) {
 	vaultDir := t.TempDir()
 	s := &VaultService{}
@@ -1383,6 +1488,27 @@ func TestVaultService_UpdateNote_PreserveCreatedAtAndBaselineConflict(t *testing
 	})
 	if err == nil || !strings.Contains(err.Error(), "conflict") {
 		t.Fatalf("expected conflict error on external edit, got: %v", err)
+	}
+
+	// 4. Force overwrite bypasses baseline conflict check
+	forced, err := s.UpdateNote(UpdateNoteInput{
+		ID:    created.ID,
+		Title: "强制覆盖标题",
+		Body:  "强制覆盖正文",
+		Force: true,
+	})
+	if err != nil {
+		t.Fatalf("UpdateNote with Force=true failed: %v", err)
+	}
+	if forced.Title != "强制覆盖标题" {
+		t.Fatalf("expected forced title '强制覆盖标题', got %q", forced.Title)
+	}
+	diskBytesAfterForced, err := os.ReadFile(notePath)
+	if err != nil {
+		t.Fatalf("read disk after force failed: %v", err)
+	}
+	if !strings.Contains(string(diskBytesAfterForced), "强制覆盖标题") {
+		t.Fatalf("disk missing forced content: %s", string(diskBytesAfterForced))
 	}
 }
 

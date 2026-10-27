@@ -124,6 +124,7 @@ export interface UpdateNoteInput {
     "title": string;
     "tags"?: string[] | null;
     "body": string;
+    "force"?: boolean;
 }
 
 /**

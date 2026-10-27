@@ -76,6 +76,20 @@ test('App renders real update buttons for progress, waiting, and recovery states
       assert.ok(html.includes(`<span>${label}</span>`), html);
       assert.equal(html.includes('disabled=""'), disabled, html);
       assert.ok(!html.includes('准备安装'), html);
+
+      // Verify collapsed mode rendering
+      const collapsedElement = render(true);
+      const collapsedHtml = renderToStaticMarkup(collapsedElement);
+      assert.ok(collapsedHtml.includes('w-full justify-center'), collapsedHtml);
+      if (state === 'downloading' || state === 'staging') {
+        if (percent >= 0) {
+          assert.ok(collapsedHtml.includes(`${percent}%`), collapsedHtml);
+        } else {
+          assert.ok(collapsedHtml.includes('…'), collapsedHtml);
+        }
+      } else {
+        assert.ok(collapsedHtml.includes(`class="sr-only">${label}</span>`), collapsedHtml);
+      }
     }
   }
 });
