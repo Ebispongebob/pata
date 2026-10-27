@@ -121,7 +121,7 @@ func newPataMCPServer(service *VaultService, rt *mcpRuntime) *mcp.Server {
 			"Resolve pata://task/... references using pata_read (kind=task) or the task resource. " +
 			"Discover tasks from summaries; keep execution focused on one task per session. " +
 			"Task Activities include note_refs; read relevant Note IDs via pata_read (kind=note) only when needed. " +
-			"Write concise Activity outcomes and next steps, not reasoning or chat transcripts. " +
+			"Write concise Activity outcomes and next steps, not reasoning or chat transcripts; do not mark tasks complete unless requested. " +
 			"Creation and append operations are not idempotent: check for an existing result before retrying after a connection failure. " +
 			"The service is bound to the vault selected when started; it is available only while Pata is open and MCP is enabled in Settings.",
 	})
