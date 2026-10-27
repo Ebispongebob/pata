@@ -1,6 +1,6 @@
 # Pata · Agent 项目指引
 
-**项目名称：啪嗒 / Pata。** 阶段 1～13 的代码与 macOS 实机验收已完成；14～15 的验收状态、16 的待实施规划以 [docs/README.md](docs/README.md) 为准。
+**项目名称：啪嗒 / Pata。** 阶段 1～13 的代码与 macOS 实机验收已完成；14～16 的验收状态以 [docs/README.md](docs/README.md) 为准。
 
 ## 开始阅读
 
@@ -28,7 +28,7 @@
 - 目标模型：Task + Note + DayPlan 为顶层 Markdown；Activity 归属于 Task 或 DayPlan 的文件内部。
 - 全局标签聚合 Task、Note、Activity；Task 内 Activity 的标签由自身 + Task 动态继承，Today 独立 Activity 仅看自身标签。
 - Today 计划与 Task due 相互独立；不强制下班复盘。
-- **阶段 16（待实施）**：Notes 当前代码基线是单列浏览、全主区域编辑；目标调整为 Notes Workspace 内部的「左侧草稿/笔记列表 + 右侧唯一编辑器」，**不是**新增 App Shell Inspector，不引入 Tab。草稿无标题/标签并单向原地命名成正式笔记，具体行为以 [016 proposal](docs/16-notes-drafts/proposal.md) 为准；实施前勿把待实施设计误写成已交付功能。
+- **阶段 16（代码已完成，待 macOS 实机走查）**：Notes Workspace 采用内部「左侧草稿/笔记列表 + 右侧唯一编辑器」，**不是**新增 App Shell Inspector，不引入 Tab。草稿无标题/标签并单向原地命名成正式笔记，具体行为以 [016 proposal](docs/16-notes-drafts/proposal.md) 为准。
 - 参照 macOS 27 HIG + Magpie 的窗口实现；尊重系统主题、强调色、辅助功能；Liquid Glass 可选，非 MVP 必须。
 - 核心原则：Less is More / Record Once / Local First。
 - 阶段 6 不再开发菜单栏帧动画或额外悬停动效；阶段 7 不实现外部移动跨文件自动维护、批量链接更新重试或精确光标/滚动恢复。已绑定 `note_refs` ID 失效时不得按同名笔记重新推断（已修复），详情见 [阶段 7 proposal](docs/07-note-links/proposal.md)。

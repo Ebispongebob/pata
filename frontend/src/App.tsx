@@ -643,7 +643,7 @@ export default function App() {
     }
   }, [themeMode]);
 
-  // View Transitions 驱动的丝滑平滑过渡切换
+  // View Transitions 驱动侧栏展开/收起过渡切换
   const morphToggleSidebar = useCallback((target?: boolean) => {
     const getNext = (prev: boolean) => (typeof target === 'boolean' ? target : !prev);
 

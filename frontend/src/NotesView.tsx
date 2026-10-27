@@ -331,7 +331,6 @@ function NoteEditor({
   isDirtyRef.current = isDirty;
   const doSaveRef = useRef<() => Promise<boolean>>(() => Promise.resolve(false));
 
-  // Save implementation
   const doSave = useCallback(async (force: boolean = false): Promise<boolean> => {
     if (isDeletedRef.current) {
       return false;
@@ -474,7 +473,7 @@ function NoteEditor({
         }
       }
 
-      // 有非空标题：正式转换！
+      // 非空标题：转为正式笔记并更新元数据
       setTitleError(null);
       if (isSavingRef.current) return false;
       isSavingRef.current = true;
@@ -1991,7 +1990,6 @@ export function NotesView({
   const [editorKey, setEditorKey] = useState<string>('');
   const notesLoadedRef = useRef(false);
 
-  // Two-column layout states
   const [listWidth, setListWidth] = useState<number>(() =>
     loadPersistedNumber(WIDTH_STORAGE_KEY, DEFAULT_NOTES_LIST_WIDTH, MIN_NOTES_LIST_WIDTH, MAX_NOTES_LIST_WIDTH)
   );
@@ -2011,7 +2009,6 @@ export function NotesView({
   const notesRef = useRef<Note[]>(notes);
   notesRef.current = notes;
 
-  // Split-button / dropdown menu & audio note creation states
   const [createMenuOpen, setCreateMenuOpen] = useState(false);
   const [showMissingKeyModal, setShowMissingKeyModal] = useState(false);
   const [creatingAudioNote, setCreatingAudioNote] = useState(false);
@@ -2029,7 +2026,6 @@ export function NotesView({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [createMenuOpen]);
 
-  // Context menu for note items in list
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; note: Note } | null>(null);
   const contextMenuRef = useRef<HTMLDivElement | null>(null);
   const [noteToDelete, setNoteToDelete] = useState<Note | null>(null);
@@ -2089,7 +2085,6 @@ export function NotesView({
     return a.id.localeCompare(b.id);
   }, []);
 
-  // Naturally re-sort all notes into ordered ID lists
   const reorderIds = useCallback((allNotesList: Note[]) => {
     const drafts = allNotesList.filter((n) => n.draft);
     const formal = allNotesList.filter((n) => !n.draft);
@@ -2099,7 +2094,6 @@ export function NotesView({
     setFrozenFormalIds(formal.map((n) => n.id));
   }, [sortNotesComparator]);
 
-  // Load notes
   const loadNotes = useCallback(async (andReorder: boolean = true) => {
     if (!vaultStatus?.open) {
       setNotes([]);
@@ -2129,7 +2123,6 @@ export function NotesView({
     loadNotes(true);
   }, [loadNotes]);
 
-  // External vault change
   useEffect(() => {
     const unsubscribe = Events.On('vault:changed', () => {
       loadNotes(true);
@@ -2139,7 +2132,6 @@ export function NotesView({
     };
   }, [loadNotes]);
 
-  // Notify parent of editing state
   useEffect(() => {
     onEditingChange?.(selectedNoteId !== null);
   }, [selectedNoteId, onEditingChange]);
@@ -2197,7 +2189,6 @@ export function NotesView({
     } catch {}
   }, [notes, selectedNoteId, focusNoteId]);
 
-  // Save layout preferences
   useEffect(() => {
     try {
       localStorage.setItem(WIDTH_STORAGE_KEY, String(listWidth));
@@ -2222,7 +2213,7 @@ export function NotesView({
     } catch {}
   }, [isNotesCollapsed]);
 
-  // Responsive narrow-window collapse
+  // 窗口过窄时自动折叠笔记列表（保证编辑器可用宽度）
   const containerRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
     const el = containerRef.current;
@@ -2238,7 +2229,6 @@ export function NotesView({
     return () => ro.disconnect();
   }, []);
 
-  // Divider resize handlers
   const isResizingRef = useRef(false);
   const handleDividerPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     if (e.button !== 0) return;
@@ -2286,7 +2276,6 @@ export function NotesView({
     }
   };
 
-  // Actions
   const handleSelectNote = async (id: string) => {
     if (id === selectedNoteId && !isNewDraft) return;
     if (leaveGuardRef?.current) {
@@ -2463,7 +2452,6 @@ export function NotesView({
     }
   }
 
-  // Unconfigured Vault state
   if (!vaultStatus?.configured) {
     return (
       <div className="py-16 text-center space-y-4 max-w-md mx-auto">
@@ -2484,7 +2472,6 @@ export function NotesView({
     );
   }
 
-  // Configured but unopened vault state
   if (!vaultStatus.open) {
     return (
       <div className="p-5 max-w-lg mx-auto rounded-xl border border-amber-200 dark:border-amber-900/60 bg-amber-50/70 dark:bg-amber-950/30 text-xs space-y-3">
