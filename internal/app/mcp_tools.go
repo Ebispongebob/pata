@@ -22,7 +22,7 @@ func taskIDFromReference(ref string) (string, error) {
 	} else if strings.Contains(id, "://") {
 		return "", fmt.Errorf("不支持的任务引用: %s", ref)
 	}
-	if !strings.HasPrefix(id, "t-") || len(id) <= 2 || strings.ContainsAny(id, "/?#% \\t\\r\\n") {
+	if !strings.HasPrefix(id, "t-") || len(id) <= 2 || strings.ContainsAny(id, "/?#% \t\r\n") {
 		return "", fmt.Errorf("无效的任务 ID 或 URI: %s", ref)
 	}
 	return id, nil
