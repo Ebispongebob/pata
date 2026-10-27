@@ -333,7 +333,7 @@
 }
 
 /* 点击：三层卡片轻压、错层弹开，再回到原位。 */
-.pata-logo-button { position: relative; z-index: 1; touch-action: manipulation; }
+.pata-logo-button { position: relative; z-index: 1; touch-action: manipulation; cursor: default; }
 .pata-logo-button .pata-logo-svg { pointer-events: none; }
 .anim-click .pata-card {
   animation: pata-click-card 560ms var(--pata-ease-tactile) both;
@@ -353,7 +353,7 @@
   animation-delay: 40ms;
 }
 @keyframes pata-click-card {
-  0%, 100% { transform: translateY(0) rotate(0) scale(1); }
+  0%, 100% { transform: translateY(0) rotate(0deg) scale(1); }
   18% { transform: translateY(5%) rotate(-2deg) scale(1.04, .92); }
   46% { transform: translateY(var(--click-lift)) rotate(var(--click-tilt)) scale(.98, 1.04); }
   72% { transform: translateY(2%) rotate(-1deg) scale(1.01, .98); }

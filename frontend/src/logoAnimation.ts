@@ -112,14 +112,40 @@ export function playLogoSuccess(): void {
   }
 }
 
-/** 点击反馈与启动、保存反馈共用控制器，连续触发只重播当前一次。 */
-export function playLogoClick(): void {
+let lastTriggerTime = 0;
+const COOLDOWN_MS = 850;
+
+/** 触发 Logo 反馈动效（点击与悬停共用）：防抖防重，动画进行中或冷却期内不重复打断。 */
+function triggerLogoAnimation(): void {
   if (!logoElement) return;
+  if (
+    logoElement.classList.contains('anim-click') ||
+    logoElement.classList.contains('anim-launch') ||
+    logoElement.classList.contains('anim-success')
+  ) {
+    return;
+  }
+  const now = Date.now();
+  if (now - lastTriggerTime < COOLDOWN_MS) {
+    return;
+  }
+  lastTriggerTime = now;
+
   stopLogoAnimation();
-  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches ||
+  if (window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches ||
       document.visibilityState === 'hidden') return;
 
   void logoElement.getBoundingClientRect();
   logoElement.classList.add('anim-click');
   safetyTimer = window.setTimeout(stopLogoAnimation, 920);
+}
+
+/** 点击反馈：防抖防重，连续点击不打断正在进行的动效。 */
+export function playLogoClick(): void {
+  triggerLogoAnimation();
+}
+
+/** 鼠标经过反馈：防抖防重，动画进行中或冷却期内不重复打断。 */
+export function playLogoHover(): void {
+  triggerLogoAnimation();
 }

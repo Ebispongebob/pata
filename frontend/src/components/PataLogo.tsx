@@ -52,7 +52,8 @@ export const PataLogo = forwardRef<SVGSVGElement, PataLogoProps>(function PataLo
           <stop offset="1" stopColor="#FFFDFB" />
         </linearGradient>
         <linearGradient id={leafEdgeId} x1=".1" y1="0" x2=".5" y2="1">
-          <stop stopColor="#FFFFFF" />
+          {/* 起始端微调为淡紫灰 (#E2DAF0)，增强浅色标题栏背景下的白色顶层轮廓可辨度 */}
+          <stop stopColor="#E2DAF0" />
           <stop offset=".6" stopColor="#FFF7F3" />
           <stop offset="1" stopColor="#E1D5FF" />
         </linearGradient>

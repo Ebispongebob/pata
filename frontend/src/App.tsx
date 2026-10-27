@@ -27,7 +27,7 @@ import { TagView } from './TagView';
 import { SettingsView } from './SettingsView';
 import { SearchOverlay } from './SearchOverlay';
 import { PataLogo } from './components/PataLogo';
-import { registerTitlebarLogo, playLogoLaunch, playLogoClick } from './logoAnimation';
+import { registerTitlebarLogo, playLogoLaunch, playLogoClick, playLogoHover } from './logoAnimation';
 import { isVirtualAllTag } from './tagAll';
 import { DetailSplit, useDetailOrigin } from './DetailSplit';
 import { TaskDetailPanel, TaskDetailHandle } from './TaskDetailPanel';
@@ -794,8 +794,9 @@ export default function App() {
               <button
                 type="button"
                 onClick={playLogoClick}
+                onMouseEnter={playLogoHover}
                 aria-label="播放 Pata Logo 动画"
-                className="pata-logo-button no-drag-region shrink-0 rounded-md cursor-pointer"
+                className="pata-logo-button no-drag-region shrink-0 rounded-md cursor-default"
               >
                 <PataLogo ref={titlebarLogoRef} className="w-6 h-6" aria-hidden="true" />
               </button>
@@ -937,8 +938,9 @@ export default function App() {
                 <button
                   type="button"
                   onClick={playLogoClick}
+                  onMouseEnter={playLogoHover}
                   aria-label="播放 Pata Logo 动画"
-                  className="pata-logo-button no-drag-region shrink-0 rounded-md cursor-pointer"
+                  className="pata-logo-button no-drag-region shrink-0 rounded-md cursor-default"
                 >
                   <PataLogo ref={titlebarLogoRef} className="w-6 h-6" aria-hidden="true" />
                 </button>
