@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
 import type { Note } from '../bindings/pata/internal/storage/markdown/models.ts';
 
 // Helper to partition and sort notes according to proposal 016
@@ -144,4 +145,39 @@ test('Chinese IME composition guard: prevents Enter from submitting during compo
 
   // Real Enter after composition finished
   assert.equal(isEnterPressedDuringComposition({ key: 'Enter', isComposing: false, keyCode: 13 }), true);
+});
+
+test('草稿与正式笔记顶栏统一：共用原生拖拽行，展开与返回按钮并排不重叠，无 pr-36 边距挤压', () => {
+  const notesSrc = fs.readFileSync(new URL('./NotesView.tsx', import.meta.url), 'utf-8');
+
+  // 1. 展开按钮与返回任务入口必须位于同一个 flex 容器中，杜绝 absolute top-5 left-5 叠层冲突
+  assert.ok(
+    notesSrc.includes('flex items-center gap-2 flex-1 min-w-0') &&
+      notesSrc.includes('onToggleListCollapse') &&
+      notesSrc.includes('returnToTask'),
+    '展开按钮与返回任务按钮应在同一个 flex 容器中并排渲染'
+  );
+  assert.ok(
+    !notesSrc.includes('absolute top-5 left-5'),
+    '不应使用 absolute top-5 left-5 导致两个按钮彼此重叠或覆盖首行文本'
+  );
+
+  // 2. 顶栏必须对草稿和正式笔记均保留原生窗口拖拽区域 drag-region
+  assert.ok(
+    notesSrc.includes('drag-region min-h-[28px]'),
+    '顶栏应统一拥有 drag-region 且最小高度对齐，确保草稿状态下拖拽窗口不失效'
+  );
+
+  // 3. 不应在正文区域通过 pr-36 弥补浮动按钮，避免长文正文被单侧挤压
+  assert.ok(
+    !notesSrc.includes('pr-36'),
+    '不应对编辑器 wrapper 注入 pr-36 导致草稿全局行宽被单侧挤压'
+  );
+
+  // 4. 草稿模式下「转为笔记」按钮在顶栏正常显示
+  assert.ok(
+    notesSrc.includes("isDraftNote && !isNaming && (\n            <button\n              type=\"button\"\n              onClick={handleStartNaming}") ||
+      notesSrc.includes('isDraftNote && !isNaming &&') && notesSrc.includes('handleStartNaming') && notesSrc.includes('转为笔记'),
+    '草稿状态下应在顶栏提供「转为笔记」转换入口'
+  );
 });
