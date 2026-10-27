@@ -172,17 +172,17 @@ export const PataLogo = forwardRef<SVGSVGElement, PataLogoProps>(function PataLo
             strokeLinecap="round"
           />
         </g>
-        {/* 三道光芒 */}
+        {/* 外层控制光点运动，内层保留每道光芒原有的旋转角度。 */}
         <g id="pata-sparkles" className="pata-sparkles">
           <g opacity=".14" fill="#FF9923" filter={`url(#${sparkGlowId})`}>
-            <rect className="pata-sparkle pata-sparkle-1" x="488" y="143" width="44" height="105" rx="23" />
-            <rect className="pata-sparkle pata-sparkle-2" x="575" y="169" width="47" height="109" rx="24" transform="rotate(47 599 222)" />
-            <rect className="pata-sparkle pata-sparkle-3" x="605" y="316" width="96" height="44" rx="22" transform="rotate(8 653 338)" />
+            <g className="pata-sparkle pata-sparkle-1"><rect x="488" y="143" width="44" height="105" rx="23" /></g>
+            <g className="pata-sparkle pata-sparkle-2"><rect x="575" y="169" width="47" height="109" rx="24" transform="rotate(47 599 222)" /></g>
+            <g className="pata-sparkle pata-sparkle-3"><rect x="605" y="316" width="96" height="44" rx="22" transform="rotate(8 653 338)" /></g>
           </g>
           <g fill={`url(#${sparkYellowId})`} stroke="#FFE277" strokeWidth="1.5">
-            <rect className="pata-sparkle pata-sparkle-1" x="490" y="143" width="42" height="103" rx="21" transform="rotate(-1 511 195)" />
-            <rect className="pata-sparkle pata-sparkle-2" x="575" y="171" width="45" height="105" rx="22.5" transform="rotate(46 598 224)" />
-            <rect className="pata-sparkle pata-sparkle-3" x="602" y="318" width="103" height="43" rx="21.5" transform="rotate(6 653 339)" />
+            <g className="pata-sparkle pata-sparkle-1"><rect x="490" y="143" width="42" height="103" rx="21" transform="rotate(-1 511 195)" /></g>
+            <g className="pata-sparkle pata-sparkle-2"><rect x="575" y="171" width="45" height="105" rx="22.5" transform="rotate(46 598 224)" /></g>
+            <g className="pata-sparkle pata-sparkle-3"><rect x="602" y="318" width="103" height="43" rx="21.5" transform="rotate(6 653 339)" /></g>
           </g>
         </g>
       </g>

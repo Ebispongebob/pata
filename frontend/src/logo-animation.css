@@ -34,8 +34,6 @@
   --pata-success-sparkle-2-delay: 280ms;
   --pata-success-sparkle-3-delay: 360ms;
 
-  /* Hover Micro-interaction (~400ms, single bounce) */
-  --pata-hover-dur: 400ms;
 }
 
 /* ==========================================================================
@@ -92,8 +90,6 @@
 .anim-static .pata-sparkle-2,
 .anim-static .pata-sparkle-3 {
   animation: none !important;
-  transform: none !important;
-  opacity: 1 !important;
 }
 
 /* ==========================================================================
@@ -336,49 +332,51 @@
   }
 }
 
-/* ==========================================================================
-   3. OPTIONAL HOVER MICRO-INTERACTION (.anim-hoverable, ~400ms)
-   Single tactile lift on mouse hover
-   ========================================================================== */
-
-.pata-logo-svg.anim-hoverable:hover .pata-card-front {
-  animation: pata-hover-card 400ms var(--pata-ease-spring-out) 1;
+/* 交互动效（点击/悬停）：三层卡片轻压、错层弹开，再回到原位。 */
+.pata-logo-button { position: relative; z-index: 1; touch-action: manipulation; cursor: default; }
+.pata-logo-button .pata-logo-svg { pointer-events: none; }
+.anim-click .pata-card {
+  animation: pata-click-card 560ms var(--pata-ease-tactile) both;
+}
+.anim-click .pata-card-back {
+  --click-lift: -7%;
+  --click-tilt: -5deg;
+}
+.anim-click .pata-card-middle {
+  --click-lift: -12%;
+  --click-tilt: -2deg;
+  animation-delay: 20ms;
+}
+.anim-click .pata-card-front {
+  --click-lift: -18%;
+  --click-tilt: 6deg;
+  animation-delay: 40ms;
+}
+@keyframes pata-click-card {
+  0%, 100% { transform: translateY(0) rotate(0deg) scale(1); }
+  18% { transform: translateY(5%) rotate(-2deg) scale(1.04, .92); }
+  46% { transform: translateY(var(--click-lift)) rotate(var(--click-tilt)) scale(.98, 1.04); }
+  72% { transform: translateY(2%) rotate(-1deg) scale(1.01, .98); }
 }
 
-.pata-logo-svg.anim-hoverable:hover .pata-sparkle,
-.pata-logo-svg.anim-hoverable:hover .pata-sparkle-1,
-.pata-logo-svg.anim-hoverable:hover .pata-sparkle-2,
-.pata-logo-svg.anim-hoverable:hover .pata-sparkle-3 {
-  animation: pata-hover-sparkle 400ms ease-out 1;
+/* 三道光点沿各自朝向射出并收回；独立 translate 保留 SVG 原有旋转。 */
+.anim-click .pata-sparkle {
+  animation: pata-click-sparkle-shoot 620ms 120ms both;
 }
-
-@keyframes pata-hover-card {
-  0% {
-    transform: translateY(0);
-  }
-  45% {
-    transform: translateY(-3px) scale(1.012);
-  }
-  100% {
-    transform: translateY(0);
-  }
-}
-
-@keyframes pata-hover-sparkle {
-  0% {
-    transform: scale(1);
-  }
-  45% {
-    transform: scale(1.1);
-  }
-  100% {
-    transform: scale(1);
-  }
+.anim-click .pata-sparkle-1 { --shoot-x: 0px; --shoot-y: -280px; }
+.anim-click .pata-sparkle-2 { --shoot-x: 220px; --shoot-y: -220px; animation-delay: 160ms; }
+.anim-click .pata-sparkle-3 { --shoot-x: 300px; --shoot-y: 24px; animation-delay: 200ms; }
+@keyframes pata-click-sparkle-shoot {
+  0% { translate: 0 0; scale: 1; animation-timing-function: ease-out; }
+  12% { translate: 0 0; scale: .85; animation-timing-function: cubic-bezier(.2, 0, .5, 1); }
+  40% { translate: var(--shoot-x) var(--shoot-y); scale: 1.1; animation-timing-function: cubic-bezier(.45, 0, .15, 1); }
+  82% { translate: 0 0; scale: 1.04; animation-timing-function: ease-out; }
+  100% { translate: 0 0; scale: 1; }
 }
 
 /* ==========================================================================
    4. ACCESSIBILITY: PREFERS-REDUCED-MOTION
-   Both system query & simulated state immediate static baseline
+   只禁用动画，保留 SVG 光点旋转与阴影透明度
    ========================================================================== */
 
 @media (prefers-reduced-motion: reduce) {
@@ -404,14 +402,13 @@
   .anim-success .pata-sparkle-1,
   .anim-success .pata-sparkle-2,
   .anim-success .pata-sparkle-3,
+  .anim-click *,
   .anim-launch *,
   .anim-success *,
   .pata-logo-svg.anim-launch *,
   .pata-logo-svg.anim-success * {
     animation: none !important;
     transition: none !important;
-    transform: none !important;
-    opacity: 1 !important;
   }
 }
 
@@ -426,6 +423,7 @@
 [data-reduced-motion="true"] .pata-sparkle-2,
 [data-reduced-motion="true"] .pata-sparkle-3,
 [data-reduced-motion="true"] .pata-card-shadow,
+[data-reduced-motion="true"] .anim-click *,
 [data-reduced-motion="true"] .anim-launch *,
 [data-reduced-motion="true"] .anim-success *,
 .reduced-motion .pata-logo-svg,
@@ -438,10 +436,9 @@
 .reduced-motion .pata-sparkle-2,
 .reduced-motion .pata-sparkle-3,
 .reduced-motion .pata-card-shadow,
+.reduced-motion .anim-click *,
 .reduced-motion .anim-launch *,
 .reduced-motion .anim-success * {
   animation: none !important;
   transition: none !important;
-  transform: none !important;
-  opacity: 1 !important;
 }
