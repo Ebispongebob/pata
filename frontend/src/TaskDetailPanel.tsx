@@ -641,6 +641,11 @@ export const TaskDetailPanel = forwardRef<TaskDetailHandle, TaskDetailPanelProps
   const handleCopyForAgent = async () => {
     setMenuOpen(false);
     try {
+      if (formDirty) {
+        if (!(await saveTask())) return;
+      } else if (saving && !(await taskSaveRef.current)) {
+        return;
+      }
       const status = await MCPService.GetStatus();
       if (!isMCPReadyForAgent(status)) {
         setDetailError('MCP 服务未就绪，请先在设置中启动或重启服务');

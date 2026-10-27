@@ -61,7 +61,8 @@ func TestMCPTaskURIReadsActivityAndReferencedNote(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	server := newPataMCPServer(service, &mcpRuntime{active: true, vault: v})
+	rt := &mcpRuntime{active: true, vault: v}
+	server := newPataMCPServer(service, rt)
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	st, ct := mcp.NewInMemoryTransports()
@@ -145,4 +146,48 @@ func TestMCPTaskURIReadsActivityAndReferencedNote(t *testing.T) {
 	if _, err := cs.ReadResource(ctx, &mcp.ReadResourceParams{URI: pataTaskURIPrefix + "t-missing"}); err == nil {
 		t.Fatal("missing task resource unexpectedly succeeded")
 	}
+
+	t.Run("stopped runtime rejects resource reads", func(t *testing.T) {
+		rt.gate.Lock()
+		rt.active = false
+		rt.gate.Unlock()
+		defer func() {
+			rt.gate.Lock()
+			rt.active = true
+			rt.gate.Unlock()
+		}()
+
+		if _, err := cs.ReadResource(ctx, &mcp.ReadResourceParams{URI: uri}); err == nil || !strings.Contains(err.Error(), "MCP 服务已停止") {
+			t.Fatalf("expected stopped runtime error, got %v", err)
+		}
+	})
+
+	t.Run("old session cannot read a task in the new vault", func(t *testing.T) {
+		otherVault, err := markdown.NewVault(t.TempDir())
+		if err != nil {
+			t.Fatal(err)
+		}
+		otherService := &VaultService{vault: otherVault}
+		otherTask, err := otherService.CreateTask(CreateTaskInput{Title: "新资料库的任务"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		service.externalMu.Lock()
+		service.mu.Lock()
+		service.vault = otherVault
+		service.mu.Unlock()
+		service.externalMu.Unlock()
+		defer func() {
+			service.externalMu.Lock()
+			service.mu.Lock()
+			service.vault = v
+			service.mu.Unlock()
+			service.externalMu.Unlock()
+		}()
+
+		otherURI := pataTaskURIPrefix + otherTask.ID
+		if _, err := cs.ReadResource(ctx, &mcp.ReadResourceParams{URI: otherURI}); err == nil || !strings.Contains(err.Error(), "资料库已更换") {
+			t.Fatalf("expected vault switch error, got %v", err)
+		}
+	})
 }

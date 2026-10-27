@@ -20,6 +20,8 @@ test('Copy for Agent uses the stable task URI, without MCP setup prose', async (
   let timeout: (() => void) | undefined;
   const context = {
     taskId: 't-01abc',
+    formDirty: false,
+    saving: false,
     MCPService: { GetStatus: async () => ({ enabled: true, running: true, vaultChanged: false }) },
     isMCPReadyForAgent,
     Clipboard: { SetText: async (text: string) => { copied.push(text); } },
@@ -54,6 +56,8 @@ test('Copy for Agent refuses to copy when MCP stops or switches vault after the 
     const errors: string[] = [];
     await callback('handleCopyForAgent', {
       taskId: 't-01abc',
+      formDirty: false,
+      saving: false,
       MCPService: { GetStatus: async () => status },
       isMCPReadyForAgent,
       Clipboard: { SetText: async (text: string) => { copied.push(text); } },
@@ -67,11 +71,72 @@ test('Copy for Agent refuses to copy when MCP stops or switches vault after the 
   }
 });
 
+test('Copy for Agent saves dirty task edits before copying and preserves save failures', async () => {
+  for (const saved of [true, false]) {
+    const calls: string[] = [];
+    const errors: string[] = [];
+    await callback('handleCopyForAgent', {
+      taskId: 't-01abc',
+      formDirty: true,
+      saving: false,
+      saveTask: async () => {
+        calls.push('save');
+        if (!saved) errors.push('保存冲突，草稿已保留');
+        return saved;
+      },
+      MCPService: { GetStatus: async () => {
+        calls.push('status');
+        return { enabled: true, running: true, vaultChanged: false };
+      } },
+      isMCPReadyForAgent,
+      Clipboard: { SetText: async () => { calls.push('copy'); } },
+      setMenuOpen: () => {},
+      setCopiedForAgent: () => { calls.push('feedback'); },
+      setDetailError: (message: string) => errors.push(message),
+      copyFeedbackTimerRef: { current: null },
+      window: { setTimeout: () => 1, clearTimeout: () => {} },
+    })();
+    assert.deepEqual(calls, saved ? ['save', 'status', 'copy', 'feedback'] : ['save']);
+    assert.deepEqual(errors, saved ? [] : ['保存冲突，草稿已保留']);
+  }
+});
+
+test('Copy for Agent waits for an in-flight task save and refuses to copy if it fails', async () => {
+  for (const saved of [true, false]) {
+    const calls: string[] = [];
+    let finish!: (saved: boolean) => void;
+    const pending = callback('handleCopyForAgent', {
+      taskId: 't-01abc',
+      formDirty: false,
+      saving: true,
+      taskSaveRef: { current: new Promise<boolean>((resolve) => { finish = resolve; }) },
+      MCPService: { GetStatus: async () => {
+        calls.push('status');
+        return { enabled: true, running: true, vaultChanged: false };
+      } },
+      isMCPReadyForAgent,
+      Clipboard: { SetText: async () => { calls.push('copy'); } },
+      setMenuOpen: () => {},
+      setCopiedForAgent: () => { calls.push('feedback'); },
+      setDetailError: (message: string) => { throw new Error(message); },
+      copyFeedbackTimerRef: { current: null },
+      window: { setTimeout: () => 1, clearTimeout: () => {} },
+    })();
+    await Promise.resolve();
+    assert.deepEqual(calls, [], 'handoff must wait until the task save finishes');
+    finish(saved);
+    await pending;
+    assert.deepEqual(calls, saved ? ['status', 'copy', 'feedback'] : []);
+  }
+});
+
 test('Clipboard failure explains what happened without reporting a successful copy', async () => {
   const feedback: boolean[] = [];
   const errors: string[] = [];
   await callback('handleCopyForAgent', {
     taskId: 't-01abc',
+    formDirty: false,
+    saving: false,
     MCPService: { GetStatus: async () => ({ enabled: true, running: true, vaultChanged: false }) },
     isMCPReadyForAgent,
     Clipboard: { SetText: async () => { throw new Error('clipboard denied'); } },
