@@ -46,7 +46,7 @@ export function WorkspacePage({ children }: { children: ReactNode }) {
  * App 级中间工作区 + 可选右侧 Inspector。
  * 组件始终位于 Today / Tasks / Notes / Tag 之外；各页面只负责工作区内容。
  */
-export function DetailSplit({ panel, children }: { panel: ReactNode | null; children: ReactNode }) {
+export function DetailSplit({ panel, hidden = false, children }: { panel: ReactNode | null; hidden?: boolean; children: ReactNode }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const currentWidthRef = useRef(DEFAULT_INSPECTOR_WIDTH);
   const [panelWidth, setPanelWidth] = useState(loadPanelWidth);
@@ -71,11 +71,11 @@ export function DetailSplit({ panel, children }: { panel: ReactNode | null; chil
   }, []);
 
   useEffect(() => {
-    if (!panel) {
+    if (!panel || hidden) {
       document.body.style.cursor = '';
       document.body.style.userSelect = '';
     }
-  }, [panel]);
+  }, [panel, hidden]);
 
   const maxWidthForWindow = maxInspectorWidth(containerWidth);
   const effectiveWidth = Math.min(panelWidth, maxWidthForWindow);
@@ -139,25 +139,27 @@ export function DetailSplit({ panel, children }: { panel: ReactNode | null; chil
       <div className="flex-1 min-w-0 min-h-0 overflow-hidden">{children}</div>
       {panel && (
         <>
-          <div
-            role="separator"
-            aria-label="调整任务详情宽度"
-            aria-orientation="vertical"
-            aria-valuemin={MIN_INSPECTOR_WIDTH}
-            aria-valuemax={Math.round(maxWidthForWindow)}
-            aria-valuenow={Math.round(effectiveWidth)}
-            tabIndex={0}
-            onKeyDown={handleKeyDown}
-            onPointerDown={handlePointerDown}
-            onPointerMove={handlePointerMove}
-            onPointerUp={handlePointerUp}
-            onPointerCancel={handlePointerUp}
-            onLostPointerCapture={saveWidth}
-            className="relative z-10 w-1.5 shrink-0 cursor-col-resize touch-none no-drag-region focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[var(--pata-accent)] before:absolute before:inset-y-0 before:left-[2px] before:w-px before:bg-stone-200 dark:before:bg-stone-800 hover:before:bg-stone-400 dark:hover:before:bg-stone-600"
-            title="拖拽调整任务详情宽度（方向键微调）"
-          />
+          {!hidden && (
+            <div
+              role="separator"
+              aria-label="调整任务详情宽度"
+              aria-orientation="vertical"
+              aria-valuemin={MIN_INSPECTOR_WIDTH}
+              aria-valuemax={Math.round(maxWidthForWindow)}
+              aria-valuenow={Math.round(effectiveWidth)}
+              tabIndex={0}
+              onKeyDown={handleKeyDown}
+              onPointerDown={handlePointerDown}
+              onPointerMove={handlePointerMove}
+              onPointerUp={handlePointerUp}
+              onPointerCancel={handlePointerUp}
+              onLostPointerCapture={saveWidth}
+              className="relative z-10 w-1.5 shrink-0 cursor-col-resize touch-none no-drag-region focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[var(--pata-accent)] before:absolute before:inset-y-0 before:left-[2px] before:w-px before:bg-stone-200 dark:before:bg-stone-800 hover:before:bg-stone-400 dark:hover:before:bg-stone-600"
+              title="拖拽调整任务详情宽度（方向键微调）"
+            />
+          )}
           <aside
-            style={{ width: effectiveWidth }}
+            style={{ width: effectiveWidth, display: hidden ? 'none' : undefined }}
             className="shrink-0 h-full min-h-0 overflow-hidden flex flex-col"
             aria-label="任务详情"
           >

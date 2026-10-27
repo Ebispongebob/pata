@@ -56,13 +56,9 @@ export function SearchOverlay({
         previousActiveElementRef.current.focus();
         previousActiveElementRef.current = null;
       }
-      // Discard any in-flight requests and reset state
+      // Discard any in-flight requests, but preserve query and results for fast re-entry (016-004)
       ++seqRef.current;
-      setQuery('');
-      setResults([]);
-      setActivityTaskMap({});
       setLoading(false);
-      setSelectedIndex(0);
     }
   }, [isOpen]);
 
@@ -397,11 +393,19 @@ export function SearchOverlay({
                           <div className="flex items-center space-x-2.5 min-w-0 mr-2 flex-1">
                             <FileText className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400 shrink-0 opacity-80" />
                             <div className="min-w-0 flex-1">
-                              <div className="font-medium truncate">{note.title || '(无标题笔记)'}</div>
-                              {note.snippet && (
-                                <div className="text-[11px] text-stone-500 dark:text-stone-400 truncate mt-0.5 opacity-90">
-                                  {note.snippet}
+                              {!note.title ? (
+                                <div className="font-medium truncate text-stone-800 dark:text-stone-200">
+                                  {note.snippet || '(空草稿)'}
                                 </div>
+                              ) : (
+                                <>
+                                  <div className="font-medium truncate">{note.title}</div>
+                                  {note.snippet && (
+                                    <div className="text-[11px] text-stone-500 dark:text-stone-400 truncate mt-0.5 opacity-90">
+                                      {note.snippet}
+                                    </div>
+                                  )}
+                                </>
                               )}
                             </div>
                           </div>

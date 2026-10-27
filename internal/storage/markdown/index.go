@@ -262,7 +262,10 @@ func (idx *MemoryIndex) ListNotes() []*Note {
 	idx.mu.RUnlock()
 	sort.Slice(notes, func(i, j int) bool {
 		if notes[i].UpdatedAt.Equal(notes[j].UpdatedAt) {
-			return notes[i].ID < notes[j].ID
+			if notes[i].CreatedAt.Equal(notes[j].CreatedAt) {
+				return notes[i].ID < notes[j].ID
+			}
+			return notes[i].CreatedAt.After(notes[j].CreatedAt)
 		}
 		return notes[i].UpdatedAt.After(notes[j].UpdatedAt)
 	})
@@ -347,6 +350,9 @@ func (idx *MemoryIndex) FindByTag(tag string) []EntityRef {
 
 	// Search Notes
 	for id, n := range idx.notes {
+		if n.Draft {
+			continue
+		}
 		if hasTag(n.Tags, targetTag) {
 			nTime := n.UpdatedAt
 			if nTime.IsZero() {
@@ -446,6 +452,9 @@ func (idx *MemoryIndex) FindAll() []EntityRef {
 
 	// All Notes
 	for id, n := range idx.notes {
+		if n.Draft {
+			continue
+		}
 		nTime := n.UpdatedAt
 		if nTime.IsZero() {
 			nTime = n.CreatedAt
@@ -569,6 +578,9 @@ func (idx *MemoryIndex) TagOverview() []TagOverviewItem {
 	sort.Strings(noteIDs)
 	for _, id := range noteIDs {
 		n := idx.notes[id]
+		if n.Draft {
+			continue
+		}
 		seen := make(map[string]bool)
 		for _, raw := range n.Tags {
 			tag := strings.TrimSpace(raw)

@@ -97,6 +97,9 @@ func FormatEntityFilename(entity Entity) string {
 		slug := SanitizeSlug(e.Title)
 		return fmt.Sprintf("%s_%s.md", slug, e.ID)
 	case *Note:
+		if e.Draft {
+			return fmt.Sprintf("%s.md", e.ID)
+		}
 		slug := SanitizeSlug(e.Title)
 		return fmt.Sprintf("%s_%s.md", slug, e.ID)
 	case *DayPlan:

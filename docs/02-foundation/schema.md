@@ -1,6 +1,6 @@
 # Markdown Schema — 当前存储规范
 
-> 本文件是 Task、Note、DayPlan 与内嵌 Activity 的唯一生效 Schema。阶段 8 / 9 已实现归属式存储与 Vault 文件边界，阶段 11 增补逐字稿 Note，阶段 14 增补可选操作来源。`docs/02-foundation/examples/` 是历史测试固件，不代表生产格式。
+> 本文件是 Task、Note、DayPlan 与内嵌 Activity 的唯一生效 Schema。阶段 8 / 9 已实现归属式存储与 Vault 文件边界，阶段 11 增补逐字稿 Note，阶段 14 增补可选操作来源，阶段 16 增补显式草稿 Note。`docs/02-foundation/examples/` 是历史测试固件，不代表生产格式。
 
 ## 通用约定
 
@@ -186,6 +186,25 @@ updated_at: 2026-10-15T09:20:00+08:00
 ### Note 创建来源
 
 Frontmatter 可选 `created_by: agent`，省略表示我；正文不存来源。改标题、标签、正文或重新转写均不改变创建来源。GUI 发起 MP3 导入的逐字稿 Note 归我，不因使用云端 ASR 而标记 Agent。
+
+### 草稿 Note（阶段 16 规范）
+
+~~~markdown
+---
+type: note
+id: n-01xxxx
+draft: true
+created_at: 2026-10-26T18:30:00+08:00
+updated_at: 2026-10-26T18:45:00+08:00
+---
+
+直接开始编写 Markdown 正文。
+~~~
+
+- 仅显式 `draft: true` 代表草稿；缺省或 `false` 均视为原有正式 Note。绝不能因为文件缺少 `title` 就自动推断为草稿，以免误分组 Vault 中已有的无 Frontmatter Markdown。
+- 草稿的 `title` 可缺失或为空，`tags` 不提供输入且创建时不写入；正式笔记由 Pata 创建/修改时仍要求标题非空，`tags` 可选。
+- 草稿与正式笔记都保存在 `notes/` 目录。新草稿文件名基于稳定 ID（如 `n-01xxxx.md`）；原地命名转为正式笔记时**不改变文件路径与文件名**，原 ID、路径、创建时间、正文、附件相对链接与引用绑定均原样保留，避免相对 Markdown 链接失效。
+- 草稿不加入 `[[` Note 目标候选，不计入标签聚合；草稿参与全文搜索，以正文片段展示。正式笔记不可退回为草稿。
 
 ### 自动生成的只读逐字稿 Note（阶段 11 规范）
 

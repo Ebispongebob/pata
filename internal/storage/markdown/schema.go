@@ -137,7 +137,7 @@ func validateNote(path string, n *Note) error {
 	if strings.TrimSpace(n.ID) == "" {
 		return &ValidationError{Path: path, Field: "id", Reason: "is required"}
 	}
-	if strings.TrimSpace(n.Title) == "" {
+	if !n.Draft && strings.TrimSpace(n.Title) == "" {
 		return &ValidationError{Path: path, Field: "title", Reason: "is required"}
 	}
 	if n.CreatedAt.IsZero() {

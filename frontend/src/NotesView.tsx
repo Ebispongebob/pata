@@ -14,8 +14,10 @@ import {
   Copy,
   Volume2,
   ChevronDown,
+  ChevronRight,
   MoreHorizontal,
   Trash2,
+  PanelLeftOpen,
 } from 'lucide-react';
 import Vditor from 'vditor';
 import * as VaultService from '../bindings/pata/internal/app/vaultservice';
@@ -24,7 +26,6 @@ import { Note, LinkSource, EntityType } from '../bindings/pata/internal/storage/
 import { ASRTaskStatus, ASRTaskState } from '../bindings/pata/internal/asr/models';
 import { Button } from './components/ui/button';
 import { ConfirmDialog } from './components/ui/confirm-dialog';
-import { Dialog, DialogContent, DialogTitle, DialogDescription } from './components/ui/dialog';
 import { AudioPlayer } from './AudioPlayer';
 import { formatStatusAction } from './activityUtils';
 import { TranscriptViewer, TranscriptViewerRef } from './TranscriptViewer';
@@ -65,42 +66,6 @@ interface NotesViewProps {
   onVaultDataChanged?: () => void;
 }
 
-function formatRelativeTime(isoString: string): string {
-  if (!isoString) return '';
-  try {
-    const d = new Date(isoString);
-    if (isNaN(d.getTime())) return isoString;
-    const now = new Date();
-    const diffSec = Math.floor((now.getTime() - d.getTime()) / 1000);
-    if (diffSec < 60) return '刚刚';
-    const diffMin = Math.floor(diffSec / 60);
-    if (diffMin < 60) return `${diffMin} 分钟前`;
-    const diffHour = Math.floor(diffMin / 60);
-    if (diffHour < 24) return `${diffHour} 小时前`;
-
-    const yesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
-    const isYesterday =
-      d.getFullYear() === yesterday.getFullYear() &&
-      d.getMonth() === yesterday.getMonth() &&
-      d.getDate() === yesterday.getDate();
-    if (isYesterday) return '昨天';
-
-    const diffDay = Math.floor(diffHour / 24);
-    if (diffDay < 7) return `${diffDay} 天前`;
-
-    const pad = (n: number) => n.toString().padStart(2, '0');
-    const y = d.getFullYear();
-    const m = pad(d.getMonth() + 1);
-    const day = pad(d.getDate());
-    if (y === now.getFullYear()) {
-      return `${m}-${day}`;
-    }
-    return `${y}-${m}-${day}`;
-  } catch {
-    return isoString;
-  }
-}
-
 function isAudioTranscriptNote(note?: Note | null): note is Note & { audio_transcript: true; audio_file: string } {
   return Boolean(note && note.audio_transcript && note.audio_file && note.audio_file.trim().length > 0);
 }
@@ -125,16 +90,74 @@ function getNoteExcerpt(title: string, body?: string): string {
     .trim();
   return cleaned;
 }
+void getNoteExcerpt;
+
+function getDraftExcerpt(body?: string): string {
+  if (!body) return '';
+  const lines = body.split(/\r?\n/);
+  const textLines: string[] = [];
+  for (const line of lines) {
+    let cleaned = line
+      .replace(/^#{1,6}\s+/, '')
+      .replace(/^>\s+/, '')
+      .replace(/^[-*+]\s+(\[[ xX]\]\s+)?/, '')
+      .replace(/^\d+\.\s+/, '')
+      .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+      .replace(/\[\[([^\]|]+)(?:\|[^\]]+)?\]\]/g, '$1')
+      .replace(/[`*_~=]/g, '')
+      .trim();
+    if (cleaned) {
+      textLines.push(cleaned);
+      if (textLines.length >= 2) break;
+    }
+  }
+  return textLines.join('\n');
+}
+
+const DEFAULT_NOTES_LIST_WIDTH = 280;
+const MIN_NOTES_LIST_WIDTH = 240;
+const MAX_NOTES_LIST_WIDTH = 400;
+const WIDTH_STORAGE_KEY = 'pata_notes_list_width';
+const COLLAPSED_STORAGE_KEY = 'pata_notes_list_collapsed';
+const DRAFTS_COLLAPSED_KEY = 'pata_notes_drafts_collapsed';
+const FORMAL_COLLAPSED_KEY = 'pata_notes_formal_collapsed';
+const LAST_NOTE_ID_KEY = 'pata_last_selected_note_id';
+
+function loadPersistedNumber(key: string, fallback: number, min: number, max: number): number {
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return fallback;
+    const parsed = parseInt(raw, 10);
+    if (isNaN(parsed)) return fallback;
+    return Math.max(min, Math.min(max, parsed));
+  } catch {
+    return fallback;
+  }
+}
+
+function loadPersistedBool(key: string, fallback: boolean): boolean {
+  try {
+    const raw = localStorage.getItem(key);
+    if (raw === null) return fallback;
+    return raw === 'true';
+  } catch {
+    return fallback;
+  }
+}
 
 interface NoteEditorProps {
   noteId: string;
   isNew?: boolean;
-  onBack: () => void;
-  backLabel: string;
+  isDraftType?: boolean;
+  listCollapsed?: boolean;
+  onToggleListCollapse?: () => void;
+  returnToTask?: { label: string; go: () => void } | null;
   onOpenNote: (id: string) => void;
   onOpenTask?: (id: string) => void;
   onNoteUpdated: () => void;
-  onNoteCreated?: (newId: string) => void;
+  onNoteCreated?: (newId: string, isDraft: boolean) => void;
+  onNoteConverted?: (id: string) => void;
+  onDeleteCurrentNote?: (id: string) => void;
   leaveGuardRef?: React.MutableRefObject<(() => Promise<boolean>) | null>;
   onDraftCheck?: (checker: () => boolean) => () => void;
   onOpenSettings?: (section?: 'appearance' | 'storage' | 'transcription') => void;
@@ -145,12 +168,16 @@ interface NoteEditorProps {
 function NoteEditor({
   noteId,
   isNew = false,
-  onBack,
-  backLabel,
+  isDraftType = false,
+  listCollapsed = false,
+  onToggleListCollapse,
+  returnToTask,
   onOpenNote,
   onOpenTask,
   onNoteUpdated,
   onNoteCreated,
+  onNoteConverted,
+  onDeleteCurrentNote,
   leaveGuardRef,
   onDraftCheck,
   onOpenSettings,
@@ -162,6 +189,9 @@ function NoteEditor({
   initialNoteRef.current = initialNote;
   const [loadingNote, setLoadingNote] = useState<boolean>(true);
   const [loadError, setLoadError] = useState<string | null>(null);
+
+  // In-place naming state (草稿原地转为笔记)
+  const [isNaming, setIsNaming] = useState<boolean>(false);
 
   // Audio transcript specific states
   const [asrStatus, setAsrStatus] = useState<ASRTaskStatus | null>(null);
@@ -180,7 +210,6 @@ function NoteEditor({
   const [showReloadConfirm, setShowReloadConfirm] = useState<boolean>(false);
   const [showLeaveConflictConfirm, setShowLeaveConflictConfirm] = useState<boolean>(false);
   const [showSaveFailedConfirm, setShowSaveFailedConfirm] = useState<boolean>(false);
-  const [showDraftNoTitleConfirm, setShowDraftNoTitleConfirm] = useState<boolean>(false);
   const [copiedDraft, setCopiedDraft] = useState<boolean>(false);
   const titleInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -223,11 +252,10 @@ function NoteEditor({
   }, [moreMenuOpen]);
 
   useEffect(() => {
-    if (isNew) {
+    if (isNew && !isDraftType) {
       titleInputRef.current?.focus();
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [isNew, isDraftType]);
 
   const isNewDraftRef = useRef<boolean>(isNew);
   const currentNoteIdRef = useRef<string>(noteId);
@@ -240,7 +268,6 @@ function NoteEditor({
   allFilesRef.current = allFiles;
   const [backlinks, setBacklinks] = useState<LinkSource[]>([]);
   const [backlinksOpen, setBacklinksOpen] = useState(false);
-  // `[[` 笔记候选：node 为正在输入的文本节点
   const [picker, setPicker] = useState<{ start: number; query: string; index: number; left: number; top?: number; bottom?: number } | null>(null);
   const pickerRef = useRef(picker);
   pickerRef.current = picker;
@@ -262,6 +289,7 @@ function NoteEditor({
   const hasConflictRef = useRef<boolean>(false);
   const isSavingRef = useRef<boolean>(false);
   const isDeletedRef = useRef<boolean>(false);
+  const isUnmountedRef = useRef<boolean>(false);
 
   const editTitleRef = useRef<string>('');
   const editTagsRef = useRef<string[]>([]);
@@ -271,16 +299,21 @@ function NoteEditor({
   onNoteCreatedRef.current = onNoteCreated;
   const onNoteUpdatedRef = useRef(onNoteUpdated);
   onNoteUpdatedRef.current = onNoteUpdated;
-  const onBackRef = useRef(onBack);
-  onBackRef.current = onBack;
+  const onNoteConvertedRef = useRef(onNoteConverted);
+  onNoteConvertedRef.current = onNoteConverted;
   const onOpenNoteRef = useRef(onOpenNote);
   onOpenNoteRef.current = onOpenNote;
   const onOpenTaskRef = useRef(onOpenTask);
   onOpenTaskRef.current = onOpenTask;
 
+  const isDraftNote = isNewDraftRef.current ? isDraftType : Boolean(initialNote?.draft);
+
   // Dirty check: comparison with last persisted state
   const isDirty = useCallback((currentTitle: string, currentTags: string[], currentBody: string): boolean => {
     if (isNewDraftRef.current) {
+      if (isDraftType) {
+        return !!currentBody.trim();
+      }
       return !!currentTitle.trim() || !!currentBody || currentTags.length > 0;
     }
     if (!lastSavedStateRef.current) return false;
@@ -292,13 +325,12 @@ function NoteEditor({
       if (currentTags[i] !== last.tags[i]) return true;
     }
     return false;
-  }, []);
+  }, [isDraftType]);
 
   const isDirtyRef = useRef(isDirty);
   isDirtyRef.current = isDirty;
   const doSaveRef = useRef<() => Promise<boolean>>(() => Promise.resolve(false));
 
-  // Save implementation (D19)
   const doSave = useCallback(async (force: boolean = false): Promise<boolean> => {
     if (isDeletedRef.current) {
       return false;
@@ -308,7 +340,6 @@ function NoteEditor({
       return false;
     }
 
-    // must-fix 2: vditorRef 为 null (初始化未完成) 时绝对不能写盘，避免空 body 清空正文（只读逐字稿 Note 无需 vditorRef）
     if (!vditorRef.current && !isAudioTranscriptNote(initialNoteRef.current)) {
       return false;
     }
@@ -319,19 +350,28 @@ function NoteEditor({
       : (vditorRef.current ? vditorRef.current.getValue() : '');
     const currentTags = editTagsRef.current;
 
-    // 新建草稿保存分支：标题为空时维持安全草稿状态，不写非法空文件到磁盘
+    // 新建分支保存
     if (isNewDraftRef.current) {
-      if (!currentTitle) {
-        if (currentBody.trim() || currentTags.length > 0) {
-          setTitleError('笔记标题不能为空，请输入标题以保存');
-          setSaveStatus('unsaved');
-        } else {
-          setTitleError(null);
+      if (isDraftType) {
+        // 新建草稿：正文有内容才首次落盘
+        if (!currentBody.trim()) {
           setSaveStatus('saved');
+          return false;
         }
-        return false;
+      } else {
+        // 新建正式笔记：要求非空标题
+        if (!currentTitle) {
+          if (currentBody.trim() || currentTags.length > 0) {
+            setTitleError('笔记标题不能为空，请输入标题以保存');
+            setSaveStatus('unsaved');
+          } else {
+            setTitleError(null);
+            setSaveStatus('saved');
+          }
+          return false;
+        }
+        setTitleError(null);
       }
-      setTitleError(null);
 
       if (isSavingRef.current) {
         return false;
@@ -343,8 +383,9 @@ function NoteEditor({
 
       try {
         const input: CreateNoteInput = {
+          draft: isDraftType,
           title: currentTitle,
-          tags: currentTags,
+          tags: isDraftType ? [] : currentTags,
           body: currentBody,
         };
 
@@ -352,16 +393,17 @@ function NoteEditor({
         if (created) {
           isNewDraftRef.current = false;
           currentNoteIdRef.current = created.id;
+          setInitialNote(created);
           lastSavedStateRef.current = {
             title: currentTitle,
-            tags: currentTags,
+            tags: isDraftType ? [] : currentTags,
             body: currentBody,
           };
           hasConflictRef.current = false;
           setConflictError(null);
           setSaveStatus('saved');
           setSaveError(null);
-          onNoteCreatedRef.current?.(created.id);
+          onNoteCreatedRef.current?.(created.id, isDraftType);
           onNoteUpdatedRef.current();
           createdNote = true;
         }
@@ -370,7 +412,9 @@ function NoteEditor({
         console.error('CreateNote failed:', err);
         setSaveStatus('failed');
         setSaveError(err?.message || String(err));
-        setTitleError(err?.message || String(err));
+        if (!isDraftType) {
+          setTitleError(err?.message || String(err));
+        }
         return false;
       } finally {
         isSavingRef.current = false;
@@ -386,6 +430,159 @@ function NoteEditor({
     }
 
     // 既有笔记更新分支
+    const currentIsDraft = Boolean(initialNoteRef.current?.draft);
+
+    // 正在命名草稿 -> 转为正式笔记
+    if (currentIsDraft && isNaming) {
+      if (!currentTitle) {
+        // 标题仍为空：维持草稿状态，不写 formal note，但可保存正文改动
+        if (!isDirtyRef.current(currentTitle, currentTags, currentBody)) {
+          return true;
+        }
+        if (isSavingRef.current) return false;
+        isSavingRef.current = true;
+        setSaveStatus('saving');
+        try {
+          const input: UpdateNoteInput = {
+            id: currentNoteIdRef.current,
+            draft: true,
+            title: '',
+            tags: [],
+            body: currentBody,
+          };
+          const updated = await VaultService.UpdateNote(input);
+          if (updated) {
+            setInitialNote(updated);
+            lastSavedStateRef.current = {
+              title: '',
+              tags: [],
+              body: currentBody,
+            };
+            setSaveStatus('saved');
+            setSaveError(null);
+            onNoteUpdatedRef.current();
+          }
+          return true;
+        } catch (err: any) {
+          console.error('Save draft body failed:', err);
+          setSaveStatus('failed');
+          setSaveError(err?.message || String(err));
+          return false;
+        } finally {
+          isSavingRef.current = false;
+        }
+      }
+
+      // 非空标题：转为正式笔记并更新元数据
+      setTitleError(null);
+      if (isSavingRef.current) return false;
+      isSavingRef.current = true;
+      setSaveStatus('saving');
+      let converted = false;
+      try {
+        const fDraft = false;
+        const input: UpdateNoteInput = {
+          id: currentNoteIdRef.current,
+          draft: fDraft,
+          title: currentTitle,
+          tags: currentTags,
+          body: currentBody,
+        };
+        const updated = await VaultService.UpdateNote(input);
+        if (updated) {
+          setInitialNote(updated);
+          setIsNaming(false);
+          lastSavedStateRef.current = {
+            title: currentTitle,
+            tags: currentTags,
+            body: currentBody,
+          };
+          hasConflictRef.current = false;
+          setConflictError(null);
+          setSaveStatus('saved');
+          setSaveError(null);
+          onNoteConvertedRef.current?.(updated.id);
+          onNoteUpdatedRef.current();
+          converted = true;
+        }
+        return converted;
+      } catch (err: any) {
+        console.error('ConvertNote failed:', err);
+        setSaveStatus('failed');
+        setSaveError(err?.message || String(err));
+        setTitleError(err?.message || String(err));
+        return false;
+      } finally {
+        isSavingRef.current = false;
+      }
+    }
+
+    // 普通草稿保存：标题无要求
+    if (currentIsDraft && !isNaming) {
+      if (!isDirtyRef.current(currentTitle, currentTags, currentBody)) {
+        setSaveStatus('saved');
+        setSaveError(null);
+        return true;
+      }
+
+      if (isSavingRef.current) return false;
+      isSavingRef.current = true;
+      setSaveStatus('saving');
+      let savedDraft = false;
+
+      try {
+        const input: UpdateNoteInput = {
+          id: currentNoteIdRef.current,
+          draft: true,
+          title: '',
+          tags: [],
+          body: currentBody,
+        };
+        const updated = await VaultService.UpdateNote(input);
+        if (updated) {
+          setInitialNote(updated);
+          lastSavedStateRef.current = {
+            title: '',
+            tags: [],
+            body: currentBody,
+          };
+          hasConflictRef.current = false;
+          setConflictError(null);
+          setSaveStatus('saved');
+          setSaveError(null);
+          onNoteUpdatedRef.current();
+          savedDraft = true;
+        }
+        return savedDraft;
+      } catch (err: any) {
+        console.error('UpdateNote draft failed:', err);
+        const errMsg = err?.message || String(err);
+        const isConflict = errMsg.includes('conflict') || errMsg.includes('写入冲突');
+        if (isConflict) {
+          hasConflictRef.current = true;
+          setSaveStatus('conflict');
+          setConflictError('外部文件已更新（本地有未保存修改）');
+          if (debounceTimerRef.current) {
+            window.clearTimeout(debounceTimerRef.current);
+            debounceTimerRef.current = null;
+          }
+        } else {
+          setSaveStatus('failed');
+          setSaveError(errMsg);
+        }
+        return false;
+      } finally {
+        isSavingRef.current = false;
+        if (savedDraft && vditorRef.current) {
+          const bodyNow = vditorRef.current.getValue();
+          if (isDirtyRef.current('', [], bodyNow) && !hasConflictRef.current) {
+            triggerDebouncedSaveRef.current();
+          }
+        }
+      }
+    }
+
+    // 正式笔记更新分支
     if (!currentTitle) {
       setTitleError('笔记标题不能为空，无法保存');
       setSaveStatus('failed');
@@ -409,9 +606,10 @@ function NoteEditor({
     let saved = false;
 
     try {
-      // Frontmatter separation: title and tags from top inputs, body from Vditor
+      const fDraft = false;
       const input: UpdateNoteInput = {
         id: currentNoteIdRef.current,
+        draft: fDraft,
         title: currentTitle,
         tags: currentTags,
         body: currentBody,
@@ -420,6 +618,7 @@ function NoteEditor({
 
       const updated = await VaultService.UpdateNote(input);
       if (updated) {
+        setInitialNote(updated);
         lastSavedStateRef.current = {
           title: currentTitle,
           tags: currentTags,
@@ -454,7 +653,6 @@ function NoteEditor({
       return false;
     } finally {
       isSavingRef.current = false;
-      // 仅当本次保存成功时才重排（保存 in-flight 期间新输入不丢）；若保存失败则不自动重排，避免无限重试
       if (saved && (vditorRef.current || isAudioTranscriptNote(initialNoteRef.current))) {
         const bodyNow = vditorRef.current ? vditorRef.current.getValue() : (initialNoteRef.current?.body ?? '');
         const titleNow = editTitleRef.current;
@@ -464,11 +662,11 @@ function NoteEditor({
         }
       }
     }
-  }, []);
+  }, [isDraftType, isNaming]);
 
   doSaveRef.current = doSave;
 
-  // Debounced auto-save (0.5s as per D19)
+  // Debounced auto-save (0.5s)
   const triggerDebouncedSave = useCallback(() => {
     if (isDeletedRef.current || hasConflictRef.current) return;
     setSaveStatus('unsaved');
@@ -489,7 +687,7 @@ function NoteEditor({
     setEditTitle(val);
     editTitleRef.current = val;
     if (!val.trim()) {
-      if (!isNewDraftRef.current) {
+      if (!isNewDraftRef.current && !initialNoteRef.current?.draft) {
         setTitleError('笔记标题不能为空');
       }
     } else {
@@ -523,12 +721,21 @@ function NoteEditor({
     triggerDebouncedSave();
   };
 
+  // Click "转为笔记": enters naming state and focuses title input immediately
+  const handleStartNaming = () => {
+    setIsNaming(true);
+    requestAnimationFrame(() => {
+      titleInputRef.current?.focus();
+    });
+  };
+
   // Load note details on mount
   useEffect(() => {
     if (isNewDraftRef.current) {
       setInitialNote({
         id: '',
         type: EntityType.EntityTypeNote,
+        draft: isDraftType,
         title: '',
         tags: [],
         body: '',
@@ -575,7 +782,7 @@ function NoteEditor({
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [isDraftType]);
 
   // Listen to ASR status events and task updates
   useEffect(() => {
@@ -634,149 +841,32 @@ function NoteEditor({
       active = false;
       if (unlistenStatus) unlistenStatus();
     };
-  }, [noteId, isAudioTranscriptNote(initialNote)]);
+  }, [noteId, initialNote]);
 
-  const handleRetranscribe = async () => {
-    try {
-      const cfg = await VaultService.GetASRConfigStatus();
-      if (!cfg.configured) {
-        onOpenSettings?.('transcription');
-        return;
-      }
-      await VaultService.StartAudioTranscription(noteId);
-      const st = await VaultService.GetASRTaskStatus(noteId);
-      setAsrStatus(st);
-    } catch (err: any) {
-      console.error('StartAudioTranscription failed:', err);
-      const errMsg = err?.message || String(err) || '启动转写失败';
-      setAsrStatus((prev) => ({
-        ...(prev || {}),
-        note_id: noteId,
-        state: ASRTaskState.StateFailed,
-        stage_message: '重试失败',
-        error: errMsg,
-        updated_at: new Date().toISOString(),
-      }));
-    }
-  };
-
-  const handleConfirmReplace = async () => {
-    try {
-      setReplaceError(null);
-      const updated = await VaultService.ConfirmReplaceTranscript(noteId);
-      if (updated) {
-        setInitialNote(updated);
-        lastSavedStateRef.current = {
-          title: updated.title,
-          tags: updated.tags || [],
-          body: updated.body || '',
-        };
-        setShowReplaceConfirm(false);
-      }
-    } catch (err: any) {
-      setReplaceError(err?.message || '替换逐字稿失败');
-    }
-  };
-
-  const handleDiscardCandidate = async () => {
-    try {
-      await VaultService.DiscardCandidateTranscript(noteId);
-      setShowReplaceConfirm(false);
-      const st = await VaultService.GetASRTaskStatus(noteId);
-      setAsrStatus(st);
-    } catch (err: any) {
-      console.error('DiscardCandidateTranscript failed:', err);
-    }
-  };
-
-  // Mount Vditor editor when note is loaded (only for normal editable notes)
+  // Load backlinks
   useEffect(() => {
-    if (loadingNote || !initialNote || !vditorContainerRef.current || isVditorMountedRef.current || isAudioTranscriptNote(initialNote)) return;
-    isVditorMountedRef.current = true;
-
-    const isDark = document.documentElement.classList.contains('dark');
-
-    // Vditor 离线包已裁剪至 <=8MB (从 23MB 裁剪至 7.5MB，保留 lute, highlight.js, icons, i18n, content-theme; 移除数学公式、流程图、脑图等重型图表库)
-    // 若未来从 node_modules 重新同步，需参照 docs/02-foundation/spike-desktop-result.md §4 重新裁剪。
-    const vditor = new Vditor(vditorContainerRef.current, {
-      cdn: '/vditor',
-      mode: 'ir',
-      undoDelay: 100,
-      value: initialNote.body ?? '',
-      height: '100%',
-      placeholder: '开始记录内容...（支持 Markdown 语法、表格、代码块）',
-      theme: isDark ? 'dark' : 'classic',
-      preview: {
-        theme: {
-          current: isDark ? 'dark' : 'light',
-        },
-        hljs: {
-          style: isDark ? 'github-dark' : 'github',
-        },
-        markdown: {
-          toc: true,
-          mark: true,
-          footnotes: true,
-          autoSpace: true,
-        },
-      },
-      cache: {
-        enable: false,
-      },
-      toolbar: [],
-      toolbarConfig: {
-        hide: true,
-      },
-      link: { isOpen: true, click: (a: Element) => linkClickRef.current(a as HTMLElement) },
-      input: () => {
-        triggerDebouncedSaveRef.current();
-        syncPickerRef.current();
-      },
-      after: () => {
-        vditorRef.current = vditor;
-        // 如果在加载期间用户编辑了标题/标签，触发一次防抖保存检查
-        const bodyNow = vditor.getValue();
-        if (isDirtyRef.current(editTitleRef.current, editTagsRef.current, bodyNow)) {
-          triggerDebouncedSaveRef.current();
-        }
-      },
-    });
-
-    // Dark mode observer
-    const observer = new MutationObserver(() => {
-      const dark = document.documentElement.classList.contains('dark');
-      vditor.setTheme(
-        dark ? 'dark' : 'classic',
-        dark ? 'dark' : 'light',
-        dark ? 'github-dark' : 'github'
-      );
-    });
-    observer.observe(document.documentElement, {
-      attributes: true,
-      attributeFilter: ['class'],
-    });
-
+    let mounted = true;
+    if (!currentNoteIdRef.current || isNewDraftRef.current) {
+      setBacklinks([]);
+      return;
+    }
+    VaultService.GetNoteBacklinks(currentNoteIdRef.current)
+      .then((sources) => {
+        if (mounted) setBacklinks(sources || []);
+      })
+      .catch(() => {
+        if (mounted) setBacklinks([]);
+      });
     return () => {
-      observer.disconnect();
-      if (debounceTimerRef.current) {
-        window.clearTimeout(debounceTimerRef.current);
-        debounceTimerRef.current = null;
-      }
-      try {
-        vditor.destroy();
-      } catch {
-        // ignore
-      }
-      vditorRef.current = null;
-      isVditorMountedRef.current = false;
+      mounted = false;
     };
-  }, [loadingNote]);
+  }, [noteId]);
 
   // Subscribe to vault:changed: if hitting current note, handle silent reload or conflict; if hitting files, refresh image tags
   useEffect(() => {
-    const unsubscribe = Events.On('vault:changed', (ev) => {
+    const unsubscribe = Events.On('vault:changed', (ev: any) => {
       if (isNewDraftRef.current) return;
-      const data = ev.data as { op?: string; path?: string; entity_id?: string; type?: string } | undefined;
+      const data = ev?.data as { op?: string; path?: string; entity_id?: string; type?: string } | undefined;
       if (data?.entity_id === currentNoteIdRef.current) {
         const bodyNow = vditorRef.current ? vditorRef.current.getValue() : (initialNoteRef.current?.body ?? '');
         const titleNow = editTitleRef.current;
@@ -849,21 +939,21 @@ function NoteEditor({
         } catch {
           // keep raw
         }
-
-        const imgs = container.querySelectorAll<HTMLImageElement>('img');
-        const now = Date.now();
+        const imgs = container.querySelectorAll('img');
+        const ts = Date.now();
         imgs.forEach((img) => {
-          const currentSrc = img.getAttribute('src') || '';
-          const clean = currentSrc.split('?')[0].split('#')[0];
-          const rawSegment = clean.split('/').pop() || '';
-          let srcName = rawSegment;
+          const currentSrc = img.getAttribute('src');
+          if (!currentSrc) return;
           try {
-            srcName = decodeURIComponent(rawSegment);
+            const urlObj = new URL(currentSrc, window.location.href);
+            const pathParts = urlObj.pathname.split('/');
+            const srcName = decodeURIComponent(pathParts[pathParts.length - 1] || '');
+            if (srcName === fileName) {
+              urlObj.searchParams.set('t', String(ts));
+              img.setAttribute('src', urlObj.toString());
+            }
           } catch {
-            // keep raw
-          }
-          if (srcName === fileName || rawSegment === rawFileName) {
-            img.src = `${clean}?_t=${now}`;
+            // ignore
           }
         });
       }
@@ -873,172 +963,171 @@ function NoteEditor({
     };
   }, []);
 
-  // Window beforeunload flush
-  useEffect(() => {
-    const handleBeforeUnload = () => {
-      // shortcut: 导航切走时 best-effort flush,关窗/极速切换仍可能丢 ≤0.5s 输入,实机走查评估
-      // 注：beforeunload 异步 IPC 关窗由于浏览器生命周期与 IPC 异步性亦可能丢失未保存数据，接受现状，不实现 Go 退出钩子
-      if (isDeletedRef.current) return;
-      if (debounceTimerRef.current) {
-        window.clearTimeout(debounceTimerRef.current);
-        debounceTimerRef.current = null;
-        doSaveRef.current();
-      }
-    };
-    window.addEventListener('beforeunload', handleBeforeUnload);
-    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
-  }, []);
-
-  // Unmount cleanup best-effort flush (should-fix 4)
-  useEffect(() => {
-    return () => {
-      // shortcut: 导航切走时 best-effort flush,关窗/极速切换仍可能丢 ≤0.5s 输入,实机走查评估
-      // 注：beforeunload 异步 IPC 关窗由于浏览器生命周期与 IPC 异步性亦可能丢失未保存数据，接受现状，不实现 Go 退出钩子
-      if (isDeletedRef.current) return;
-      if (debounceTimerRef.current) {
-        window.clearTimeout(debounceTimerRef.current);
-        debounceTimerRef.current = null;
-      }
-      doSaveRef.current();
-    };
-  }, []);
-
   // Keyboard shortcut Cmd+S / Ctrl+S to save immediately
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === 's') {
         e.preventDefault();
-        if (isDeletedRef.current) return;
+        if (isDeletedRef.current || hasConflictRef.current) return;
         if (debounceTimerRef.current) {
           window.clearTimeout(debounceTimerRef.current);
           debounceTimerRef.current = null;
         }
-        doSaveRef.current();
+        void doSaveRef.current();
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
-  // 离开当前笔记（返回/打开引用/打开来源任务）前先 flush 自动保存；冲突或保存失败时留在原处（D19）
-  const leaveThen = async (go: () => void) => {
-    pendingGoRef.current = go;
-    if (hasConflictRef.current) {
-      setShowLeaveConflictConfirm(true);
-      return;
-    }
-    if (debounceTimerRef.current) {
-      window.clearTimeout(debounceTimerRef.current);
-      debounceTimerRef.current = null;
-    }
-
-    // 新建草稿离开判定
-    if (isNewDraftRef.current) {
-      const currentTitle = editTitleRef.current.trim();
-      const currentBody = vditorRef.current ? vditorRef.current.getValue().trim() : '';
-      const currentTags = editTagsRef.current;
-
-      // 若完全未输入任何内容，直接安全退出，不创建任何磁盘文件
-      if (!currentTitle && !currentBody && currentTags.length === 0) {
-        pendingGoRef.current = null;
-        go();
-        return;
-      }
-
-      // 若已输入有效标题，执行保存后退出
-      if (currentTitle) {
-        const saved = await doSave();
-        if (saved) {
-          pendingGoRef.current = null;
-          go();
-        } else {
-          setShowSaveFailedConfirm(true);
-        }
-        return;
-      }
-
-      // 未输入标题但已输入正文或标签，弹窗警告防误丢
-      setShowDraftNoTitleConfirm(true);
-      return;
-    }
-
-    const currentTitle = editTitleRef.current;
-    const currentTags = editTagsRef.current;
-    const currentBody = vditorRef.current ? vditorRef.current.getValue() : (initialNote?.body ?? '');
-    const dirty = isDirty(currentTitle, currentTags, currentBody);
-
-    if (!dirty) {
-      pendingGoRef.current = null;
-      go();
-      return;
-    }
-
-    const saved = await doSave();
-    if (saved) {
-      pendingGoRef.current = null;
-      go();
-    } else {
-      setShowSaveFailedConfirm(true);
-    }
-  };
-  const handleBackClick = () => leaveThen(onBackRef.current);
-
+  // Window beforeunload flush
   useEffect(() => {
-    if (!leaveGuardRef) return;
-    leaveGuardRef.current = async () => {
-      if (isDeletedRef.current) {
-        return true;
+    const handleBeforeUnload = () => {
+      if (isDeletedRef.current || hasConflictRef.current) return;
+      if (debounceTimerRef.current) {
+        window.clearTimeout(debounceTimerRef.current);
+        debounceTimerRef.current = null;
+        void doSaveRef.current();
       }
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, []);
 
-      if (hasConflictRef.current) {
-        return askUserConfirm(() => setShowLeaveConflictConfirm(true));
-      }
-
+  // Unmount cleanup best-effort flush & timer cancel
+  useEffect(() => {
+    return () => {
+      isUnmountedRef.current = true;
+      if (isDeletedRef.current || hasConflictRef.current) return;
       if (debounceTimerRef.current) {
         window.clearTimeout(debounceTimerRef.current);
         debounceTimerRef.current = null;
       }
-
-      const currentTitle = editTitleRef.current.trim();
-      const currentTags = editTagsRef.current;
-      const currentBody = vditorRef.current ? vditorRef.current.getValue() : (initialNote?.body ?? '');
-      const dirty = isDirty(currentTitle, currentTags, currentBody);
-      if (!dirty) return true;
-
-      if (isNewDraftRef.current && !currentTitle) {
-        if (!currentBody.trim() && currentTags.length === 0) {
-          return true;
-        }
-        return askUserConfirm(() => setShowDraftNoTitleConfirm(true));
-      }
-
-      const saved = await doSave();
-      if (!saved) {
-        return askUserConfirm(() => setShowSaveFailedConfirm(true));
-      }
-      return true;
+      void doSaveRef.current();
     };
-    return () => {
-      leaveGuardRef.current = null;
-      if (leavePromptResolverRef.current) {
-        leavePromptResolverRef.current(false);
-        leavePromptResolverRef.current = null;
-      }
-      pendingGoRef.current = null;
-    };
-  }, [leaveGuardRef, isDirty, doSave, initialNote]);
+  }, []);
 
+  // Retranscribe audio
+  const handleRetranscribe = async () => {
+    try {
+      const cfg = await VaultService.GetASRConfigStatus();
+      if (!cfg.configured) {
+        onOpenSettings?.('transcription');
+        return;
+      }
+      await VaultService.StartAudioTranscription(currentNoteIdRef.current || noteId);
+      const st = await VaultService.GetASRTaskStatus(currentNoteIdRef.current || noteId);
+      setAsrStatus(st);
+    } catch (err: any) {
+      console.error('Retranscribe failed:', err);
+    }
+  };
+
+  const handleConfirmReplace = async () => {
+    setReplaceError(null);
+    try {
+      const updated = await VaultService.ConfirmReplaceTranscript(currentNoteIdRef.current || noteId);
+      if (updated) {
+        setInitialNote(updated);
+        lastSavedStateRef.current = {
+          title: updated.title,
+          tags: updated.tags || [],
+          body: updated.body || '',
+        };
+        setShowReplaceConfirm(false);
+        onNoteUpdatedRef.current();
+        onVaultDataChanged?.();
+      }
+    } catch (err: any) {
+      console.error('ConfirmReplaceTranscript failed:', err);
+      setReplaceError(err?.message || String(err));
+    }
+  };
+
+  const handleDiscardCandidate = async () => {
+    try {
+      await VaultService.DiscardCandidateTranscript(currentNoteIdRef.current || noteId);
+      setShowReplaceConfirm(false);
+      setReplaceError(null);
+    } catch (err: any) {
+      console.error('DiscardCandidateTranscript failed:', err);
+    }
+  };
+
+  // Mount Vditor editor when note is loaded (only for normal editable notes)
   useEffect(() => {
-    if (!onDraftCheck) return;
-    return onDraftCheck(() => {
-      if (isDeletedRef.current) return false;
-      if (hasConflictRef.current || saveStatus === 'saving') return true;
-      const currentTitle = editTitleRef.current.trim();
-      const currentTags = editTagsRef.current;
-      const currentBody = vditorRef.current ? vditorRef.current.getValue() : (initialNote?.body ?? '');
-      return isDirty(currentTitle, currentTags, currentBody);
+    if (loadingNote || !initialNote || !vditorContainerRef.current || isVditorMountedRef.current || isAudioTranscriptNote(initialNote)) return;
+    isVditorMountedRef.current = true;
+
+    const isDark = document.documentElement.classList.contains('dark');
+
+    const vditor = new Vditor(vditorContainerRef.current, {
+      cdn: '/vditor',
+      mode: 'ir',
+      undoDelay: 100,
+      value: initialNote.body ?? '',
+      height: '100%',
+      placeholder: isDraftNote ? '记录想法...（支持 Markdown 语法，随时可点击「转为笔记」）' : '开始记录内容...（支持 Markdown 语法、表格、代码块）',
+      theme: isDark ? 'dark' : 'classic',
+      preview: {
+        theme: {
+          current: isDark ? 'dark' : 'light',
+        },
+        hljs: {
+          style: isDark ? 'github-dark' : 'github',
+        },
+        markdown: {
+          toc: true,
+          mark: true,
+          footnotes: true,
+          autoSpace: true,
+        },
+      },
+      cache: {
+        enable: false,
+      },
+      toolbar: [],
+      toolbarConfig: {
+        hide: true,
+      },
+      link: { isOpen: true, click: (a: Element) => linkClickRef.current(a as HTMLElement) },
+      input: () => {
+        triggerDebouncedSaveRef.current();
+        syncPickerRef.current();
+      },
+      after: () => {
+        vditorRef.current = vditor;
+        // 如果是新建草稿，直接聚焦编辑器正文
+        if (isNewDraftRef.current && isDraftType) {
+          vditor.focus();
+        }
+        const bodyNow = vditor.getValue();
+        if (isDirtyRef.current(editTitleRef.current, editTagsRef.current, bodyNow)) {
+          triggerDebouncedSaveRef.current();
+        }
+      },
     });
-  }, [onDraftCheck, isDirty, saveStatus, initialNote]);
+
+    // Dark mode observer
+    const observer = new MutationObserver(() => {
+      const dark = document.documentElement.classList.contains('dark');
+      vditor.setTheme(
+        dark ? 'dark' : 'classic',
+        dark ? 'dark' : 'light',
+        dark ? 'github-dark' : 'github'
+      );
+    });
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
+
+    return () => {
+      observer.disconnect();
+      try {
+        vditor.destroy();
+      } catch {}
+      vditorRef.current = null;
+      isVditorMountedRef.current = false;
+    };
+  }, [loadingNote, initialNote, isDraftType, isDraftNote]);
 
   // ---- `[[` 笔记候选 + 链接点击 ----
   const syncPicker = () => {
@@ -1153,29 +1242,10 @@ function NoteEditor({
     }
   };
 
-  // 被引用来源：从文件计算，保存/外部变更后刷新
-  const loadBacklinks = useCallback(() => {
-    if (isNewDraftRef.current || !currentNoteIdRef.current) {
-      setBacklinks([]);
-      return;
-    }
-    VaultService.GetNoteBacklinks(currentNoteIdRef.current)
-      .then((r) => setBacklinks((r ?? []).filter((x): x is LinkSource => x !== null)))
-      .catch(() => setBacklinks([]));
-  }, []);
-  useEffect(() => {
-    loadBacklinks();
-    const off = Events.On('vault:changed', loadBacklinks);
-    return () => {
-      off();
-    };
-  }, [loadBacklinks]);
-
   useEffect(() => {
     const onSelectionChange = () => syncPickerRef.current();
     document.addEventListener('selectionchange', onSelectionChange);
     return () => document.removeEventListener('selectionchange', onSelectionChange);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // 候选打开时在捕获阶段接管方向键/回车/Esc（组合输入期间不拦截）
@@ -1204,16 +1274,61 @@ function NoteEditor({
     return () => root.removeEventListener('keydown', onKey, true);
   }, [loadingNote]);
 
-  // Copy draft to clipboard (should-fix 3)
+  // Central Draft Checking Registration
+  useEffect(() => {
+    if (!onDraftCheck) return;
+    const unregister = onDraftCheck(() => {
+      if (isDeletedRef.current) return false;
+      const currentTitle = editTitleRef.current;
+      const currentTags = editTagsRef.current;
+      const currentBody = vditorRef.current ? vditorRef.current.getValue() : (initialNoteRef.current?.body ?? '');
+      return isDirtyRef.current(currentTitle, currentTags, currentBody);
+    });
+    return unregister;
+  }, [onDraftCheck]);
+
+  // Leave guard
+  useEffect(() => {
+    if (!leaveGuardRef) return;
+    leaveGuardRef.current = async () => {
+      if (hasConflictRef.current) {
+        return askUserConfirm(() => setShowLeaveConflictConfirm(true));
+      }
+      const currentBody = vditorRef.current ? vditorRef.current.getValue() : (initialNoteRef.current?.body ?? '');
+      if (isDirtyRef.current(editTitleRef.current, editTagsRef.current, currentBody)) {
+        const ok = await doSaveRef.current();
+        if (!ok && isDirtyRef.current(editTitleRef.current, editTagsRef.current, currentBody)) {
+          // If empty new draft, ok to discard
+          if (isNewDraftRef.current && isDraftType && !currentBody.trim()) {
+            return true;
+          }
+          return askUserConfirm(() => setShowSaveFailedConfirm(true));
+        }
+      }
+      return true;
+    };
+    return () => {
+      if (leaveGuardRef) leaveGuardRef.current = null;
+    };
+  }, [leaveGuardRef, isDraftType]);
+
+  const leaveThen = async (action: () => void) => {
+    if (leaveGuardRef?.current) {
+      pendingGoRef.current = action;
+      const canProceed = await leaveGuardRef.current();
+      if (!canProceed) return;
+      pendingGoRef.current = null;
+    }
+    action();
+  };
+
   const handleCopyDraft = async () => {
-    const currentTitle = editTitleRef.current;
-    const currentTags = editTagsRef.current;
-    const currentBody = isAudioTranscriptNote(initialNoteRef.current)
-      ? (initialNoteRef.current?.body ?? '')
-      : (vditorRef.current ? vditorRef.current.getValue() : '');
-    const draftText = formatDraftText(currentTitle, currentTags, currentBody);
+    const body = vditorRef.current ? vditorRef.current.getValue() : (initialNote?.body || '');
+    const draftContent = isDraftNote && !isNaming
+      ? body
+      : formatDraftText(editTitle, editTags, body);
     try {
-      const ok = await copyToClipboard(draftText);
+      const ok = await copyToClipboard(draftContent);
       if (ok) {
         setCopiedDraft(true);
         setTimeout(() => setCopiedDraft(false), 2500);
@@ -1227,7 +1342,7 @@ function NoteEditor({
     }
   };
 
-  // Reload handler (discard local changes and reload from disk)
+  // Reload handler
   const handleConfirmReload = async () => {
     setShowReloadConfirm(false);
     if (isNewDraftRef.current) {
@@ -1253,6 +1368,7 @@ function NoteEditor({
       const diskNote = await VaultService.GetNote(currentNoteIdRef.current);
       if (!diskNote) return;
 
+      setInitialNote(diskNote);
       setEditTitle(diskNote.title);
       editTitleRef.current = diskNote.title;
       const noteTags = diskNote.tags ?? [];
@@ -1296,20 +1412,6 @@ function NoteEditor({
       showToast(err?.message || '覆盖失败');
     }
   };
-
-  // Abandon changes and return to list
-  const handleAbandonAndReturn = () => {
-    if (debounceTimerRef.current) {
-      window.clearTimeout(debounceTimerRef.current);
-      debounceTimerRef.current = null;
-    }
-    hasConflictRef.current = false;
-    const go = pendingGoRef.current ?? onBack;
-    pendingGoRef.current = null;
-    go();
-  };
-
-  // Confirm delete note handler
   const handleConfirmDelete = async () => {
     if (debounceTimerRef.current) {
       window.clearTimeout(debounceTimerRef.current);
@@ -1318,7 +1420,7 @@ function NoteEditor({
     if (isNewDraftRef.current) {
       isDeletedRef.current = true;
       setShowDeleteConfirm(false);
-      onBackRef.current();
+      onDeleteCurrentNote?.(noteId);
       return;
     }
     setIsDeleting(true);
@@ -1327,8 +1429,7 @@ function NoteEditor({
       await VaultService.DeleteNote(currentNoteIdRef.current || noteId);
       isDeletedRef.current = true;
       setShowDeleteConfirm(false);
-      onNoteUpdatedRef.current();
-      onBackRef.current();
+      onDeleteCurrentNote?.(currentNoteIdRef.current || noteId);
     } catch (err: any) {
       console.error('DeleteNote failed:', err);
       setDeleteError(`删除失败: ${err?.message || err}`);
@@ -1379,7 +1480,7 @@ function NoteEditor({
 
   if (loadingNote) {
     return (
-      <div className="flex items-center justify-center py-24 text-xs text-stone-400">
+      <div className="flex-1 flex items-center justify-center py-24 text-xs text-stone-400">
         <Loader2 className="w-5 h-5 animate-spin mr-2 text-emerald-600" />
         <span>加载笔记中...</span>
       </div>
@@ -1393,100 +1494,142 @@ function NoteEditor({
           <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
           <span>加载笔记失败: {loadError}</span>
         </div>
-        <button
-          type="button"
-          onClick={onBack}
-          className="flex items-center space-x-1 px-3 py-1.5 rounded-md text-xs font-medium text-stone-600 dark:text-stone-300 hover:bg-stone-200/60 dark:hover:bg-stone-800/60 transition"
-        >
-          <ArrowLeft className="w-3.5 h-3.5" />
-          <span>返回笔记列表</span>
-        </button>
       </div>
     );
   }
 
+  const renderSaveStatus = () => (
+    <>
+      {saveStatus === 'saving' && (
+        <span className="text-stone-400 flex items-center space-x-1.5">
+          <Loader2 className="w-3 h-3 animate-spin text-emerald-600" />
+          <span>保存中...</span>
+        </span>
+      )}
+      {saveStatus === 'failed' && (
+        <span className="text-rose-600 dark:text-rose-400 font-medium flex items-center space-x-1.5" title={saveError || '保存失败'}>
+          <AlertCircle className="w-3.5 h-3.5 text-rose-600 shrink-0" />
+          <span>保存失败</span>
+        </span>
+      )}
+      {saveStatus === 'conflict' && (
+        <span className="text-rose-600 dark:text-rose-400 font-semibold flex items-center space-x-1.5">
+          <AlertCircle className="w-3.5 h-3.5 text-rose-600 shrink-0" />
+          <span>保存冲突</span>
+        </span>
+      )}
+    </>
+  );
+
+  const renderMoreMenu = () => (
+    <div className="relative" ref={moreMenuRef}>
+      <button
+        type="button"
+        onClick={() => setMoreMenuOpen((v) => !v)}
+        className="p-1 rounded-md text-stone-400 hover:text-stone-600 dark:hover:text-stone-300 hover:bg-stone-100 dark:hover:bg-stone-800/60 transition cursor-pointer"
+        title="更多操作"
+      >
+        <MoreHorizontal className="w-4 h-4" />
+      </button>
+      {moreMenuOpen && (
+        <div className="absolute right-0 top-full mt-1 w-40 rounded-lg border border-stone-200 dark:border-stone-800 bg-white dark:bg-stone-900 shadow-lg py-1 z-30">
+          <button
+            type="button"
+            onClick={handleCopyAbsolutePath}
+            disabled={isNewDraftRef.current}
+            className="w-full flex items-center space-x-2 px-3 py-1.5 text-xs text-stone-700 dark:text-stone-300 hover:bg-stone-100 dark:hover:bg-stone-800 transition text-left cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap"
+            title={isNewDraftRef.current ? '草稿尚未保存，暂无文件路径' : undefined}
+          >
+            <Copy className="w-3.5 h-3.5 text-stone-400 shrink-0" />
+            <span>复制绝对路径</span>
+          </button>
+          <button
+            type="button"
+            onClick={handleOpenInFinder}
+            disabled={isNewDraftRef.current}
+            className="w-full flex items-center space-x-2 px-3 py-1.5 text-xs text-stone-700 dark:text-stone-300 hover:bg-stone-100 dark:hover:bg-stone-800 transition text-left cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap"
+            title={isNewDraftRef.current ? '草稿尚未保存，暂无文件路径' : undefined}
+          >
+            <FolderOpen className="w-3.5 h-3.5 text-stone-400 shrink-0" />
+            <span>在 Finder 中打开</span>
+          </button>
+          <div className="my-1 border-t border-stone-100 dark:border-stone-800" />
+          <button
+            type="button"
+            onClick={() => {
+              setMoreMenuOpen(false);
+              setShowDeleteConfirm(true);
+            }}
+            className="w-full flex items-center space-x-2 px-3 py-1.5 text-xs text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition text-left cursor-pointer whitespace-nowrap"
+          >
+            <Trash2 className="w-3.5 h-3.5 shrink-0" />
+            <span>{isDraftNote ? '删除草稿' : '删除笔记'}</span>
+          </button>
+        </div>
+      )}
+    </div>
+  );
+
   return (
-    <div className="flex flex-col h-full max-w-3xl mx-auto p-6 space-y-2">
-      {/* Top Header / Status Toolbar */}
-      <div className="flex items-center justify-between pb-1 shrink-0 drag-region">
-        <button
-          type="button"
-          onClick={handleBackClick}
-          className="no-drag-region flex items-center space-x-1.5 px-2 py-1 -ml-2 rounded-md text-xs font-medium text-stone-500 hover:text-stone-800 dark:text-stone-400 dark:hover:text-stone-200 hover:bg-stone-200/50 dark:hover:bg-stone-800/50 transition shrink-0"
-          title={`${backLabel}（将自动保存未提交改动）`}
-        >
-          <ArrowLeft className="w-3.5 h-3.5" />
-          <span>{backLabel}</span>
-        </button>
-
-        {/* Status Indicator: 仅在保存中或保存失败/冲突时提示，保存成功不打扰 */}
-        <div className="no-drag-region flex items-center space-x-2 text-xs shrink-0 min-h-[20px]">
-          {saveStatus === 'saving' && (
-            <span className="text-stone-400 flex items-center space-x-1.5">
-              <Loader2 className="w-3 h-3 animate-spin text-emerald-600" />
-              <span>保存中...</span>
-            </span>
-          )}
-          {saveStatus === 'failed' && (
-            <span className="text-rose-600 dark:text-rose-400 font-medium flex items-center space-x-1.5" title={saveError || '保存失败'}>
-              <AlertCircle className="w-3.5 h-3.5 text-rose-600 shrink-0" />
-              <span>保存失败</span>
-            </span>
-          )}
-          {saveStatus === 'conflict' && (
-            <span className="text-rose-600 dark:text-rose-400 font-semibold flex items-center space-x-1.5">
-              <AlertCircle className="w-3.5 h-3.5 text-rose-600 shrink-0" />
-              <span>保存冲突</span>
-            </span>
-          )}
-
-          {/* More Actions Menu */}
-          <div className="relative" ref={moreMenuRef}>
+    <div className="relative flex-1 min-w-0 min-h-0 flex flex-col h-full p-6 space-y-2.5 overflow-hidden">
+      {/* Top Header: Title & Actions on Line 1 */}
+      <div className="flex items-center justify-between gap-3 shrink-0 drag-region min-h-[28px]">
+        <div className="no-drag-region flex items-center gap-2 flex-1 min-w-0">
+          {listCollapsed && (
             <button
               type="button"
-              onClick={() => setMoreMenuOpen((v) => !v)}
-              className="p-1 rounded-md text-stone-400 hover:text-stone-600 dark:hover:text-stone-300 hover:bg-stone-100 dark:hover:bg-stone-800/60 transition cursor-pointer"
-              title="更多操作"
+              onClick={onToggleListCollapse}
+              className="p-1 -ml-1 rounded-md text-stone-400 hover:text-stone-700 dark:hover:text-stone-200 hover:bg-stone-200/50 dark:hover:bg-stone-800/50 transition cursor-pointer shrink-0"
+              title="展开笔记列表"
             >
-              <MoreHorizontal className="w-4 h-4" />
+              <PanelLeftOpen className="w-4 h-4" />
             </button>
-            {moreMenuOpen && (
-              <div className="absolute right-0 top-full mt-1 w-40 rounded-lg border border-stone-200 dark:border-stone-800 bg-white dark:bg-stone-900 shadow-lg py-1 z-30">
-                <button
-                  type="button"
-                  onClick={handleCopyAbsolutePath}
-                  disabled={isNewDraftRef.current}
-                  className="w-full flex items-center space-x-2 px-3 py-1.5 text-xs text-stone-700 dark:text-stone-300 hover:bg-stone-100 dark:hover:bg-stone-800 transition text-left cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap"
-                  title={isNewDraftRef.current ? '草稿尚未保存，暂无文件路径' : undefined}
-                >
-                  <Copy className="w-3.5 h-3.5 text-stone-400 shrink-0" />
-                  <span>复制绝对路径</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={handleOpenInFinder}
-                  disabled={isNewDraftRef.current}
-                  className="w-full flex items-center space-x-2 px-3 py-1.5 text-xs text-stone-700 dark:text-stone-300 hover:bg-stone-100 dark:hover:bg-stone-800 transition text-left cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap"
-                  title={isNewDraftRef.current ? '草稿尚未保存，暂无文件路径' : undefined}
-                >
-                  <FolderOpen className="w-3.5 h-3.5 text-stone-400 shrink-0" />
-                  <span>在 Finder 中打开</span>
-                </button>
-                <div className="my-1 border-t border-stone-100 dark:border-stone-800" />
-                <button
-                  type="button"
-                  onClick={() => {
-                    setMoreMenuOpen(false);
-                    setShowDeleteConfirm(true);
-                  }}
-                  className="w-full flex items-center space-x-2 px-3 py-1.5 text-xs text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition text-left cursor-pointer whitespace-nowrap"
-                >
-                  <Trash2 className="w-3.5 h-3.5 shrink-0" />
-                  <span>删除笔记</span>
-                </button>
-              </div>
-            )}
-          </div>
+          )}
+
+          {returnToTask && (
+            <button
+              type="button"
+              onClick={() => void leaveThen(returnToTask.go)}
+              className="flex items-center space-x-1.5 px-2 py-1 rounded-md text-xs font-medium text-stone-500 hover:text-stone-800 dark:text-stone-400 dark:hover:text-stone-200 hover:bg-stone-200/50 dark:hover:bg-stone-800/50 transition shrink-0"
+              title={`${returnToTask.label}（将自动保存未提交改动）`}
+            >
+              <ArrowLeft className="w-3.5 h-3.5" />
+              <span>{returnToTask.label}</span>
+            </button>
+          )}
+
+          {(!isDraftNote || isNaming) && (
+            <input
+              ref={titleInputRef}
+              type="text"
+              value={editTitle}
+              onChange={(e) => handleTitleChange(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.nativeEvent.isComposing || e.keyCode === 229) return;
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  vditorRef.current?.focus();
+                }
+              }}
+              placeholder={isNaming ? '输入笔记标题以转为笔记...' : '无标题笔记'}
+              className="w-full text-2xl font-bold bg-transparent text-stone-900 dark:text-stone-100 placeholder-stone-300 dark:placeholder-stone-700 focus:outline-hidden border-none p-0 leading-tight tracking-tight"
+            />
+          )}
+        </div>
+
+        <div className="no-drag-region flex items-center space-x-2 text-xs shrink-0 min-h-[28px]">
+          {renderSaveStatus()}
+          {isDraftNote && !isNaming && (
+            <button
+              type="button"
+              onClick={handleStartNaming}
+              className="flex items-center space-x-1 px-2.5 py-1 rounded-md border border-stone-200/80 dark:border-stone-700/80 bg-white/90 dark:bg-stone-800/90 backdrop-blur-xs text-stone-700 dark:text-stone-200 hover:border-emerald-500/70 hover:text-emerald-700 dark:hover:text-emerald-400 text-xs font-medium transition cursor-pointer shadow-2xs"
+              title="原地输入标题并转为正式笔记"
+            >
+              <span>转为笔记</span>
+            </button>
+          )}
+          {renderMoreMenu()}
         </div>
       </div>
 
@@ -1526,46 +1669,33 @@ function NoteEditor({
         </div>
       )}
 
-      {/* Document Header: Title & Tags */}
-      <div className="pt-2 pb-1 space-y-2 shrink-0">
-        <input
-          ref={titleInputRef}
-          type="text"
-          value={editTitle}
-          onChange={(e) => handleTitleChange(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') {
-              e.preventDefault();
-              vditorRef.current?.focus();
-            }
-          }}
-          placeholder="无标题笔记"
-          className="w-full text-2xl font-bold bg-transparent text-stone-900 dark:text-stone-100 placeholder-stone-300 dark:placeholder-stone-700 focus:outline-hidden border-none p-0 leading-tight tracking-tight"
-        />
+      {/* Document Sub-Header: Tags & Creator (Only for formal notes or when naming draft) */}
+      {(!isDraftNote || isNaming) && (
+        <div className="space-y-2 shrink-0">
+          {titleError && (
+            <div className="text-[11px] text-rose-600 dark:text-rose-400 font-medium">
+              {titleError}
+            </div>
+          )}
 
-        {titleError && (
-          <div className="text-[11px] text-rose-600 dark:text-rose-400 font-medium">
-            {titleError}
-          </div>
-        )}
+          {initialNote && !isDraftNote && (
+            <div className="flex items-center gap-1 text-[11px] text-stone-400 dark:text-stone-500">
+              {initialNote.created_by === 'agent'
+                ? <Bot aria-hidden="true" className="w-3 h-3" />
+                : <UserRound aria-hidden="true" className="w-3 h-3" />}
+              {formatStatusAction('creation', initialNote.created_by)}
+            </div>
+          )}
 
-        {initialNote && (
-          <div className="flex items-center gap-1 text-[11px] text-stone-400 dark:text-stone-500">
-            {initialNote.created_by === 'agent'
-              ? <Bot aria-hidden="true" className="w-3 h-3" />
-              : <UserRound aria-hidden="true" className="w-3 h-3" />}
-            {formatStatusAction('creation', initialNote.created_by)}
-          </div>
-        )}
-
-        {/* Tag Chips + Add Popover */}
-        <TagChipEditor
-          tags={editTags}
-          suggestedTags={tagNames}
-          onAddTag={handleAddTag}
-          onRemoveTag={handleRemoveTag}
-        />
-      </div>
+          {/* Tag Chips + Add Popover */}
+          <TagChipEditor
+            tags={editTags}
+            suggestedTags={tagNames}
+            onAddTag={handleAddTag}
+            onRemoveTag={handleRemoveTag}
+          />
+        </div>
+      )}
 
       {/* Audio Player and Transcript Viewer for audio transcript notes, or Vditor for ordinary notes */}
       {isAudioTranscriptNote(initialNote) ? (
@@ -1650,17 +1780,6 @@ function NoteEditor({
               }
             }
           }}
-          onClick={(e) => {
-            const target = e.target as HTMLElement;
-            if (
-              target === vditorContainerRef.current ||
-              target.classList?.contains('vditor') ||
-              target.classList?.contains('vditor-content') ||
-              target.classList?.contains('vditor-ir')
-            ) {
-              vditorRef.current?.focus();
-            }
-          }}
         />
       )}
 
@@ -1677,7 +1796,7 @@ function NoteEditor({
         />
       )}
 
-      {/* 被引用来源：默认折叠，无来源时隐藏 */}
+      {/* Backlinks drawer */}
       {backlinks.length > 0 && (
         <div className="shrink-0 text-xs">
           <button
@@ -1728,39 +1847,42 @@ function NoteEditor({
         open={showLeaveConflictConfirm}
         variant="destructive"
         title="存在未解决冲突"
-        description="当前笔记存在外部文件修改冲突。直接返回列表将放弃本地未保存的内容。确认离开吗？"
+        description="当前笔记存在外部文件修改冲突。直接离开将放弃本地未保存的内容。确认离开吗？"
         confirmText="放弃修改并离开"
         cancelText="继续编辑"
         onCancel={() => {
           setShowLeaveConflictConfirm(false);
           pendingGoRef.current = null;
           const resolve = leavePromptResolverRef.current;
-          leavePromptResolverRef.current = null;
-          resolve?.(false);
+            leavePromptResolverRef.current = null;
+            resolve?.(false);
         }}
         onConfirm={() => {
           setShowLeaveConflictConfirm(false);
-          handleAbandonAndReturn();
+          hasConflictRef.current = false;
+          const go = pendingGoRef.current;
+          pendingGoRef.current = null;
           const resolve = leavePromptResolverRef.current;
           leavePromptResolverRef.current = null;
+          go?.();
           resolve?.(true);
         }}
       />
 
-      {/* Confirmation Modal for Save Failure on Exit (must-fix 3) */}
+      {/* Confirmation Modal for Save Failure on Exit */}
       <ConfirmDialog
         open={showSaveFailedConfirm}
         variant="destructive"
         title="保存未成功"
-        description="当前笔记未能成功保存到磁盘（可能标题为空或写入异常）。直接返回将丢弃未保存的修改，是否确定离开？"
-        confirmText="丢弃并返回"
+        description="当前内容未能成功保存到磁盘。直接离开将丢弃未保存的修改，是否确定离开？"
+        confirmText="丢弃并离开"
         cancelText="留在页面"
         onCancel={() => {
           setShowSaveFailedConfirm(false);
           pendingGoRef.current = null;
           const resolve = leavePromptResolverRef.current;
-          leavePromptResolverRef.current = null;
-          resolve?.(false);
+            leavePromptResolverRef.current = null;
+            resolve?.(false);
         }}
         onConfirm={() => {
           setShowSaveFailedConfirm(false);
@@ -1768,88 +1890,14 @@ function NoteEditor({
             window.clearTimeout(debounceTimerRef.current);
             debounceTimerRef.current = null;
           }
-          const go = pendingGoRef.current ?? onBack;
+          const go = pendingGoRef.current;
           pendingGoRef.current = null;
-          go();
           const resolve = leavePromptResolverRef.current;
           leavePromptResolverRef.current = null;
+          go?.();
           resolve?.(true);
         }}
       />
-
-      {/* Confirmation Modal for Leaving Empty-Title Draft with Content */}
-      <Dialog
-        open={showDraftNoTitleConfirm}
-        onOpenChange={(open) => {
-          setShowDraftNoTitleConfirm(open);
-          if (!open) {
-            pendingGoRef.current = null;
-            const resolve = leavePromptResolverRef.current;
-            leavePromptResolverRef.current = null;
-            resolve?.(false);
-          }
-        }}
-        disablePointerDismissal={true}
-      >
-        <DialogContent maxWidth="sm">
-          <div className="flex items-start space-x-3">
-            <div className="p-2 rounded-full bg-amber-100 dark:bg-amber-950/60 text-amber-600 shrink-0">
-              <AlertCircle className="w-5 h-5" />
-            </div>
-            <div className="space-y-1">
-              <DialogTitle>草稿未设置标题</DialogTitle>
-              <DialogDescription>
-                当前草稿尚未填写标题，无法写入文件。如果现在离开，您刚刚输入的内容将被丢弃。
-              </DialogDescription>
-            </div>
-          </div>
-          <div className="flex items-center justify-between pt-2 border-t border-stone-100 dark:border-stone-800">
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={handleCopyDraft}
-              title="将当前草稿复制到剪贴板"
-            >
-              {copiedDraft ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
-              <span>{copiedDraft ? '已复制' : '复制草稿'}</span>
-            </Button>
-            <div className="flex items-center space-x-2">
-              <Button
-                variant="brand"
-                size="sm"
-                onClick={() => {
-                  pendingGoRef.current = null;
-                  const resolve = leavePromptResolverRef.current;
-                  leavePromptResolverRef.current = null;
-                  setShowDraftNoTitleConfirm(false);
-                  resolve?.(false);
-                }}
-              >
-                继续编辑
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  if (debounceTimerRef.current) {
-                    window.clearTimeout(debounceTimerRef.current);
-                    debounceTimerRef.current = null;
-                  }
-                  const go = pendingGoRef.current ?? onBack;
-                  pendingGoRef.current = null;
-                  const resolve = leavePromptResolverRef.current;
-                  leavePromptResolverRef.current = null;
-                  setShowDraftNoTitleConfirm(false);
-                  go();
-                  resolve?.(true);
-                }}
-              >
-                放弃草稿
-              </Button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
 
       {/* Confirmation Modal for Replacing Transcript */}
       <ConfirmDialog
@@ -1876,12 +1924,12 @@ function NoteEditor({
       <ConfirmDialog
         open={showDeleteConfirm}
         variant="destructive"
-        title="确认删除笔记？"
+        title={isDraftNote ? '确认删除草稿？' : '确认删除笔记？'}
         description={
           <div className="space-y-1">
             <span>
-              {isNewDraftRef.current
-                ? '当前为未保存的新建草稿，确认丢弃当前输入的内容吗？'
+              {isDraftNote
+                ? '此草稿文件将从 Vault 中永久删除，此操作不可撤销。'
                 : `笔记「${editTitle || initialNote?.title || '未命名'}」的文件将从 Vault 中永久删除，此操作不可撤销。`}
             </span>
             {deleteError && (
@@ -1935,13 +1983,32 @@ export function NotesView({
   const [notes, setNotes] = useState<Note[]>([]);
   const [loading, setLoading] = useState(false);
   const [listError, setListError] = useState<string | null>(null);
+
   const [selectedNoteId, setSelectedNoteId] = useState<string | null>(null);
   const [isNewDraft, setIsNewDraft] = useState(false);
+  const [isDraftType, setIsDraftType] = useState(true);
   const [editorKey, setEditorKey] = useState<string>('');
-  // 经笔记链接/被引用来源依次打开的笔记栈，「返回」按栈回到上一篇
-  const [trail, setTrail] = useState<string[]>([]);
+  const notesLoadedRef = useRef(false);
 
-  // Split-button / dropdown menu & audio note creation states
+  const [listWidth, setListWidth] = useState<number>(() =>
+    loadPersistedNumber(WIDTH_STORAGE_KEY, DEFAULT_NOTES_LIST_WIDTH, MIN_NOTES_LIST_WIDTH, MAX_NOTES_LIST_WIDTH)
+  );
+  const [listCollapsed, setListCollapsed] = useState<boolean>(() =>
+    loadPersistedBool(COLLAPSED_STORAGE_KEY, false)
+  );
+  const [isDraftsCollapsed, setIsDraftsCollapsed] = useState<boolean>(() =>
+    loadPersistedBool(DRAFTS_COLLAPSED_KEY, false)
+  );
+  const [isNotesCollapsed, setIsNotesCollapsed] = useState<boolean>(() =>
+    loadPersistedBool(FORMAL_COLLAPSED_KEY, false)
+  );
+
+  // Freeze list ordering during continuous auto-save
+  const [frozenDraftIds, setFrozenDraftIds] = useState<string[]>([]);
+  const [frozenFormalIds, setFrozenFormalIds] = useState<string[]>([]);
+  const notesRef = useRef<Note[]>(notes);
+  notesRef.current = notes;
+
   const [createMenuOpen, setCreateMenuOpen] = useState(false);
   const [showMissingKeyModal, setShowMissingKeyModal] = useState(false);
   const [creatingAudioNote, setCreatingAudioNote] = useState(false);
@@ -1959,7 +2026,6 @@ export function NotesView({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [createMenuOpen]);
 
-  // Context menu for note cards in list view
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; note: Note } | null>(null);
   const contextMenuRef = useRef<HTMLDivElement | null>(null);
   const [noteToDelete, setNoteToDelete] = useState<Note | null>(null);
@@ -2008,20 +2074,250 @@ export function NotesView({
     };
   }, [contextMenu]);
 
-  const handleConfirmDeleteFromList = async () => {
-    if (!noteToDelete) return;
-    setIsDeletingFromList(true);
-    setDeleteListError(null);
-    try {
-      await VaultService.DeleteNote(noteToDelete.id);
-      setNoteToDelete(null);
-      await loadNotes();
-    } catch (err: any) {
-      console.error('DeleteNote failed:', err);
-      setDeleteListError(`删除失败: ${err?.message || err}`);
-    } finally {
-      setIsDeletingFromList(false);
+  // Sorting function: updated_at DESC, created_at DESC, id ASC
+  const sortNotesComparator = useCallback((a: Note, b: Note) => {
+    const aUp = a.updated_at ? new Date(a.updated_at).getTime() : 0;
+    const bUp = b.updated_at ? new Date(b.updated_at).getTime() : 0;
+    if (aUp !== bUp) return bUp - aUp;
+    const aCr = a.created_at ? new Date(a.created_at).getTime() : 0;
+    const bCr = b.created_at ? new Date(b.created_at).getTime() : 0;
+    if (aCr !== bCr) return bCr - aCr;
+    return a.id.localeCompare(b.id);
+  }, []);
+
+  const reorderIds = useCallback((allNotesList: Note[]) => {
+    const drafts = allNotesList.filter((n) => n.draft);
+    const formal = allNotesList.filter((n) => !n.draft);
+    drafts.sort(sortNotesComparator);
+    formal.sort(sortNotesComparator);
+    setFrozenDraftIds(drafts.map((n) => n.id));
+    setFrozenFormalIds(formal.map((n) => n.id));
+  }, [sortNotesComparator]);
+
+  const loadNotes = useCallback(async (andReorder: boolean = true) => {
+    if (!vaultStatus?.open) {
+      setNotes([]);
+      setListError(null);
+      return;
     }
+    setLoading(true);
+    setListError(null);
+    try {
+      const result = await VaultService.ListNotes();
+      const validNotes = (result ?? []).filter((n): n is Note => n !== null);
+      notesLoadedRef.current = true;
+      setNotes(validNotes);
+      if (andReorder) {
+        reorderIds(validNotes);
+      }
+    } catch (err: any) {
+      console.error('Failed to list notes:', err);
+      setListError(err?.message || String(err));
+    } finally {
+      notesLoadedRef.current = true;
+      setLoading(false);
+    }
+  }, [vaultStatus?.open, reorderIds]);
+
+  useEffect(() => {
+    loadNotes(true);
+  }, [loadNotes]);
+
+  useEffect(() => {
+    const unsubscribe = Events.On('vault:changed', () => {
+      loadNotes(true);
+    });
+    return () => {
+      unsubscribe();
+    };
+  }, [loadNotes]);
+
+  useEffect(() => {
+    onEditingChange?.(selectedNoteId !== null);
+  }, [selectedNoteId, onEditingChange]);
+
+  // Consume focusNoteId from parent navigation (Search, Task link, etc.)
+  useEffect(() => {
+    if (focusNoteId) {
+      setSelectedNoteId(focusNoteId);
+      setEditorKey(focusNoteId);
+      setIsNewDraft(false);
+      setIsDraftType(false);
+      try {
+        localStorage.setItem(LAST_NOTE_ID_KEY, focusNoteId);
+      } catch {}
+
+      // If notes have not loaded at least once, wait for loadNotes before resolving group and consuming focus
+      if (!notesLoadedRef.current && notes.length === 0) {
+        return;
+      }
+
+      const target = notes.find((n) => n.id === focusNoteId);
+      if (target?.draft) {
+        setIsDraftsCollapsed(false);
+      } else if (target) {
+        setIsNotesCollapsed(false);
+      }
+      if (notes.length > 0) {
+        reorderIds(notes);
+      }
+      requestAnimationFrame(() => {
+        const el = document.getElementById(`note-item-${focusNoteId}`);
+        el?.scrollIntoView({ block: 'nearest' });
+      });
+      onClearFocusNote?.();
+    }
+  }, [focusNoteId, notes, onClearFocusNote, reorderIds]);
+
+  // Restore last selected note ID on initial load if none focused
+  useEffect(() => {
+    if (!notes.length || selectedNoteId || focusNoteId) return;
+    try {
+      const lastId = localStorage.getItem(LAST_NOTE_ID_KEY);
+      if (lastId && notes.some((n) => n.id === lastId)) {
+        setSelectedNoteId(lastId);
+        setEditorKey(lastId);
+        setIsNewDraft(false);
+        setIsDraftType(false);
+        const target = notes.find((n) => n.id === lastId);
+        if (target?.draft) {
+          setIsDraftsCollapsed(false);
+        } else {
+          setIsNotesCollapsed(false);
+        }
+      }
+    } catch {}
+  }, [notes, selectedNoteId, focusNoteId]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(WIDTH_STORAGE_KEY, String(listWidth));
+    } catch {}
+  }, [listWidth]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(COLLAPSED_STORAGE_KEY, String(listCollapsed));
+    } catch {}
+  }, [listCollapsed]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(DRAFTS_COLLAPSED_KEY, String(isDraftsCollapsed));
+    } catch {}
+  }, [isDraftsCollapsed]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(FORMAL_COLLAPSED_KEY, String(isNotesCollapsed));
+    } catch {}
+  }, [isNotesCollapsed]);
+
+  // 窗口过窄时自动折叠笔记列表（保证编辑器可用宽度）
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        if (entry.contentRect.width < 560) {
+          setListCollapsed(true);
+        }
+      }
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  const isResizingRef = useRef(false);
+  const handleDividerPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    e.currentTarget.setPointerCapture(e.pointerId);
+    isResizingRef.current = true;
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+  };
+
+  const handleDividerPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!isResizingRef.current) return;
+    const container = containerRef.current;
+    if (!container) return;
+    const rect = container.getBoundingClientRect();
+    const newWidth = e.clientX - rect.left;
+    const clamped = Math.max(MIN_NOTES_LIST_WIDTH, Math.min(MAX_NOTES_LIST_WIDTH, newWidth));
+    setListWidth(clamped);
+  };
+
+  const handleDividerPointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (isResizingRef.current) {
+      isResizingRef.current = false;
+      try {
+        e.currentTarget.releasePointerCapture(e.pointerId);
+      } catch {}
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    }
+  };
+
+  const handleDividerKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (e.key === 'ArrowLeft') {
+      e.preventDefault();
+      setListWidth((w) => Math.max(MIN_NOTES_LIST_WIDTH, w - 16));
+    } else if (e.key === 'ArrowRight') {
+      e.preventDefault();
+      setListWidth((w) => Math.min(MAX_NOTES_LIST_WIDTH, w + 16));
+    } else if (e.key === 'Home') {
+      e.preventDefault();
+      setListWidth(MIN_NOTES_LIST_WIDTH);
+    } else if (e.key === 'End') {
+      e.preventDefault();
+      setListWidth(MAX_NOTES_LIST_WIDTH);
+    }
+  };
+
+  const handleSelectNote = async (id: string) => {
+    if (id === selectedNoteId && !isNewDraft) return;
+    if (leaveGuardRef?.current) {
+      const canProceed = await leaveGuardRef.current();
+      if (!canProceed) return;
+    }
+    reorderIds(notes);
+    setSelectedNoteId(id);
+    setEditorKey(id);
+    setIsNewDraft(false);
+    setIsDraftType(false);
+    try {
+      localStorage.setItem(LAST_NOTE_ID_KEY, id);
+    } catch {}
+  };
+
+  const handleStartCreateDraft = async () => {
+    if (leaveGuardRef?.current) {
+      const canProceed = await leaveGuardRef.current();
+      if (!canProceed) return;
+    }
+    reorderIds(notes);
+    const draftKey = 'draft-' + Date.now();
+    setEditorKey(draftKey);
+    setSelectedNoteId('__new_draft__');
+    setIsNewDraft(true);
+    setIsDraftType(true);
+    setIsDraftsCollapsed(false);
+  };
+
+  const handleStartCreateFormalNote = async () => {
+    if (leaveGuardRef?.current) {
+      const canProceed = await leaveGuardRef.current();
+      if (!canProceed) return;
+    }
+    reorderIds(notes);
+    const formalKey = 'formal-' + Date.now();
+    setEditorKey(formalKey);
+    setSelectedNoteId('__new_formal__');
+    setIsNewDraft(true);
+    setIsDraftType(false);
+    setIsNotesCollapsed(false);
   };
 
   const handleStartCreateAudioNote = async () => {
@@ -2033,17 +2329,20 @@ export function NotesView({
         return;
       }
       const audioPath = await VaultService.SelectAudioFile();
-      if (!audioPath) {
-        return;
-      }
+      if (!audioPath) return;
+
       setCreatingAudioNote(true);
       const created = await VaultService.CreateAudioNote(audioPath);
       if (created) {
-        loadNotes();
-        setTrail([]);
-        setEditorKey(created.id);
+        await loadNotes(true);
         setSelectedNoteId(created.id);
+        setEditorKey(created.id);
         setIsNewDraft(false);
+        setIsDraftType(false);
+        setIsNotesCollapsed(false);
+        try {
+          localStorage.setItem(LAST_NOTE_ID_KEY, created.id);
+        } catch {}
       }
     } catch (err: any) {
       console.error('CreateAudioNote failed:', err);
@@ -2053,122 +2352,106 @@ export function NotesView({
     }
   };
 
-  useEffect(() => {
-    onEditingChange?.(selectedNoteId !== null);
-  }, [selectedNoteId, onEditingChange]);
-
-  // Consume focusNoteId from parent navigation (one-time consumption)
-  useEffect(() => {
-    if (focusNoteId) {
-      setEditorKey(focusNoteId);
-      setSelectedNoteId(focusNoteId);
-      setIsNewDraft(false);
-      setTrail([]);
-      onClearFocusNote?.();
-    }
-  }, [focusNoteId, onClearFocusNote]);
-
-  // When vault path changes, reset active note & trail
-  const currentPathRef = useRef(vaultStatus?.path);
-  useEffect(() => {
-    if (currentPathRef.current !== vaultStatus?.path) {
-      currentPathRef.current = vaultStatus?.path;
-      setSelectedNoteId(null);
-      setIsNewDraft(false);
-      setTrail([]);
-      setEditorKey('');
-    }
-  }, [vaultStatus?.path]);
-
-  // Scroll position preservation
-  const rootRef = useRef<HTMLDivElement | null>(null);
-  const scrollTopRef = useRef<number>(0);
-
-  // Load notes
-  const loadNotes = useCallback(async () => {
-    if (!vaultStatus?.open) {
-      setNotes([]);
-      setListError(null);
-      return;
-    }
-    setLoading(true);
-    setListError(null);
-    try {
-      const result = await VaultService.ListNotes();
-      const validNotes = (result ?? []).filter((n): n is Note => n !== null);
-      setNotes(validNotes);
-    } catch (err: any) {
-      console.error('Failed to list notes:', err);
-      setListError(err?.message || String(err));
-    } finally {
-      setLoading(false);
-    }
-  }, [vaultStatus?.open, vaultStatus?.path]);
-
-  useEffect(() => {
-    loadNotes();
-  }, [loadNotes]);
-
-  // Subscribe to external vault changes
-  useEffect(() => {
-    const unsubscribe = Events.On('vault:changed', () => {
-      loadNotes();
-    });
-    return () => {
-      unsubscribe();
-    };
-  }, [loadNotes]);
-
-  // Record scroll position while in list view
-  useEffect(() => {
-    if (selectedNoteId) return;
-    const scrollContainer = rootRef.current?.closest('.overflow-y-auto') as HTMLElement | null;
-    if (!scrollContainer) return;
-    const handleScroll = () => {
-      scrollTopRef.current = scrollContainer.scrollTop;
-    };
-    scrollContainer.addEventListener('scroll', handleScroll, { passive: true });
-    return () => scrollContainer.removeEventListener('scroll', handleScroll);
-  }, [selectedNoteId]);
-
-  // Restore scroll position when returning to list view
-  useEffect(() => {
-    if (selectedNoteId === null) {
-      const scrollContainer = rootRef.current?.closest('.overflow-y-auto') as HTMLElement | null;
-      if (scrollContainer && scrollTopRef.current > 0) {
-        requestAnimationFrame(() => {
-          scrollContainer.scrollTop = scrollTopRef.current;
-        });
-      }
-    }
-  }, [selectedNoteId]);
-
-  // Select note and record scroll position
-  const handleSelectNote = (id: string) => {
-    const scrollContainer = rootRef.current?.closest('.overflow-y-auto') as HTMLElement | null;
-    if (scrollContainer) {
-      scrollTopRef.current = scrollContainer.scrollTop;
-      scrollContainer.scrollTop = 0;
-    }
-    setEditorKey(id);
-    setSelectedNoteId(id);
+  const handleNoteCreated = useCallback((newId: string, isDraft: boolean) => {
+    setSelectedNoteId(newId);
     setIsNewDraft(false);
-  };
-
-  // Start creating new note directly in writing area
-  const handleStartCreateNote = () => {
-    const scrollContainer = rootRef.current?.closest('.overflow-y-auto') as HTMLElement | null;
-    if (scrollContainer) {
-      scrollTopRef.current = scrollContainer.scrollTop;
-      scrollContainer.scrollTop = 0;
+    setIsDraftType(false);
+    // Keep editorKey as-is so React does not unmount NoteEditor while user is typing
+    if (isDraft) {
+      setFrozenDraftIds((prev) => [newId, ...prev.filter((x) => x !== newId)]);
+      setIsDraftsCollapsed(false);
+    } else {
+      setFrozenFormalIds((prev) => [newId, ...prev.filter((x) => x !== newId)]);
+      setIsNotesCollapsed(false);
     }
-    setTrail([]);
-    setEditorKey('draft-' + Date.now());
-    setSelectedNoteId('__draft__');
-    setIsNewDraft(true);
+    try {
+      localStorage.setItem(LAST_NOTE_ID_KEY, newId);
+    } catch {}
+    loadNotes(false);
+  }, [loadNotes]);
+
+  const handleNoteConverted = useCallback((convertedId: string) => {
+    setFrozenDraftIds((prev) => prev.filter((id) => id !== convertedId));
+    setFrozenFormalIds((prev) => [convertedId, ...prev.filter((id) => id !== convertedId)]);
+    setIsNotesCollapsed(false);
+    loadNotes(false);
+  }, [loadNotes]);
+
+  const handleNoteUpdated = useCallback(() => {
+    // Silently refresh notes content without re-sorting position
+    loadNotes(false);
+    onVaultDataChanged?.();
+  }, [loadNotes, onVaultDataChanged]);
+
+  const handleDeleteCurrentNote = useCallback((deletedId: string) => {
+    setSelectedNoteId(null);
+    setEditorKey('');
+    setIsNewDraft(false);
+    setFrozenDraftIds((prev) => prev.filter((id) => id !== deletedId));
+    setFrozenFormalIds((prev) => prev.filter((id) => id !== deletedId));
+    try {
+      localStorage.removeItem(LAST_NOTE_ID_KEY);
+    } catch {}
+    loadNotes(false);
+  }, [loadNotes]);
+
+  const handleConfirmDeleteFromList = async () => {
+    if (!noteToDelete) return;
+    setIsDeletingFromList(true);
+    setDeleteListError(null);
+    try {
+      await VaultService.DeleteNote(noteToDelete.id);
+      if (selectedNoteId === noteToDelete.id) {
+        setSelectedNoteId(null);
+        setEditorKey('');
+        setIsNewDraft(false);
+        try {
+          localStorage.removeItem(LAST_NOTE_ID_KEY);
+        } catch {}
+      }
+      const deletedId = noteToDelete.id;
+      setNoteToDelete(null);
+      setFrozenDraftIds((prev) => prev.filter((id) => id !== deletedId));
+      setFrozenFormalIds((prev) => prev.filter((id) => id !== deletedId));
+      await loadNotes(false);
+    } catch (err: any) {
+      console.error('DeleteNote failed:', err);
+      setDeleteListError(`删除失败: ${err?.message || err}`);
+    } finally {
+      setIsDeletingFromList(false);
+    }
   };
 
-  // Unconfigured Vault state
+  // Derive display list from frozen IDs
+  const notesMap = new Map<string, Note>();
+  for (const n of notes) {
+    notesMap.set(n.id, n);
+  }
+
+  const displayedDrafts: Note[] = [];
+  for (const id of frozenDraftIds) {
+    const item = notesMap.get(id);
+    if (item && item.draft) displayedDrafts.push(item);
+  }
+  // Include any draft not yet in frozen list (fallback)
+  for (const n of notes) {
+    if (n.draft && !frozenDraftIds.includes(n.id)) {
+      displayedDrafts.push(n);
+    }
+  }
+
+  const displayedFormalNotes: Note[] = [];
+  for (const id of frozenFormalIds) {
+    const item = notesMap.get(id);
+    if (item && !item.draft) displayedFormalNotes.push(item);
+  }
+  // Include any formal note not yet in frozen list (fallback)
+  for (const n of notes) {
+    if (!n.draft && !frozenFormalIds.includes(n.id)) {
+      displayedFormalNotes.push(n);
+    }
+  }
+
   if (!vaultStatus?.configured) {
     return (
       <div className="py-16 text-center space-y-4 max-w-md mx-auto">
@@ -2180,7 +2463,7 @@ export function NotesView({
         <button
           onClick={onSelectVault}
           disabled={vaultBusy}
-          className="mx-auto flex items-center space-x-1.5 px-4 py-2 rounded-md bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-medium transition disabled:opacity-50 shadow-xs"
+          className="mx-auto flex items-center space-x-1.5 px-4 py-2 rounded-md bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-medium transition disabled:opacity-50 shadow-xs cursor-pointer"
         >
           <FolderOpen className="w-3.5 h-3.5" />
           <span>选择 Vault 目录</span>
@@ -2189,7 +2472,6 @@ export function NotesView({
     );
   }
 
-  // Configured but unopened vault state
   if (!vaultStatus.open) {
     return (
       <div className="p-5 max-w-lg mx-auto rounded-xl border border-amber-200 dark:border-amber-900/60 bg-amber-50/70 dark:bg-amber-950/30 text-xs space-y-3">
@@ -2200,7 +2482,7 @@ export function NotesView({
         <button
           onClick={onSelectVault}
           disabled={vaultBusy}
-          className="px-3.5 py-1.5 rounded-md bg-emerald-700 hover:bg-emerald-800 text-white font-medium transition disabled:opacity-50"
+          className="px-3.5 py-1.5 rounded-md bg-emerald-700 hover:bg-emerald-800 text-white font-medium transition disabled:opacity-50 cursor-pointer"
         >
           重新选择目录
         </button>
@@ -2208,249 +2490,312 @@ export function NotesView({
     );
   }
 
-  const handleNoteCreated = useCallback((newId: string) => {
-    setSelectedNoteId(newId);
-    setIsNewDraft(false);
-    loadNotes();
-  }, [loadNotes]);
-
-  const handleBack = useCallback(() => {
-    if (trail.length) {
-      const prevId = trail[trail.length - 1];
-      setEditorKey(prevId);
-      setSelectedNoteId(prevId);
-      setIsNewDraft(false);
-      setTrail((prev) => prev.slice(0, -1));
-    } else if (returnToTask) returnToTask.go();
-    else {
-      setSelectedNoteId(null);
-      setIsNewDraft(false);
-      setEditorKey('');
-    }
-  }, [trail, returnToTask]);
-
-  const handleOpenNote = useCallback((id: string) => {
-    setTrail((prev) => (selectedNoteId ? [...prev, selectedNoteId] : prev));
-    setEditorKey(id);
-    setSelectedNoteId(id);
-    setIsNewDraft(false);
-  }, [selectedNoteId]);
-
-  // Editor View (occupies full main content area)
-  if (selectedNoteId) {
-    return (
-      <NoteEditor
-        key={editorKey}
-        noteId={selectedNoteId}
-        isNew={isNewDraft}
-        onBack={handleBack}
-        backLabel={trail.length ? '返回上一篇' : returnToTask ? returnToTask.label : '笔记列表'}
-        onOpenNote={handleOpenNote}
-        onOpenTask={onOpenTask}
-        onNoteUpdated={() => {
-          loadNotes();
-          onVaultDataChanged?.();
-        }}
-        onNoteCreated={handleNoteCreated}
-        leaveGuardRef={leaveGuardRef}
-        onDraftCheck={onDraftCheck}
-        onOpenSettings={onOpenSettings}
-        tagNames={tagNames}
-        onVaultDataChanged={onVaultDataChanged}
-      />
-    );
-  }
-
-  // Single-column Card List View
   return (
-    <div ref={rootRef} className="max-w-3xl mx-auto space-y-5">
-      {/* Top Action Bar */}
-      <div className="flex items-center justify-between pt-1">
-        <div className="flex items-center space-x-2">
-          <h2 className="text-sm font-semibold text-stone-900 dark:text-stone-100">
-            全部笔记
-          </h2>
-          <span className="text-xs font-mono text-stone-400">
-            {notes.length}
-          </span>
-          {loading && <span className="text-[11px] text-stone-400">加载中...</span>}
-        </div>
-
-        {/* Split Button: New Note / New Audio Note */}
-        <div className="relative inline-flex items-stretch rounded-lg shadow-2xs" ref={createMenuRef}>
-          <button
-            type="button"
-            onClick={handleStartCreateNote}
-            className="flex items-center space-x-1 px-3 py-1.5 rounded-l-lg bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-medium transition cursor-pointer"
-          >
-            <Plus className="w-3.5 h-3.5" />
-            <span>新建笔记</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => setCreateMenuOpen((v) => !v)}
-            className="flex items-center justify-center px-1.5 py-1.5 rounded-r-lg bg-emerald-700 hover:bg-emerald-800 border-l border-emerald-600 text-white text-xs transition cursor-pointer"
-            title="更多新建选项"
-          >
-            <ChevronDown className="w-3.5 h-3.5" />
-          </button>
-          {createMenuOpen && (
-            <div className="absolute right-0 top-full mt-1 w-44 rounded-lg border border-stone-200 dark:border-stone-800 bg-white dark:bg-stone-900 shadow-lg py-1 z-30">
-              <button
-                type="button"
-                onClick={() => {
-                  setCreateMenuOpen(false);
-                  handleStartCreateNote();
-                }}
-                className="w-full flex items-center space-x-2 px-3 py-2 text-xs text-stone-700 dark:text-stone-300 hover:bg-stone-100 dark:hover:bg-stone-800 transition text-left cursor-pointer"
-              >
-                <FileText className="w-3.5 h-3.5 text-stone-400" />
-                <span>新建空白笔记</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setCreateMenuOpen(false);
-                  handleStartCreateAudioNote();
-                }}
-                className="w-full flex items-center space-x-2 px-3 py-2 text-xs text-stone-700 dark:text-stone-300 hover:bg-stone-100 dark:hover:bg-stone-800 transition text-left cursor-pointer"
-              >
-                <Volume2 className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
-                <span>从音频创建逐字稿</span>
-              </button>
+    <div ref={containerRef} className="h-full min-h-0 flex overflow-hidden">
+      {/* Left Column: NotesList */}
+      {!listCollapsed && (
+        <aside
+          style={{ width: listWidth }}
+          className="shrink-0 h-full min-h-0 flex flex-col bg-stone-100/40 dark:bg-stone-900/40 select-none overflow-hidden"
+          aria-label="笔记列表"
+        >
+          {/* Top Action Bar */}
+          <div className="p-2.5 border-b border-stone-200/70 dark:border-stone-800/70 flex items-center justify-between gap-2 shrink-0">
+            <div className="flex items-center space-x-2 min-w-0">
+              <h2 className="text-xs font-semibold text-stone-800 dark:text-stone-200 truncate">
+                全部笔记
+              </h2>
+              <span className="text-[10px] font-mono text-stone-400">
+                {notes.length}
+              </span>
+              {loading && <Loader2 className="w-3 h-3 text-stone-400 animate-spin shrink-0" />}
             </div>
-          )}
-        </div>
-      </div>
 
-      {/* Error Feedback Banner */}
-      {listError && (
-        <div className="p-3 rounded-lg border border-rose-200 dark:border-rose-900/60 bg-rose-50/80 dark:bg-rose-950/40 text-rose-800 dark:text-rose-200 text-xs flex items-center space-x-2">
-          <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
-          <span>加载笔记列表失败: {listError}</span>
-        </div>
-      )}
-
-      {/* Audio Note Creation Error Banner */}
-      {createAudioNoteError && (
-        <div className="p-3 rounded-lg border border-rose-200 dark:border-rose-900/60 bg-rose-50/80 dark:bg-rose-950/40 text-rose-800 dark:text-rose-200 text-xs flex items-center justify-between space-x-2">
-          <div className="flex items-center space-x-2 min-w-0">
-            <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
-            <span className="truncate">导入音频创建笔记失败: {createAudioNoteError}</span>
-          </div>
-          <button
-            type="button"
-            onClick={() => setCreateAudioNoteError(null)}
-            className="text-stone-400 hover:text-stone-600 text-xs shrink-0 cursor-pointer"
-          >
-            关闭
-          </button>
-        </div>
-      )}
-
-      {/* Single-column Card Stack */}
-      {notes.length === 0 ? (
-        <div className="py-16 text-center rounded-xl border border-dashed border-stone-200 dark:border-stone-800 bg-white/40 dark:bg-stone-950/20 text-xs text-stone-400 space-y-2">
-          <FileText className="w-8 h-8 text-stone-300 dark:text-stone-700 mx-auto" />
-          {loading ? (
-            <div className="font-medium text-stone-600 dark:text-stone-300">
-              加载中...
-            </div>
-          ) : (
-            <>
-              <div className="font-medium text-stone-600 dark:text-stone-300">
-                Vault 中暂无笔记
-              </div>
-              <div className="text-[11px] text-stone-400 max-w-xs mx-auto">
-                写下第一篇长文或记录吧，也可以直接从 MP3 / M4A 音频导入生成逐字稿
-              </div>
-              <div className="flex items-center justify-center space-x-2 pt-2">
+            <div className="flex items-center space-x-1 shrink-0">
+              {/* Split Button: New Draft (default) / Dropdown */}
+              <div className="relative inline-flex items-stretch rounded-md shadow-2xs" ref={createMenuRef}>
                 <button
                   type="button"
-                  onClick={handleStartCreateNote}
-                  className="inline-flex items-center space-x-1 px-3 py-1.5 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-medium transition shadow-2xs cursor-pointer"
+                  onClick={handleStartCreateDraft}
+                  className="flex items-center space-x-1 px-2.5 py-1 rounded-l-md bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-medium transition cursor-pointer"
+                  title="新建草稿"
                 >
-                  <Plus className="w-3 h-3" />
-                  <span>新建空白笔记</span>
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>新建草稿</span>
                 </button>
                 <button
                   type="button"
-                  onClick={handleStartCreateAudioNote}
-                  className="inline-flex items-center space-x-1 px-3 py-1.5 rounded-lg border border-stone-200 dark:border-stone-700 bg-white dark:bg-stone-900 text-stone-700 dark:text-stone-300 hover:bg-stone-50 dark:hover:bg-stone-800 text-xs font-medium transition shadow-2xs cursor-pointer"
+                  onClick={() => setCreateMenuOpen((v) => !v)}
+                  className="flex items-center justify-center px-1 py-1 rounded-r-md bg-emerald-700 hover:bg-emerald-800 border-l border-emerald-600 text-white text-xs transition cursor-pointer"
+                  title="更多新建选项"
                 >
-                  <Volume2 className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />
-                  <span>从音频创建 (MP3 / M4A)</span>
+                  <ChevronDown className="w-3.5 h-3.5" />
                 </button>
-              </div>
-            </>
-          )}
-        </div>
-      ) : (
-        <div className="space-y-3">
-          {notes.map((n) => {
-            const excerpt = getNoteExcerpt(n.title, n.body);
-            const relativeTime = formatRelativeTime(n.updated_at);
-
-            return (
-              <div
-                key={n.id}
-                onClick={() => handleSelectNote(n.id)}
-                onContextMenu={(e) => {
-                  e.preventDefault();
-                  setContextMenu({
-                    x: e.clientX,
-                    y: e.clientY,
-                    note: n,
-                  });
-                }}
-                className="group p-4 rounded-xl border border-stone-200 dark:border-stone-800 bg-white dark:bg-stone-950 hover:border-emerald-500/60 dark:hover:border-emerald-600/60 hover:shadow-2xs transition cursor-pointer select-none space-y-2"
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <div className="flex items-center space-x-2 min-w-0">
-                    {isAudioTranscriptNote(n) && (
-                      <span className="inline-flex items-center space-x-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-emerald-100 dark:bg-emerald-950/70 text-emerald-800 dark:text-emerald-300 shrink-0">
-                        <Volume2 className="w-2.5 h-2.5" />
-                        <span>逐字稿</span>
-                      </span>
-                    )}
-                    <h3 className="text-sm font-semibold text-stone-900 dark:text-stone-100 group-hover:text-emerald-800 dark:group-hover:text-emerald-400 transition truncate">
-                      {n.title}
-                    </h3>
+                {createMenuOpen && (
+                  <div className="absolute right-0 top-full mt-1 w-44 rounded-lg border border-stone-200 dark:border-stone-800 bg-white dark:bg-stone-900 shadow-lg py-1 z-30">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCreateMenuOpen(false);
+                        handleStartCreateDraft();
+                      }}
+                      className="w-full flex items-center space-x-2 px-3 py-1.5 text-xs text-stone-700 dark:text-stone-300 hover:bg-stone-100 dark:hover:bg-stone-800 transition text-left cursor-pointer"
+                    >
+                      <FileText className="w-3.5 h-3.5 text-stone-400" />
+                      <span>新建草稿</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCreateMenuOpen(false);
+                        handleStartCreateFormalNote();
+                      }}
+                      className="w-full flex items-center space-x-2 px-3 py-1.5 text-xs text-stone-700 dark:text-stone-300 hover:bg-stone-100 dark:hover:bg-stone-800 transition text-left cursor-pointer"
+                    >
+                      <FileText className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                      <span>新建笔记</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCreateMenuOpen(false);
+                        handleStartCreateAudioNote();
+                      }}
+                      className="w-full flex items-center space-x-2 px-3 py-1.5 text-xs text-stone-700 dark:text-stone-300 hover:bg-stone-100 dark:hover:bg-stone-800 transition text-left cursor-pointer"
+                    >
+                      <Volume2 className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                      <span>从音频创建逐字稿</span>
+                    </button>
                   </div>
-                  <span className="font-mono text-[11px] text-stone-400 shrink-0">
-                    {relativeTime}
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* List Error Banner */}
+          {listError && (
+            <div className="m-2 p-2 rounded-lg border border-rose-200 dark:border-rose-900/60 bg-rose-50/80 dark:bg-rose-950/40 text-rose-800 dark:text-rose-200 text-xs flex items-center space-x-1.5">
+              <AlertCircle className="w-3.5 h-3.5 text-rose-600 shrink-0" />
+              <span className="truncate">加载列表失败: {listError}</span>
+            </div>
+          )}
+
+          {/* Audio Note Creation Error */}
+          {createAudioNoteError && (
+            <div className="m-2 p-2 rounded-lg border border-rose-200 dark:border-rose-900/60 bg-rose-50/80 dark:bg-rose-950/40 text-rose-800 dark:text-rose-200 text-xs flex items-center justify-between space-x-1">
+              <span className="truncate">{createAudioNoteError}</span>
+              <button
+                type="button"
+                onClick={() => setCreateAudioNoteError(null)}
+                className="text-stone-400 hover:text-stone-600 text-[10px]"
+              >
+                关闭
+              </button>
+            </div>
+          )}
+
+          {/* Scrollable Groups Container */}
+          <div className="flex-1 min-h-0 overflow-y-auto p-2 space-y-3">
+            {/* Group 1: 草稿 */}
+            <div className="space-y-1">
+              <div
+                className="w-full flex items-center justify-between px-1.5 py-1 text-xs font-semibold text-stone-500 dark:text-stone-400 hover:text-stone-800 dark:hover:text-stone-200 cursor-pointer rounded"
+                onClick={() => setIsDraftsCollapsed((v) => !v)}
+              >
+                <div className="flex items-center space-x-1.5 min-w-0">
+                  {isDraftsCollapsed ? (
+                    <ChevronRight className="w-3 h-3 text-stone-400 shrink-0" />
+                  ) : (
+                    <ChevronDown className="w-3 h-3 text-stone-400 shrink-0" />
+                  )}
+                  <span>草稿</span>
+                  <span className="text-[10px] font-mono px-1.5 py-0.2 rounded-full bg-stone-200/60 dark:bg-stone-800 text-stone-500 dark:text-stone-400">
+                    {displayedDrafts.length}
                   </span>
                 </div>
-
-                {excerpt ? (
-                  <p className="text-xs text-stone-500 dark:text-stone-400 line-clamp-2 leading-relaxed break-words font-sans">
-                    {excerpt}
-                  </p>
-                ) : (
-                  <p className="text-xs text-stone-400/80 dark:text-stone-600 italic">
-                    暂无正文描述
-                  </p>
-                )}
-
-                {n.tags && n.tags.length > 0 && (
-                  <div className="flex flex-wrap items-center gap-1.5 pt-1">
-                    {n.tags.map((tag) => (
-                      <span
-                        key={tag}
-                        className="inline-flex items-center text-[10px] px-1.5 py-0.2 rounded bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-400 font-mono"
-                      >
-                        #{tag}
-                      </span>
-                    ))}
-                  </div>
-                )}
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleStartCreateDraft();
+                  }}
+                  className="p-1 rounded text-stone-400 hover:text-stone-700 dark:hover:text-stone-200 hover:bg-stone-200/60 dark:hover:bg-stone-800/60 transition cursor-pointer"
+                  title="新建草稿"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                </button>
               </div>
-            );
-          })}
-        </div>
+
+              {!isDraftsCollapsed && (
+                <div className="space-y-0.5 pl-1">
+                  {displayedDrafts.length === 0 ? (
+                    <div className="px-3 py-2 text-xs text-stone-400 dark:text-stone-500 italic">
+                      暂无草稿
+                    </div>
+                  ) : (
+                    displayedDrafts.map((n) => {
+                      const isSelected = selectedNoteId === n.id;
+                      const excerpt = getDraftExcerpt(n.body);
+                      return (
+                        <div
+                          key={n.id}
+                          id={`note-item-${n.id}`}
+                          onClick={() => handleSelectNote(n.id)}
+                          onContextMenu={(e) => {
+                            e.preventDefault();
+                            setContextMenu({
+                              x: e.clientX,
+                              y: e.clientY,
+                              note: n,
+                            });
+                          }}
+                          className={`group px-2.5 py-1.5 rounded-lg text-xs cursor-pointer select-none transition ${
+                            isSelected
+                              ? 'bg-stone-200/80 dark:bg-stone-800 text-stone-900 dark:text-stone-100 font-medium'
+                              : 'text-stone-700 dark:text-stone-300 hover:bg-stone-200/50 dark:hover:bg-stone-800/40'
+                          }`}
+                        >
+                          {excerpt ? (
+                            <p className="line-clamp-2 leading-relaxed break-words font-sans">
+                              {excerpt}
+                            </p>
+                          ) : (
+                            <p className="italic text-stone-400 dark:text-stone-600">
+                              (空草稿)
+                            </p>
+                          )}
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Group 2: 笔记 */}
+            <div className="space-y-1">
+              <div
+                className="w-full flex items-center justify-between px-1.5 py-1 text-xs font-semibold text-stone-500 dark:text-stone-400 hover:text-stone-800 dark:hover:text-stone-200 cursor-pointer rounded"
+                onClick={() => setIsNotesCollapsed((v) => !v)}
+              >
+                <div className="flex items-center space-x-1.5 min-w-0">
+                  {isNotesCollapsed ? (
+                    <ChevronRight className="w-3 h-3 text-stone-400 shrink-0" />
+                  ) : (
+                    <ChevronDown className="w-3 h-3 text-stone-400 shrink-0" />
+                  )}
+                  <span>笔记</span>
+                  <span className="text-[10px] font-mono px-1.5 py-0.2 rounded-full bg-stone-200/60 dark:bg-stone-800 text-stone-500 dark:text-stone-400">
+                    {displayedFormalNotes.length}
+                  </span>
+                </div>
+              </div>
+
+              {!isNotesCollapsed && (
+                <div className="space-y-0.5 pl-1">
+                  {displayedFormalNotes.length === 0 ? (
+                    <div className="px-3 py-2 text-xs text-stone-400 dark:text-stone-500 italic">
+                      暂无笔记
+                    </div>
+                  ) : (
+                    displayedFormalNotes.map((n) => {
+                      const isSelected = selectedNoteId === n.id;
+                      return (
+                        <div
+                          key={n.id}
+                          id={`note-item-${n.id}`}
+                          onClick={() => handleSelectNote(n.id)}
+                          onContextMenu={(e) => {
+                            e.preventDefault();
+                            setContextMenu({
+                              x: e.clientX,
+                              y: e.clientY,
+                              note: n,
+                            });
+                          }}
+                          className={`group px-2.5 py-1.5 rounded-lg text-xs cursor-pointer select-none transition flex items-center space-x-1.5 ${
+                            isSelected
+                              ? 'bg-stone-200/80 dark:bg-stone-800 text-stone-900 dark:text-stone-100 font-medium'
+                              : 'text-stone-700 dark:text-stone-300 hover:bg-stone-200/50 dark:hover:bg-stone-800/40'
+                          }`}
+                        >
+                          {isAudioTranscriptNote(n) && (
+                            <Volume2 className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                          )}
+                          <span className="truncate">{n.title || '未命名笔记'}</span>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        </aside>
       )}
 
-      {/* Missing Key Modal */}
+      {/* Resizer Divider between left list and right editor */}
+      {!listCollapsed && (
+        <div
+          role="separator"
+          aria-label="调整笔记列表宽度"
+          aria-orientation="vertical"
+          aria-valuemin={MIN_NOTES_LIST_WIDTH}
+          aria-valuemax={MAX_NOTES_LIST_WIDTH}
+          aria-valuenow={listWidth}
+          tabIndex={0}
+          onKeyDown={handleDividerKeyDown}
+          onPointerDown={handleDividerPointerDown}
+          onPointerMove={handleDividerPointerMove}
+          onPointerUp={handleDividerPointerUp}
+          onPointerCancel={handleDividerPointerUp}
+          className="relative z-10 w-px shrink-0 bg-stone-200/70 dark:bg-stone-800/70 hover:bg-stone-400 dark:hover:bg-stone-600 cursor-col-resize touch-none no-drag-region focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[var(--pata-accent)] before:absolute before:inset-y-0 before:-left-1.5 before:w-3 before:cursor-col-resize before:touch-none"
+          title="拖拽调整笔记列表宽度"
+        />
+      )}
+
+      {/* Right Column: NoteEditor or Empty State */}
+      <div className="flex-1 min-w-0 min-h-0 flex flex-col overflow-hidden bg-stone-50 dark:bg-stone-900">
+        {selectedNoteId ? (
+          <NoteEditor
+            key={editorKey}
+            noteId={selectedNoteId}
+            isNew={isNewDraft}
+            isDraftType={isDraftType}
+            listCollapsed={listCollapsed}
+            onToggleListCollapse={() => setListCollapsed(false)}
+            returnToTask={returnToTask}
+            onOpenNote={handleSelectNote}
+            onOpenTask={onOpenTask}
+            onNoteUpdated={handleNoteUpdated}
+            onNoteCreated={handleNoteCreated}
+            onNoteConverted={handleNoteConverted}
+            onDeleteCurrentNote={handleDeleteCurrentNote}
+            leaveGuardRef={leaveGuardRef}
+            onDraftCheck={onDraftCheck}
+            onOpenSettings={onOpenSettings}
+            tagNames={tagNames}
+            onVaultDataChanged={onVaultDataChanged}
+          />
+        ) : (
+          <div className="flex-1 flex flex-col items-center justify-center p-8 text-center text-stone-400 select-none">
+            <FileText className="w-10 h-10 mb-3 text-stone-300 dark:text-stone-700" />
+            <p className="text-sm font-medium text-stone-600 dark:text-stone-400">选择笔记开始阅读或编辑</p>
+            <p className="text-xs text-stone-400 dark:text-stone-500 mt-1 mb-4">或者直接创建新草稿随手记录</p>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleStartCreateDraft}
+              className="text-xs cursor-pointer"
+            >
+              <Plus className="w-3.5 h-3.5 mr-1" />
+              新建草稿
+            </Button>
+          </div>
+        )}
+      </div>
+
+      {/* Missing Key Modal for Audio */}
       <ConfirmDialog
         open={showMissingKeyModal}
         variant="warning"
@@ -2476,7 +2821,7 @@ export function NotesView({
         document.body
       )}
 
-      {/* Context Menu for Note Card in List */}
+      {/* Context Menu for List Item */}
       {contextMenu && createPortal(
         <div
           ref={contextMenuRef}
@@ -2546,20 +2891,24 @@ export function NotesView({
             className="w-full flex items-center space-x-2 px-3 py-1.5 text-xs text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition text-left cursor-pointer whitespace-nowrap"
           >
             <Trash2 className="w-3.5 h-3.5 shrink-0" />
-            <span>删除笔记</span>
+            <span>{contextMenu.note.draft ? '删除草稿' : '删除笔记'}</span>
           </button>
         </div>,
         document.body
       )}
 
-      {/* Confirmation Modal for Deleting Note from List */}
+      {/* Confirmation Modal for Deleting from List */}
       <ConfirmDialog
         open={Boolean(noteToDelete)}
         variant="destructive"
-        title="确认删除笔记？"
+        title={noteToDelete?.draft ? '确认删除草稿？' : '确认删除笔记？'}
         description={
           <div className="space-y-1">
-            <span>{noteToDelete ? `笔记「${noteToDelete.title}」的文件将从 Vault 中永久删除，此操作不可撤销。` : ''}</span>
+            <span>
+              {noteToDelete?.draft
+                ? '此草稿文件将从 Vault 中永久删除，此操作不可撤销。'
+                : `笔记「${noteToDelete?.title || '未命名'}」的文件将从 Vault 中永久删除，此操作不可撤销。`}
+            </span>
             {deleteListError && (
               <p className="text-xs text-rose-600 dark:text-rose-400 font-medium pt-1">
                 {deleteListError}
