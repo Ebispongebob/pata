@@ -2213,14 +2213,14 @@ export function NotesView({
     } catch {}
   }, [isNotesCollapsed]);
 
-  // 窗口过窄时自动折叠笔记列表（保证编辑器可用宽度）
+  // 窗口过窄时自动折叠笔记列表（保证编辑器可用宽度；隐藏为 0 时不触发）
   const containerRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
     const ro = new ResizeObserver((entries) => {
       for (const entry of entries) {
-        if (entry.contentRect.width < 560) {
+        if (entry.contentRect.width > 0 && entry.contentRect.width < 560) {
           setListCollapsed(true);
         }
       }

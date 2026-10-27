@@ -181,3 +181,31 @@ test('草稿与正式笔记顶栏统一：共用原生拖拽行，展开与返�
     '草稿状态下应在顶栏提供「转为笔记」转换入口'
   );
 });
+
+test('响应式笔记列表折叠：隐藏状态（width === 0）不应误折叠列表', () => {
+  let listCollapsed = false;
+  const onResize = (width: number) => {
+    if (width > 0 && width < 560) {
+      listCollapsed = true;
+    }
+  };
+
+  // 1. 正常宽度下不折叠
+  onResize(800);
+  assert.equal(listCollapsed, false);
+
+  // 2. 切至设置页等隐藏场景（display: none 导致 width 为 0），不应误触发折叠
+  onResize(0);
+  assert.equal(listCollapsed, false);
+
+  // 3. 真实窄窗口（如 500px）下正常自动折叠
+  onResize(500);
+  assert.equal(listCollapsed, true);
+
+  // 4. 源码校验
+  const notesSrc = fs.readFileSync(new URL('./NotesView.tsx', import.meta.url), 'utf-8');
+  assert.ok(
+    notesSrc.includes('entry.contentRect.width > 0 && entry.contentRect.width < 560'),
+    'ResizeObserver 应严格判断 width > 0，避免容器因隐藏（display: none）导致 width 为 0 时误收起列表'
+  );
+});
