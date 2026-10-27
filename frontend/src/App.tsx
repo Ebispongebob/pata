@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { flushSync } from 'react-dom';
 import { Events } from '@wailsio/runtime';
 import {
   Calendar,
@@ -12,7 +13,6 @@ import {
   Download,
   Clock,
   RefreshCw,
-  Icon,
 } from 'lucide-react';
 import * as VaultService from '../bindings/pata/internal/app/vaultservice';
 import * as UpdaterService from '../bindings/pata/internal/app/updaterservice';
@@ -32,13 +32,38 @@ import { isVirtualAllTag } from './tagAll';
 import { DetailSplit, useDetailOrigin } from './DetailSplit';
 import { TaskDetailPanel, TaskDetailHandle } from './TaskDetailPanel';
 
+function SidebarToggleIcon({ collapsed }: { collapsed: boolean }) {
+  return (
+    <svg viewBox="0 0 16 16" className="w-4 h-4" aria-hidden="true">
+      <rect
+        x="2.5"
+        y="3.5"
+        width="4"
+        height="9"
+        rx="1"
+        fill="currentColor"
+        className={collapsed ? 'opacity-0' : 'opacity-30'}
+      />
+      <g fill="none" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round">
+        <rect x="1.75" y="2.75" width="12.5" height="10.5" rx="2.25" />
+        <path d="M6.75 2.75v10.5" />
+      </g>
+    </svg>
+  );
+}
+
 export default function App() {
   const titlebarLogoRef = useRef<SVGSVGElement | null>(null);
   const [activeNav, setActiveNav] = useState<'today' | 'tasks' | 'notes' | 'tag'>('today');
   const [selectedTag, setSelectedTag] = useState<string | null>(null);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
-    try { return localStorage.getItem('pata_sidebar_collapsed') === 'true'; }
-    catch { return false; }
+    try {
+      const stored = localStorage.getItem('pata_sidebar_collapsed');
+      if (stored !== null) return stored === 'true';
+      return true; // 默认收起，无论窗口大小
+    } catch {
+      return true;
+    }
   });
   const [sidebarWidth, setSidebarWidth] = useState(240);
   const [, setIsResizing] = useState(false); // 手柄无高亮，仅保留状态位供拖拽逻辑判断扩展
@@ -618,6 +643,65 @@ export default function App() {
     }
   }, [themeMode]);
 
+  // View Transitions 驱动的丝滑平滑过渡切换
+  const morphToggleSidebar = useCallback((target?: boolean) => {
+    const getNext = (prev: boolean) => (typeof target === 'boolean' ? target : !prev);
+
+    if (
+      typeof document === 'undefined' ||
+      !('startViewTransition' in document) ||
+      window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    ) {
+      setSidebarCollapsed((prev) => {
+        const next = getNext(prev);
+        try { localStorage.setItem('pata_sidebar_collapsed', String(next)); } catch {}
+        return next;
+      });
+      return;
+    }
+
+    const root = document.documentElement;
+    root.classList.add('nav-morph');
+    const transition = (document as any).startViewTransition(() => {
+      flushSync(() => {
+        setSidebarCollapsed((prev) => {
+          const next = getNext(prev);
+          try { localStorage.setItem('pata_sidebar_collapsed', String(next)); } catch {}
+          return next;
+        });
+      });
+    });
+
+    const timer = setTimeout(() => {
+      try {
+        transition.skipTransition();
+      } catch {
+        // ignore
+      }
+    }, 1500);
+
+    transition.finished.finally(() => {
+      clearTimeout(timer);
+      root.classList.remove('nav-morph');
+    });
+  }, []);
+
+  // 监听 macOS 原生侧栏切换快捷键 ⌃⌘S (以及非 Mac 下的 Ctrl+Shift+S)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const isMac = /^Mac/i.test(navigator.platform);
+      const match = isMac
+        ? e.metaKey && e.ctrlKey && !e.shiftKey && e.code === 'KeyS'
+        : e.ctrlKey && e.shiftKey && !e.metaKey && e.code === 'KeyS';
+      if (match && !e.altKey && !e.repeat) {
+        e.preventDefault();
+        morphToggleSidebar();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown, true);
+    return () => window.removeEventListener('keydown', handleKeyDown, true);
+  }, [morphToggleSidebar]);
+
   const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     e.preventDefault();
     e.currentTarget.setPointerCapture(e.pointerId);
@@ -628,7 +712,21 @@ export default function App() {
 
   const handlePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
     if (!e.currentTarget.hasPointerCapture(e.pointerId)) return;
-    const newWidth = Math.min(Math.max(e.clientX, 200), 360);
+    if (e.clientX < 140) {
+      // 拖拽过度向左折叠 (Drag to fold)，保留当前宽度以便下次展开
+      setSidebarCollapsed(true);
+      morphToggleSidebar(true);
+      setIsResizing(false);
+      try {
+        e.currentTarget.releasePointerCapture(e.pointerId);
+      } catch {
+        // ignore
+      }
+      document.body.style.userSelect = '';
+      document.body.style.cursor = '';
+      return;
+    }
+    const newWidth = Math.min(Math.max(e.clientX, 180), 380);
     setSidebarWidth(newWidth);
   };
 
@@ -674,209 +772,110 @@ export default function App() {
   ) : null;
 
   return (
-    <div className="relative flex h-screen w-screen overflow-hidden bg-stone-100/60 dark:bg-transparent text-stone-900 dark:text-stone-100 font-sans">
+    <div className="relative flex flex-col h-screen w-screen overflow-hidden bg-stone-100/60 dark:bg-transparent text-stone-900 dark:text-stone-100 font-sans">
       {/* 4px top edge guard: prevents native window resize from triggering wails:drag */}
       <div className="absolute top-0 left-0 right-0 h-1 no-drag-region z-30 pointer-events-auto" />
 
-      {/* Top window drag strip above main workspace: ensures window is draggable when sidebar is collapsed */}
-      <div
-        style={{ left: `${sidebarCollapsed ? 88 : sidebarWidth}px` }}
-        className="absolute top-1 right-0 h-7 drag-region z-10 pointer-events-auto"
-      />
+      {/* Top window drag strip above main workspace when sidebar is expanded */}
+      {!sidebarCollapsed && (
+        <div
+          style={{ left: `${sidebarWidth}px` }}
+          className="absolute top-1 right-0 h-7 drag-region z-10 pointer-events-auto"
+        />
+      )}
 
-      {/* Left column: lights+logo strip above sidebar, unified background */}
-      <div
-        style={{ width: `${sidebarCollapsed ? 88 : sidebarWidth}px` }}
-        className="relative shrink-0 flex flex-col bg-stone-100/80 dark:bg-stone-950/80 backdrop-blur select-none"
-      >
-        <div className="h-[52px] shrink-0 drag-region flex items-center pl-[84px] pr-12 select-none overflow-hidden">
-          <div aria-hidden={sidebarCollapsed} className={`flex items-center gap-2 ${sidebarCollapsed ? 'invisible' : ''}`}>
-            <PataLogo ref={titlebarLogoRef} className="w-6 h-6 shrink-0" />
-            <span className="text-sm font-medium text-stone-600 dark:text-stone-300">Pata</span>
-          </div>
-        </div>
-        <button
-          type="button"
-          onClick={() => setSidebarCollapsed((collapsed) => !collapsed)}
-          aria-label={sidebarCollapsed ? '展开侧栏' : '收起侧栏'}
-          title={sidebarCollapsed ? '展开侧栏' : '收起侧栏'}
-          aria-expanded={!sidebarCollapsed}
-          aria-controls="sidebar-navigation"
-          className={`absolute z-20 h-8 flex items-center justify-center rounded-md text-stone-500 dark:text-stone-400 hover:bg-stone-200/60 dark:hover:bg-stone-800/60 cursor-pointer no-drag-region ${
-            sidebarCollapsed
-              ? 'top-[60px] left-2 right-2 bg-stone-100/95 dark:bg-stone-950/95 backdrop-blur border border-stone-200/70 dark:border-stone-800/70 shadow-2xs'
-              : 'top-[10px] right-2 w-8'
-          }`}
-        >
-          <Icon className="w-4 h-4" iconNode={[
-            ['path', { d: 'M4 5h16M4 12h5M4 19h5' }],
-            ['path', { d: sidebarCollapsed ? 'm14 11 7 5-7 5Z' : 'm21 11-7 5 7 5Z', fill: 'currentColor', strokeWidth: 0 }],
-          ]} />
-        </button>
-
-      {/* Sidebar */}
-      <aside
-        id="sidebar-navigation"
-        className="relative flex flex-col flex-1 min-h-0"
-      >
-        {/* Resize Handle (expanded only) */}
-        {!sidebarCollapsed && (
-          <div
-            onPointerDown={handlePointerDown}
-            onPointerMove={handlePointerMove}
-            onPointerUp={handlePointerUp}
-            onPointerCancel={handlePointerUp}
-            onLostPointerCapture={handleLostPointerCapture}
-            className="absolute top-0 right-0 w-1 h-full cursor-col-resize no-drag-region z-20 touch-none"
-            title="拖拽调整侧边栏宽度"
-          />
-        )}
-
-        {/* Primary Navigation */}
-        <div className={`flex-1 overflow-y-auto px-2 pb-2 space-y-0.5 ${sidebarCollapsed ? 'pt-12' : 'pt-2'}`}>
-          <div className={`flex gap-1 mb-2 ${sidebarCollapsed ? 'flex-col' : ''}`}>
-            {/* Quick Search */}
+      {/* When sidebar is collapsed: Top Header Strip across the whole window */}
+      {sidebarCollapsed && (
+        <header className="h-[52px] shrink-0 flex items-center justify-between pl-[84px] pr-4 select-none drag-region z-20">
+          {/* Left: Traffic lights clearance (84px pl) -> Logo -> Sidebar toggle button on the right of Logo */}
+          <div className="flex items-center gap-2 shrink-0">
+            <div id="pata-brand" className="flex items-center gap-2">
+              <PataLogo ref={titlebarLogoRef} className="w-6 h-6 shrink-0" />
+              <span className="text-sm font-medium text-stone-600 dark:text-stone-300">Pata</span>
+            </div>
             <button
-              onClick={() => setIsSearchOpen(true)}
-              aria-label="全局搜索"
-              className={`min-w-0 h-8 flex items-center px-2.5 py-1.5 rounded-md text-xs text-stone-500 dark:text-stone-400 hover:text-stone-800 dark:hover:text-stone-200 hover:bg-stone-200/60 dark:hover:bg-stone-800/60 border border-stone-200/80 dark:border-stone-800/80 bg-stone-50/70 dark:bg-stone-900/50 transition-colors shadow-2xs cursor-pointer group ${sidebarCollapsed ? 'w-full justify-center' : 'flex-1 justify-between'}`}
-              title="全局搜索 (⌘K / ⌘P)"
+              id="pata-toggle"
+              type="button"
+              onClick={() => {
+                setSidebarCollapsed(false);
+                morphToggleSidebar(false);
+              }}
+              aria-label="展开侧栏 (⌃⌘S)"
+              title="展开侧栏 (⌃⌘S)"
+              aria-expanded={false}
+              aria-controls="sidebar-navigation"
+              className="h-7 w-7 flex items-center justify-center rounded-md text-stone-500 dark:text-stone-400 hover:text-stone-800 dark:hover:text-stone-200 hover:bg-stone-200/60 dark:hover:bg-stone-800/60 cursor-pointer no-drag-region transition-colors"
             >
-              <div className="flex items-center space-x-2 truncate">
-                <Search className="w-3.5 h-3.5 shrink-0 opacity-70 group-hover:opacity-100" />
-                {!sidebarCollapsed && <span>搜索</span>}
-              </div>
-              {!sidebarCollapsed && (
-                <kbd className="text-[10px] font-mono opacity-60 bg-stone-200/80 dark:bg-stone-800 px-1 py-0.2 rounded shrink-0">
-                  ⌘K
-                </kbd>
-              )}
+              <SidebarToggleIcon collapsed={true} />
             </button>
           </div>
 
-          <button
-            onClick={() => goNav('today')}
-            aria-label="Today"
-            className={`w-full flex items-center ${sidebarCollapsed ? 'justify-center' : 'space-x-2.5'} px-2.5 py-2 rounded-md text-xs font-medium transition-colors cursor-pointer ${
-              activeNav === 'today'
-                ? 'bg-[var(--pata-brand)] text-white shadow-xs'
-                : 'text-stone-700 dark:text-stone-300 hover:bg-stone-200/60 dark:hover:bg-stone-800/60'
-            }`}
-            title="Today"
+          {/* Center: Segmented Navigation Tabs (Today | Tasks | Notes) */}
+          <nav
+            aria-label="主导航"
+            className="no-drag-region flex items-center gap-1 text-xs"
           >
-            <Calendar className="w-4 h-4 shrink-0" />
-            {!sidebarCollapsed && <span>Today</span>}
-          </button>
-
-          <button
-            onClick={() => goNav('tasks')}
-            aria-label="Tasks"
-            className={`w-full flex items-center ${sidebarCollapsed ? 'justify-center' : 'space-x-2.5'} px-2.5 py-2 rounded-md text-xs font-medium transition-colors cursor-pointer ${
-              activeNav === 'tasks'
-                ? 'bg-[var(--pata-brand)] text-white shadow-xs'
-                : 'text-stone-700 dark:text-stone-300 hover:bg-stone-200/60 dark:hover:bg-stone-800/60'
-            }`}
-            title="Tasks"
-          >
-            <CheckSquare className="w-4 h-4 shrink-0" />
-            {!sidebarCollapsed && <span>Tasks</span>}
-          </button>
-
-          <button
-            onClick={() => goNav('notes')}
-            aria-label="Notes"
-            className={`w-full flex items-center ${sidebarCollapsed ? 'justify-center' : 'space-x-2.5'} px-2.5 py-2 rounded-md text-xs font-medium transition-colors cursor-pointer ${
-              activeNav === 'notes'
-                ? 'bg-[var(--pata-brand)] text-white shadow-xs'
-                : 'text-stone-700 dark:text-stone-300 hover:bg-stone-200/60 dark:hover:bg-stone-800/60'
-            }`}
-            title="Notes"
-          >
-            <FileText className="w-4 h-4 shrink-0" />
-            {!sidebarCollapsed && <span>Notes</span>}
-          </button>
-
-          {/* Tags section */}
-          {sidebarCollapsed && (
             <button
-              type="button"
-              onClick={() => setSidebarCollapsed(false)}
-              aria-label="展开侧栏查看标签"
-              title="展开侧栏查看标签"
-              className={`w-full flex items-center justify-center px-2.5 py-2 rounded-md transition-colors cursor-pointer ${
-                activeNav === 'tag'
+              id="pata-nav-today"
+              onClick={() => goNav('today')}
+              aria-label="Today"
+              className={`h-7 flex items-center space-x-1.5 px-2.5 rounded-md font-medium transition cursor-pointer ${
+                activeNav === 'today'
                   ? 'bg-[var(--pata-brand)] text-white shadow-xs'
-                  : 'text-stone-500 dark:text-stone-400 hover:bg-stone-200/60 dark:hover:bg-stone-800/60'
+                  : 'text-stone-600 dark:text-stone-400 hover:text-stone-900 dark:hover:text-stone-100 hover:bg-stone-200/60 dark:hover:bg-stone-800/60'
               }`}
             >
-              <Hash className="w-4 h-4" />
+              <Calendar className="w-3.5 h-3.5" />
+              <span>Today</span>
             </button>
-          )}
-          {!sidebarCollapsed && (
-            <div className="pt-3">
-              <div className="text-[10px] uppercase font-semibold text-stone-400 px-2 mb-1 flex items-center justify-between">
-                <span>全局标签</span>
-                {vaultStatus?.open && (
-                  <span className="text-[9px] text-stone-400 font-mono">{tags.length}</span>
-                )}
-              </div>
-              <div className="space-y-0.5 px-1">
-                {!vaultStatus?.open ? (
-                  <div className="px-2 py-1.5 text-xs text-stone-400 italic">Vault 尚未打开</div>
-                ) : (
-                  <>
-                    <button
-                      onClick={handleSelectAllTags}
-                      className={`w-full flex items-center justify-between px-2 py-1.5 rounded-md text-xs transition-colors min-h-[32px] text-left cursor-pointer ${
-                        activeNav === 'tag' && isVirtualAllTag(selectedTag)
-                          ? 'bg-stone-200/90 dark:bg-stone-800 text-stone-900 dark:text-stone-100 font-semibold ring-1 ring-[var(--pata-border)]'
-                          : 'text-stone-600 dark:text-stone-400 hover:bg-stone-200/50 dark:hover:bg-stone-800/50'
-                      }`}
-                      title="全部"
-                    >
-                      <div className="flex items-center space-x-1.5 truncate mr-2">
-                        <Hash className="w-3.5 h-3.5 shrink-0 opacity-60" />
-                        <span className="truncate">全部</span>
-                      </div>
-                    </button>
-
-                    {tagsLoading && tags.length === 0 ? (
-                      <div className="px-2 py-1.5 text-xs text-stone-400">加载标签...</div>
-                    ) : tags.length === 0 ? (
-                      <div className="px-2 py-1.5 text-xs text-stone-400 italic">暂无标签</div>
-                    ) : (
-                      tags.map((item) => (
-                        <button
-                          key={item.tag}
-                          onClick={() => handleSelectTag(item.tag)}
-                          className={`w-full flex items-center justify-between px-2 py-1.5 rounded-md text-xs transition-colors min-h-[32px] text-left cursor-pointer ${
-                            activeNav === 'tag' && selectedTag === item.tag
-                              ? 'bg-stone-200/90 dark:bg-stone-800 text-stone-900 dark:text-stone-100 font-semibold ring-1 ring-[var(--pata-border)]'
-                              : 'text-stone-600 dark:text-stone-400 hover:bg-stone-200/50 dark:hover:bg-stone-800/50'
-                          }`}
-                          title={`#${item.tag} (共 ${item.total} 项)`}
-                        >
-                          <div className="flex items-center space-x-1.5 truncate mr-2">
-                            <Hash className="w-3.5 h-3.5 shrink-0 opacity-60" />
-                            <span className="truncate">{item.tag}</span>
-                          </div>
-                          <span className="text-[10px] font-mono px-1.5 py-0.5 rounded-full bg-stone-200/70 dark:bg-stone-800 text-stone-500 dark:text-stone-400 shrink-0">
-                            {item.total}
-                          </span>
-                        </button>
-                      ))
-                    )}
-                  </>
-                )}
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* Sidebar Footer: settings entry + persistent health warning if present */}
-        <div className={`relative p-2 flex items-center no-drag-region border-t border-stone-200/60 dark:border-stone-800/60 gap-1.5 ${sidebarCollapsed ? 'flex-col' : 'justify-between'}`}>
-          <div className={`flex items-center gap-1.5 min-w-0 ${sidebarCollapsed ? 'w-full flex-col' : ''}`}>
             <button
+              id="pata-nav-tasks"
+              onClick={() => goNav('tasks')}
+              aria-label="Tasks"
+              className={`h-7 flex items-center space-x-1.5 px-2.5 rounded-md font-medium transition cursor-pointer ${
+                activeNav === 'tasks'
+                  ? 'bg-[var(--pata-brand)] text-white shadow-xs'
+                  : 'text-stone-600 dark:text-stone-400 hover:text-stone-900 dark:hover:text-stone-100 hover:bg-stone-200/60 dark:hover:bg-stone-800/60'
+              }`}
+            >
+              <CheckSquare className="w-3.5 h-3.5" />
+              <span>Tasks</span>
+            </button>
+            <button
+              id="pata-nav-notes"
+              onClick={() => goNav('notes')}
+              aria-label="Notes"
+              className={`h-7 flex items-center space-x-1.5 px-2.5 rounded-md font-medium transition cursor-pointer ${
+                activeNav === 'notes'
+                  ? 'bg-[var(--pata-brand)] text-white shadow-xs'
+                  : 'text-stone-600 dark:text-stone-400 hover:text-stone-900 dark:hover:text-stone-100 hover:bg-stone-200/60 dark:hover:bg-stone-800/60'
+              }`}
+            >
+              <FileText className="w-3.5 h-3.5" />
+              <span>Notes</span>
+            </button>
+          </nav>
+
+          {/* Right: Search, Settings, Updates, Health */}
+          <div className="no-drag-region flex items-center gap-1.5 shrink-0">
+            <button
+              id="pata-search"
+              onClick={() => setIsSearchOpen(true)}
+              aria-label="全局搜索"
+              title="全局搜索 (⌘K / ⌘P)"
+              className="w-44 h-7 flex items-center justify-between px-2.5 rounded-md text-xs text-stone-500 dark:text-stone-400 hover:text-stone-800 dark:hover:text-stone-200 hover:bg-stone-200/60 dark:hover:bg-stone-800/60 border border-stone-200/80 dark:border-stone-800/80 bg-stone-50/70 dark:bg-stone-900/50 transition-colors shadow-2xs cursor-pointer group"
+            >
+              <div className="flex items-center space-x-1.5 truncate">
+                <Search className="w-3.5 h-3.5 shrink-0 opacity-70 group-hover:opacity-100" />
+                <span>搜索</span>
+              </div>
+              <kbd className="text-[9px] font-mono opacity-60 bg-stone-200/80 dark:bg-stone-800 px-1 py-0.2 rounded shrink-0">
+                ⌘K
+              </kbd>
+            </button>
+
+            <button
+              id="pata-settings"
               onClick={() => {
                 if (isSettingsOpen) {
                   setIsSettingsOpen(false);
@@ -885,47 +884,267 @@ export default function App() {
                 }
               }}
               aria-label="设置"
-              className={`flex items-center ${sidebarCollapsed ? 'w-full justify-center' : 'space-x-2'} px-2.5 py-1.5 rounded-md text-xs font-medium transition cursor-pointer ${
+              title="设置 (⌘,)"
+              className={`h-7 w-7 flex items-center justify-center rounded-md text-xs font-medium transition cursor-pointer ${
                 isSettingsOpen
                   ? 'bg-[var(--pata-brand)] text-white shadow-xs'
                   : 'text-stone-600 dark:text-stone-400 hover:text-stone-900 dark:hover:text-stone-100 hover:bg-stone-200/60 dark:hover:bg-stone-800/60'
               }`}
-              title="设置 (⌘,)"
             >
               <Settings className="w-4 h-4 shrink-0" />
-              {!sidebarCollapsed && <span>设置</span>}
             </button>
 
-            {renderUpdateButton(sidebarCollapsed)}
+            {renderUpdateButton(false)}
+
+            {(hasHealthIssues || rescanError || (vaultStatus?.configured && !vaultStatus?.open)) && (
+              <button
+                onClick={() => {
+                  setShowHealthModal(true);
+                }}
+                aria-label="Vault 状态与健康异常诊断"
+                className={`flex items-center px-1.5 py-1 rounded text-xs font-medium border transition cursor-pointer shrink-0 ${
+                  rescanError || !vaultStatus?.open
+                    ? 'bg-rose-100 dark:bg-rose-950/70 text-rose-800 dark:text-rose-200 border-rose-300 dark:border-rose-800/80 hover:bg-rose-200/80'
+                    : 'bg-amber-100 dark:bg-amber-950/70 text-amber-900 dark:text-amber-200 border-amber-300 dark:border-amber-800/80 hover:bg-amber-200/80'
+                }`}
+                title="Vault 状态与健康异常诊断"
+              >
+                <AlertTriangle className={`w-3.5 h-3.5 shrink-0 ${rescanError || !vaultStatus?.open ? 'text-rose-600 dark:text-rose-400' : 'text-amber-600 dark:text-amber-400'}`} />
+              </button>
+            )}
           </div>
+        </header>
+      )}
 
-          {(hasHealthIssues || rescanError || (vaultStatus?.configured && !vaultStatus?.open)) && (
-            <button
-              onClick={() => {
-                setShowHealthModal(true);
-              }}
-              aria-label="Vault 状态与健康异常诊断"
-              className={`flex items-center ${sidebarCollapsed ? 'w-full justify-center' : 'space-x-1'} px-1.5 py-1 rounded text-xs font-medium border transition cursor-pointer shrink-0 ${
-                rescanError || !vaultStatus?.open
-                  ? 'bg-rose-100 dark:bg-rose-950/70 text-rose-800 dark:text-rose-200 border-rose-300 dark:border-rose-800/80 hover:bg-rose-200/80'
-                  : 'bg-amber-100 dark:bg-amber-950/70 text-amber-900 dark:text-amber-200 border-amber-300 dark:border-amber-800/80 hover:bg-amber-200/80'
-              }`}
-              title="Vault 状态与健康异常诊断"
+      {/* Main Row: Sidebar (when expanded) + Main Content Area */}
+      <div className="flex-1 flex min-h-0 overflow-hidden">
+        {!sidebarCollapsed && (
+          <div
+            id="pata-sidebar"
+            style={{ width: `${sidebarWidth}px` }}
+            className="relative shrink-0 flex flex-col bg-stone-100/80 dark:bg-stone-950/80 backdrop-blur select-none"
+          >
+            <div className="h-[52px] shrink-0 drag-region flex items-center pl-[84px] pr-3 select-none overflow-hidden">
+              <div id="pata-brand" className="flex items-center gap-2">
+                <PataLogo ref={titlebarLogoRef} className="w-6 h-6 shrink-0" />
+                <span className="text-sm font-medium text-stone-600 dark:text-stone-300">Pata</span>
+              </div>
+              <button
+                id="pata-toggle"
+                type="button"
+                onClick={() => {
+                  setSidebarCollapsed(true);
+                  morphToggleSidebar(true);
+                }}
+                aria-label="收起侧栏 (⌃⌘S)"
+                title="收起侧栏 (⌃⌘S)"
+                aria-expanded={true}
+                aria-controls="sidebar-navigation"
+                className="ml-2 h-7 w-7 flex items-center justify-center rounded-md text-stone-500 dark:text-stone-400 hover:text-stone-800 dark:hover:text-stone-200 hover:bg-stone-200/60 dark:hover:bg-stone-800/60 cursor-pointer no-drag-region transition-colors"
+              >
+                <SidebarToggleIcon collapsed={false} />
+              </button>
+            </div>
+
+            {/* Sidebar */}
+            <aside
+              id="sidebar-navigation"
+              className="relative flex flex-col flex-1 min-h-0"
             >
-              <AlertTriangle className={`w-3.5 h-3.5 shrink-0 ${rescanError || !vaultStatus?.open ? 'text-rose-600 dark:text-rose-400' : 'text-amber-600 dark:text-amber-400'}`} />
-              {!sidebarCollapsed && <span>
-                {rescanError || !vaultStatus?.open
-                  ? '异常'
-                  : parseErrorCount + danglingRefCount}
-              </span>}
-            </button>
-          )}
-        </div>
-      </aside>
-      </div>
+              {/* Resize Handle */}
+              <div
+                onPointerDown={handlePointerDown}
+                onPointerMove={handlePointerMove}
+                onPointerUp={handlePointerUp}
+                onPointerCancel={handlePointerUp}
+                onLostPointerCapture={handleLostPointerCapture}
+                className="absolute top-0 right-0 w-1 h-full cursor-col-resize no-drag-region z-20 touch-none"
+                title="拖拽调整侧边栏宽度"
+              />
 
-      {/* Main Content Area */}
-      <main className="flex-1 flex flex-col min-w-0 overflow-hidden rounded-2xl border border-stone-200/70 dark:border-stone-800/70 shadow-xs bg-stone-50 dark:bg-stone-900 mt-2 mr-2 mb-2">
+              {/* Primary Navigation */}
+              <div className="flex-1 overflow-y-auto px-2 pb-2 space-y-0.5 pt-2">
+                <div className="flex gap-1 mb-2">
+                  {/* Quick Search */}
+                  <button
+                    id="pata-search"
+                    onClick={() => setIsSearchOpen(true)}
+                    aria-label="全局搜索"
+                    className="min-w-0 h-8 flex items-center px-2.5 py-1.5 rounded-md text-xs text-stone-500 dark:text-stone-400 hover:text-stone-800 dark:hover:text-stone-200 hover:bg-stone-200/60 dark:hover:bg-stone-800/60 border border-stone-200/80 dark:border-stone-800/80 bg-stone-50/70 dark:bg-stone-900/50 transition-colors shadow-2xs cursor-pointer group flex-1 justify-between"
+                    title="全局搜索 (⌘K / ⌘P)"
+                  >
+                    <div className="flex items-center space-x-2 truncate">
+                      <Search className="w-3.5 h-3.5 shrink-0 opacity-70 group-hover:opacity-100" />
+                      <span>搜索</span>
+                    </div>
+                    <kbd className="text-[10px] font-mono opacity-60 bg-stone-200/80 dark:bg-stone-800 px-1 py-0.2 rounded shrink-0">
+                      ⌘K
+                    </kbd>
+                  </button>
+                </div>
+
+                <button
+                  id="pata-nav-today"
+                  onClick={() => goNav('today')}
+                  aria-label="Today"
+                  className={`w-full flex items-center space-x-2.5 px-2.5 py-2 rounded-md text-xs font-medium transition-colors cursor-pointer ${
+                    activeNav === 'today'
+                      ? 'bg-[var(--pata-brand)] text-white shadow-xs'
+                      : 'text-stone-700 dark:text-stone-300 hover:bg-stone-200/60 dark:hover:bg-stone-800/60'
+                  }`}
+                  title="Today"
+                >
+                  <Calendar className="w-4 h-4 shrink-0" />
+                  <span>Today</span>
+                </button>
+
+                <button
+                  id="pata-nav-tasks"
+                  onClick={() => goNav('tasks')}
+                  aria-label="Tasks"
+                  className={`w-full flex items-center space-x-2.5 px-2.5 py-2 rounded-md text-xs font-medium transition-colors cursor-pointer ${
+                    activeNav === 'tasks'
+                      ? 'bg-[var(--pata-brand)] text-white shadow-xs'
+                      : 'text-stone-700 dark:text-stone-300 hover:bg-stone-200/60 dark:hover:bg-stone-800/60'
+                  }`}
+                  title="Tasks"
+                >
+                  <CheckSquare className="w-4 h-4 shrink-0" />
+                  <span>Tasks</span>
+                </button>
+
+                <button
+                  id="pata-nav-notes"
+                  onClick={() => goNav('notes')}
+                  aria-label="Notes"
+                  className={`w-full flex items-center space-x-2.5 px-2.5 py-2 rounded-md text-xs font-medium transition-colors cursor-pointer ${
+                    activeNav === 'notes'
+                      ? 'bg-[var(--pata-brand)] text-white shadow-xs'
+                      : 'text-stone-700 dark:text-stone-300 hover:bg-stone-200/60 dark:hover:bg-stone-800/60'
+                  }`}
+                  title="Notes"
+                >
+                  <FileText className="w-4 h-4 shrink-0" />
+                  <span>Notes</span>
+                </button>
+
+                {/* Tags section */}
+                <div className="pt-3">
+                  <div className="text-[10px] uppercase font-semibold text-stone-400 px-2 mb-1 flex items-center justify-between">
+                    <span>全局标签</span>
+                    {vaultStatus?.open && (
+                      <span className="text-[9px] text-stone-400 font-mono">{tags.length}</span>
+                    )}
+                  </div>
+                  <div className="space-y-0.5 px-1">
+                    {!vaultStatus?.open ? (
+                      <div className="px-2 py-1.5 text-xs text-stone-400 italic">Vault 尚未打开</div>
+                    ) : (
+                      <>
+                        <button
+                          onClick={handleSelectAllTags}
+                          className={`w-full flex items-center justify-between px-2 py-1.5 rounded-md text-xs transition-colors min-h-[32px] text-left cursor-pointer ${
+                            activeNav === 'tag' && isVirtualAllTag(selectedTag)
+                              ? 'bg-stone-200/90 dark:bg-stone-800 text-stone-900 dark:text-stone-100 font-semibold ring-1 ring-[var(--pata-border)]'
+                              : 'text-stone-600 dark:text-stone-400 hover:bg-stone-200/50 dark:hover:bg-stone-800/50'
+                          }`}
+                          title="全部"
+                        >
+                          <div className="flex items-center space-x-1.5 truncate mr-2">
+                            <Hash className="w-3.5 h-3.5 shrink-0 opacity-60" />
+                            <span className="truncate">全部</span>
+                          </div>
+                        </button>
+
+                        {tagsLoading && tags.length === 0 ? (
+                          <div className="px-2 py-1.5 text-xs text-stone-400">加载标签...</div>
+                        ) : tags.length === 0 ? (
+                          <div className="px-2 py-1.5 text-xs text-stone-400 italic">暂无标签</div>
+                        ) : (
+                          tags.map((item) => (
+                            <button
+                              key={item.tag}
+                              onClick={() => handleSelectTag(item.tag)}
+                              className={`w-full flex items-center justify-between px-2 py-1.5 rounded-md text-xs transition-colors min-h-[32px] text-left cursor-pointer ${
+                                activeNav === 'tag' && selectedTag === item.tag
+                                  ? 'bg-stone-200/90 dark:bg-stone-800 text-stone-900 dark:text-stone-100 font-semibold ring-1 ring-[var(--pata-border)]'
+                                  : 'text-stone-600 dark:text-stone-400 hover:bg-stone-200/50 dark:hover:bg-stone-800/50'
+                              }`}
+                              title={`#${item.tag} (共 ${item.total} 项)`}
+                            >
+                              <div className="flex items-center space-x-1.5 truncate mr-2">
+                                <Hash className="w-3.5 h-3.5 shrink-0 opacity-60" />
+                                <span className="truncate">{item.tag}</span>
+                              </div>
+                              <span className="text-[10px] font-mono px-1.5 py-0.5 rounded-full bg-stone-200/70 dark:bg-stone-800 text-stone-500 dark:text-stone-400 shrink-0">
+                                {item.total}
+                              </span>
+                            </button>
+                          ))
+                        )}
+                      </>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Sidebar Footer: settings entry + persistent health warning if present */}
+              <div className="relative p-2 flex items-center no-drag-region border-t border-stone-200/60 dark:border-stone-800/60 gap-1.5 justify-between">
+                <div className="flex items-center gap-1.5 min-w-0">
+                  <button
+                    id="pata-settings"
+                    onClick={() => {
+                      if (isSettingsOpen) {
+                        setIsSettingsOpen(false);
+                      } else {
+                        handleOpenSettings();
+                      }
+                    }}
+                    aria-label="设置"
+                    className={`flex items-center space-x-2 px-2.5 py-1.5 rounded-md text-xs font-medium transition cursor-pointer ${
+                      isSettingsOpen
+                        ? 'bg-[var(--pata-brand)] text-white shadow-xs'
+                        : 'text-stone-600 dark:text-stone-400 hover:text-stone-900 dark:hover:text-stone-100 hover:bg-stone-200/60 dark:hover:bg-stone-800/60'
+                    }`}
+                    title="设置 (⌘,)"
+                  >
+                    <Settings className="w-4 h-4 shrink-0" />
+                    <span>设置</span>
+                  </button>
+
+                  {renderUpdateButton(false)}
+                </div>
+
+                {(hasHealthIssues || rescanError || (vaultStatus?.configured && !vaultStatus?.open)) && (
+                  <button
+                    onClick={() => {
+                      setShowHealthModal(true);
+                    }}
+                    aria-label="Vault 状态与健康异常诊断"
+                    className={`flex items-center space-x-1 px-1.5 py-1 rounded text-xs font-medium border transition cursor-pointer shrink-0 ${
+                      rescanError || !vaultStatus?.open
+                        ? 'bg-rose-100 dark:bg-rose-950/70 text-rose-800 dark:text-rose-200 border-rose-300 dark:border-rose-800/80 hover:bg-rose-200/80'
+                        : 'bg-amber-100 dark:bg-amber-950/70 text-amber-900 dark:text-amber-200 border-amber-300 dark:border-amber-800/80 hover:bg-amber-200/80'
+                    }`}
+                    title="Vault 状态与健康异常诊断"
+                  >
+                    <AlertTriangle className={`w-3.5 h-3.5 shrink-0 ${rescanError || !vaultStatus?.open ? 'text-rose-600 dark:text-rose-400' : 'text-amber-600 dark:text-amber-400'}`} />
+                    <span>
+                      {rescanError || !vaultStatus?.open
+                        ? '异常'
+                        : parseErrorCount + danglingRefCount}
+                    </span>
+                  </button>
+                )}
+              </div>
+            </aside>
+          </div>
+        )}
+
+        {/* Main Content Area */}
+        <main className={`flex-1 flex flex-col min-w-0 overflow-hidden rounded-2xl border border-stone-200/70 dark:border-stone-800/70 shadow-xs bg-stone-50 dark:bg-stone-900 ${
+          sidebarCollapsed ? 'mx-2 mb-2' : 'mr-2 my-2'
+        }`}>
 
         {/* Business Views Container (hidden when settings is open, preserving editor DOM/scroll/cursor) */}
         <div
@@ -1030,6 +1249,7 @@ export default function App() {
           </div>
         )}
       </main>
+      </div>
 
       {/* Global Quick Search Overlay */}
       <SearchOverlay

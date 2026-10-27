@@ -453,4 +453,98 @@ textarea.bg-transparent:focus-visible,
   color: #34d399 !important; /* emerald-400 */
 }
 
+/* ---- Nav Morphing View Transitions (Magpie style) ---- */
+:root {
+  --morph-t: 0.32s;
+  --morph-ease: cubic-bezier(0.42, 0, 0.58, 1);
+}
+
+#pata-sidebar, .nav-morph #pata-sidebar {
+  view-transition-name: pata-sidebar;
+}
+#pata-brand, .nav-morph #pata-brand {
+  view-transition-name: pata-brand;
+}
+#pata-toggle, .nav-morph #pata-toggle {
+  view-transition-name: pata-toggle;
+}
+#pata-nav-today, .nav-morph #pata-nav-today {
+  view-transition-name: nav-today;
+}
+#pata-nav-tasks, .nav-morph #pata-nav-tasks {
+  view-transition-name: nav-tasks;
+}
+#pata-nav-notes, .nav-morph #pata-nav-notes {
+  view-transition-name: nav-notes;
+}
+#pata-search, .nav-morph #pata-search {
+  view-transition-name: pata-search;
+}
+#pata-settings, .nav-morph #pata-settings {
+  view-transition-name: pata-settings;
+}
+#pata-main-view, .nav-morph #pata-main-view {
+  view-transition-name: pata-main;
+}
+
+::view-transition-group(*) {
+  z-index: 1;
+  animation-duration: var(--morph-t);
+  animation-timing-function: var(--morph-ease);
+}
+
+::view-transition-old(*),
+::view-transition-new(*) {
+  inline-size: auto;
+  block-size: auto;
+}
+
+::view-transition-group(root),
+::view-transition-group(pata-sidebar) {
+  z-index: 0;
+}
+
+/* 主工作区平滑位移，避免图层重影 */
+::view-transition-old(pata-main) {
+  display: none;
+}
+::view-transition-new(pata-main) {
+  animation: none;
+}
+
+/* 侧栏抽屉式平滑滑入滑出 */
+::view-transition-old(pata-sidebar):only-child {
+  animation: pata-side-out var(--morph-t) var(--morph-ease) both;
+}
+::view-transition-new(pata-sidebar):only-child {
+  animation: pata-side-in var(--morph-t) var(--morph-ease) both;
+}
+
+@keyframes pata-side-in {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+@keyframes pata-side-out {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-100%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-group(*),
+  ::view-transition-old(*),
+  ::view-transition-new(*) {
+    animation: none !important;
+  }
+}
+
+
 

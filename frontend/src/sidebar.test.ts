@@ -7,14 +7,18 @@ import { fileURLToPath } from 'node:url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-test('侧栏收起状态记忆与偏好持久化', () => {
+test('侧栏收起状态记忆与偏好持久化（默认完全收起）', () => {
   const appPath = path.resolve(__dirname, 'App.tsx');
   const appContent = fs.readFileSync(appPath, 'utf-8');
 
-  // 1. 初始化偏好读取与异常回退
+  // 1. 初始化偏好读取与异常回退（默认收起）
   assert.ok(
-    appContent.includes("localStorage.getItem('pata_sidebar_collapsed') === 'true'"),
+    appContent.includes("localStorage.getItem('pata_sidebar_collapsed')"),
     '应从 localStorage 读取 pata_sidebar_collapsed 作为初始状态'
+  );
+  assert.ok(
+    appContent.includes('return true; // 默认收起'),
+    '未设置偏好时应默认完全收起'
   );
 
   // 2. 状态变更持久化
@@ -23,43 +27,61 @@ test('侧栏收起状态记忆与偏好持久化', () => {
     '侧栏状态变化时应持久化至 localStorage'
   );
 
-  // 3. 收起宽度固定 88px，展开使用动态宽度
+  // 3. 收起态完全折叠并由顶栏承接导航，展开态使用动态宽度
   assert.ok(
-    appContent.includes('sidebarCollapsed ? 88 : sidebarWidth'),
-    '收起时宽度应固定为 88px，展开时使用 sidebarWidth'
+    appContent.includes('{sidebarCollapsed && (') && appContent.includes('{!sidebarCollapsed && ('),
+    '收起时侧栏完全折叠隐藏，由顶栏承接分段导航；展开时展示侧边栏'
+  );
+  assert.ok(
+    appContent.includes('style={{ width: `${sidebarWidth}px` }}'),
+    '展开态侧栏使用动态宽度 sidebarWidth'
   );
 });
 
-test('侧栏收起交互规范：避让交通灯、防透底遮罩、标签展开与设计规范', () => {
+test('侧栏收起交互规范：避让交通灯、Logo 右侧按钮一致性、快捷键与拖拽折叠', () => {
   const appPath = path.resolve(__dirname, 'App.tsx');
   const appContent = fs.readFileSync(appPath, 'utf-8');
 
-  // 收起按钮防透底遮罩
+  // 避让交通灯（84px 安全边距）
   assert.ok(
-    appContent.includes('backdrop-blur') && appContent.includes('bg-stone-100'),
-    '收起切换按钮在折叠状态下应具备不透明/半透明遮罩背景，防止内容滚动时透底'
+    appContent.includes('pl-[84px]'),
+    '顶栏与展开侧栏顶部均应保留 84px 避让 macOS 交通灯'
   );
 
-  // 顶部拖拽条跨越主内容区，避免窄栏无法拖动窗口
+  // 展开与收起按钮均位于 Logo 右侧
   assert.ok(
-    appContent.includes('drag-region') && appContent.includes('top-1'),
-    '顶部应包含贯穿工作区的 drag-region，确保侧栏收起时窗口仍可正常拖拽'
+    appContent.includes('SidebarToggleIcon collapsed={true}') &&
+    appContent.includes('SidebarToggleIcon collapsed={false}'),
+    '展开与收起均使用规范的侧栏切换图标'
+  );
+  assert.ok(
+    appContent.includes('setSidebarCollapsed(false)') && appContent.includes('setSidebarCollapsed(true)'),
+    '应提供展开与收起的切换操作'
   );
 
-  // 标签高亮使用语义 Token 而非硬编码 Tailwind 绿
+  // 快捷键 ⌃⌘S 支持
   assert.ok(
-    !appContent.includes('bg-emerald-100/70 dark:bg-emerald-950/60 text-emerald-900'),
-    '收起态标签按钮不应硬编码 emerald 颜色'
-  );
-  assert.ok(
-    appContent.includes("activeNav === 'tag'") && appContent.includes('var(--pata-brand)'),
-    '收起态标签按钮在 active 时应使用 var(--pata-brand) 语义 Token'
+    appContent.includes("e.code === 'KeyS'") &&
+    appContent.includes('e.metaKey && e.ctrlKey'),
+    '应支持 macOS 原生快捷键 ⌃⌘S 切换侧栏'
   );
 
-  // 标签点击应展开侧栏
+  // 拖拽过度向左折叠 (Drag to fold)
   assert.ok(
-    appContent.includes('setSidebarCollapsed(false)'),
-    '收起状态下的标签按钮点击应展开侧栏'
+    appContent.includes('e.clientX < 140') && appContent.includes('setSidebarCollapsed(true)'),
+    '侧栏向左过度拖拽至小于 140px 时应自动吸附折叠'
+  );
+
+  // 顶部拖拽条与交互保护
+  assert.ok(
+    appContent.includes('drag-region') && appContent.includes('no-drag-region'),
+    '顶栏应合理包含 drag-region 与 no-drag-region'
+  );
+
+  // 导航项使用 var(--pata-brand) 语义高亮
+  assert.ok(
+    appContent.includes("activeNav === 'today'") && appContent.includes('var(--pata-brand)'),
+    '导航项在 active 时应使用 var(--pata-brand) 语义 Token'
   );
 });
 
