@@ -1,7 +1,7 @@
 /**
- * 标题栏 Logo 的启动、保存成功与点击反馈共用一个播放状态。
- * 启动仅播放一次，连续触发重新播放；结束、隐藏或卸载时恢复静态。
- * 尊重系统减少动态效果设置。
+ * 标题栏 Logo 动画控制器：统一管理启动、保存成功与点击/悬停动效。
+ * 启动仅播放一次；交互动效具备防抖防重冷却，进行中不被打断；结束、隐藏或卸载时恢复静态。
+ * 遵循系统减少动态效果（prefers-reduced-motion）规范。
  */
 
 let logoElement: SVGSVGElement | null = null;
@@ -140,12 +140,10 @@ function triggerLogoAnimation(): void {
   safetyTimer = window.setTimeout(stopLogoAnimation, 920);
 }
 
-/** 点击反馈：防抖防重，连续点击不打断正在进行的动效。 */
 export function playLogoClick(): void {
   triggerLogoAnimation();
 }
 
-/** 鼠标经过反馈：防抖防重，动画进行中或冷却期内不重复打断。 */
 export function playLogoHover(): void {
   triggerLogoAnimation();
 }

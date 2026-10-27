@@ -332,7 +332,7 @@
   }
 }
 
-/* 点击：三层卡片轻压、错层弹开，再回到原位。 */
+/* 交互动效（点击/悬停）：三层卡片轻压、错层弹开，再回到原位。 */
 .pata-logo-button { position: relative; z-index: 1; touch-action: manipulation; cursor: default; }
 .pata-logo-button .pata-logo-svg { pointer-events: none; }
 .anim-click .pata-card {
