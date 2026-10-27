@@ -584,7 +584,7 @@ export function TodayView({
     return (
       <div className="h-full overflow-y-auto p-6">
       <div className="py-16 text-center space-y-4 max-w-md mx-auto">
-        <FolderOpen className="w-12 h-12 text-emerald-600 mx-auto opacity-75" />
+        <FolderOpen className="w-12 h-12 text-interaction-600 mx-auto opacity-75" />
         <h2 className="text-base font-semibold text-stone-800 dark:text-stone-200">尚未配置 Vault 目录</h2>
         <p className="text-xs text-stone-500 leading-relaxed">
           Pata 以本地纯文本 Markdown 作为唯一数据真相源（Local First）。请先选择一个本地目录。
@@ -592,7 +592,7 @@ export function TodayView({
         <button
           onClick={onSelectVault}
           disabled={vaultBusy}
-          className="mx-auto flex items-center space-x-1.5 px-4 py-2 rounded-md bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-medium transition disabled:opacity-50 shadow-xs"
+          className="mx-auto flex items-center space-x-1.5 px-4 py-2 rounded-md bg-interaction-700 hover:bg-interaction-800 text-white text-xs font-medium transition disabled:opacity-50 shadow-xs"
         >
           <FolderOpen className="w-3.5 h-3.5" />
           <span>选择 Vault 目录</span>
@@ -614,7 +614,7 @@ export function TodayView({
         <button
           onClick={onSelectVault}
           disabled={vaultBusy}
-          className="px-3.5 py-1.5 rounded-md bg-emerald-700 hover:bg-emerald-800 text-white font-medium transition disabled:opacity-50"
+          className="px-3.5 py-1.5 rounded-md bg-interaction-700 hover:bg-interaction-800 text-white font-medium transition disabled:opacity-50"
         >
           重新选择目录
         </button>
@@ -717,7 +717,7 @@ export function TodayView({
                 disabled={saving}
                 className="flex items-center gap-1 px-2 py-1 rounded-md text-stone-600 dark:text-stone-300 hover:bg-stone-100 dark:hover:bg-stone-800 font-medium transition disabled:opacity-50"
               >
-                <Plus className="w-3.5 h-3.5 text-emerald-600" />
+                <Plus className="w-3.5 h-3.5 text-interaction-600" />
                 <span>从已有任务中选择</span>
               </button>
             </div>
@@ -891,7 +891,7 @@ export function TodayView({
             <div className="flex justify-end gap-2 text-xs">
               <button type="button" autoFocus disabled={creatingActivity || editSaving} onClick={() => void finishLeavePrompt('cancel')} className="px-3 py-1.5 rounded text-stone-600 dark:text-stone-300">取消</button>
               <button type="button" disabled={creatingActivity || editSaving} onClick={() => void finishLeavePrompt('discard')} className="px-3 py-1.5 rounded text-rose-600">放弃</button>
-              <button type="button" disabled={creatingActivity || editSaving} onClick={() => void finishLeavePrompt('save')} className="px-3 py-1.5 rounded bg-emerald-700 text-white disabled:opacity-40">保存并离开</button>
+              <button type="button" disabled={creatingActivity || editSaving} onClick={() => void finishLeavePrompt('save')} className="px-3 py-1.5 rounded bg-interaction-700 text-white disabled:opacity-40">保存并离开</button>
             </div>
           </div>
         </div>
@@ -952,7 +952,7 @@ export function TodayView({
                               await handleAddExisting(t.id);
                               setAddModalOpen(false);
                             }}
-                            className="w-full text-left p-2.5 rounded-lg border border-stone-100 dark:border-stone-800 hover:border-emerald-500/60 hover:bg-stone-50 dark:hover:bg-stone-800/50 transition flex items-center justify-between gap-2 group"
+                            className="w-full text-left p-2.5 rounded-lg border border-stone-100 dark:border-stone-800 hover:border-interaction-500/60 hover:bg-stone-50 dark:hover:bg-stone-800/50 transition flex items-center justify-between gap-2 group"
                           >
                             <div className="flex items-center gap-2 min-w-0 flex-1">
                               <Circle className="w-3.5 h-3.5 text-stone-400 shrink-0" />
@@ -973,7 +973,7 @@ export function TodayView({
                                   {formatActivityTimestamp(t.created_at)}
                                 </span>
                               )}
-                              <Plus className="w-3.5 h-3.5 text-emerald-600 group-hover:scale-110 transition-transform" />
+                              <Plus className="w-3.5 h-3.5 text-interaction-600 group-hover:scale-110 transition-transform" />
                             </div>
                           </button>
                         ))}
@@ -1003,7 +1003,7 @@ export function TodayView({
                               await handleAddExisting(t.id);
                               setAddModalOpen(false);
                             }}
-                            className="w-full text-left p-2.5 rounded-lg border border-stone-100 dark:border-stone-800/80 bg-stone-50/40 dark:bg-stone-900/40 hover:border-emerald-500/60 hover:bg-stone-50 dark:hover:bg-stone-800/50 transition flex items-center justify-between gap-2 group opacity-85 hover:opacity-100"
+                            className="w-full text-left p-2.5 rounded-lg border border-stone-100 dark:border-stone-800/80 bg-stone-50/40 dark:bg-stone-900/40 hover:border-interaction-500/60 hover:bg-stone-50 dark:hover:bg-stone-800/50 transition flex items-center justify-between gap-2 group opacity-85 hover:opacity-100"
                           >
                             <div className="flex items-center gap-2 min-w-0 flex-1">
                               <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-500 shrink-0" />
@@ -1024,7 +1024,7 @@ export function TodayView({
                                   {formatActivityTimestamp(t.created_at)}
                                 </span>
                               )}
-                              <Plus className="w-3.5 h-3.5 text-emerald-600 group-hover:scale-110 transition-transform" />
+                              <Plus className="w-3.5 h-3.5 text-interaction-600 group-hover:scale-110 transition-transform" />
                             </div>
                           </button>
                         ))}

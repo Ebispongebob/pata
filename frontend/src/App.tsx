@@ -467,7 +467,7 @@ export default function App() {
           type="button"
           onClick={handleStartDownload}
           aria-label={`发现新版本 v${available_version}，点击开始下载`}
-          className={`flex items-center ${collapsed ? 'w-full justify-center' : 'space-x-1'} px-2 py-1.5 rounded-md text-xs font-medium text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/50 hover:bg-emerald-100 dark:hover:bg-emerald-900/60 border border-emerald-300 dark:border-emerald-800 transition cursor-pointer shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--pata-focus-ring)]`}
+          className={`flex items-center ${collapsed ? 'w-full justify-center' : 'space-x-1'} px-2 py-1.5 rounded-md text-xs font-medium text-interaction-700 dark:text-interaction-400 bg-interaction-50 dark:bg-interaction-950/50 hover:bg-interaction-100 dark:hover:bg-interaction-900/60 border border-interaction-300 dark:border-interaction-800 transition cursor-pointer shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--pata-focus-ring)]`}
           title={`发现新版本 v${available_version}，点击开始下载`}
         >
           <Download className="w-3.5 h-3.5 shrink-0" />
@@ -830,7 +830,7 @@ export default function App() {
               aria-label="Today"
               className={`h-7 flex items-center space-x-1.5 px-2.5 rounded-md font-medium transition cursor-pointer ${
                 activeNav === 'today'
-                  ? 'bg-[var(--pata-brand)] text-white shadow-xs'
+                  ? 'bg-[var(--pata-accent)] text-[var(--pata-accent-foreground)] shadow-xs'
                   : 'text-stone-600 dark:text-stone-400 hover:text-stone-900 dark:hover:text-stone-100 hover:bg-stone-200/60 dark:hover:bg-stone-800/60'
               }`}
             >
@@ -843,7 +843,7 @@ export default function App() {
               aria-label="Tasks"
               className={`h-7 flex items-center space-x-1.5 px-2.5 rounded-md font-medium transition cursor-pointer ${
                 activeNav === 'tasks'
-                  ? 'bg-[var(--pata-brand)] text-white shadow-xs'
+                  ? 'bg-[var(--pata-accent)] text-[var(--pata-accent-foreground)] shadow-xs'
                   : 'text-stone-600 dark:text-stone-400 hover:text-stone-900 dark:hover:text-stone-100 hover:bg-stone-200/60 dark:hover:bg-stone-800/60'
               }`}
             >
@@ -856,7 +856,7 @@ export default function App() {
               aria-label="Notes"
               className={`h-7 flex items-center space-x-1.5 px-2.5 rounded-md font-medium transition cursor-pointer ${
                 activeNav === 'notes'
-                  ? 'bg-[var(--pata-brand)] text-white shadow-xs'
+                  ? 'bg-[var(--pata-accent)] text-[var(--pata-accent-foreground)] shadow-xs'
                   : 'text-stone-600 dark:text-stone-400 hover:text-stone-900 dark:hover:text-stone-100 hover:bg-stone-200/60 dark:hover:bg-stone-800/60'
               }`}
             >
@@ -896,7 +896,7 @@ export default function App() {
               title="设置 (⌘,)"
               className={`h-7 w-7 flex items-center justify-center rounded-md text-xs font-medium transition cursor-pointer ${
                 isSettingsOpen
-                  ? 'bg-[var(--pata-brand)] text-white shadow-xs'
+                  ? 'bg-[var(--pata-accent)] text-[var(--pata-accent-foreground)] shadow-xs'
                   : 'text-stone-600 dark:text-stone-400 hover:text-stone-900 dark:hover:text-stone-100 hover:bg-stone-200/60 dark:hover:bg-stone-800/60'
               }`}
             >
@@ -1006,7 +1006,7 @@ export default function App() {
                   aria-label="Today"
                   className={`w-full flex items-center space-x-2.5 px-2.5 py-2 rounded-md text-xs font-medium transition-colors cursor-pointer ${
                     activeNav === 'today'
-                      ? 'bg-[var(--pata-brand)] text-white shadow-xs'
+                      ? 'bg-[var(--pata-accent)] text-[var(--pata-accent-foreground)] shadow-xs'
                       : 'text-stone-700 dark:text-stone-300 hover:bg-stone-200/60 dark:hover:bg-stone-800/60'
                   }`}
                   title="Today"
@@ -1021,7 +1021,7 @@ export default function App() {
                   aria-label="Tasks"
                   className={`w-full flex items-center space-x-2.5 px-2.5 py-2 rounded-md text-xs font-medium transition-colors cursor-pointer ${
                     activeNav === 'tasks'
-                      ? 'bg-[var(--pata-brand)] text-white shadow-xs'
+                      ? 'bg-[var(--pata-accent)] text-[var(--pata-accent-foreground)] shadow-xs'
                       : 'text-stone-700 dark:text-stone-300 hover:bg-stone-200/60 dark:hover:bg-stone-800/60'
                   }`}
                   title="Tasks"
@@ -1036,7 +1036,7 @@ export default function App() {
                   aria-label="Notes"
                   className={`w-full flex items-center space-x-2.5 px-2.5 py-2 rounded-md text-xs font-medium transition-colors cursor-pointer ${
                     activeNav === 'notes'
-                      ? 'bg-[var(--pata-brand)] text-white shadow-xs'
+                      ? 'bg-[var(--pata-accent)] text-[var(--pata-accent-foreground)] shadow-xs'
                       : 'text-stone-700 dark:text-stone-300 hover:bg-stone-200/60 dark:hover:bg-stone-800/60'
                   }`}
                   title="Notes"
@@ -1120,7 +1120,7 @@ export default function App() {
                     aria-label="设置"
                     className={`flex items-center space-x-2 px-2.5 py-1.5 rounded-md text-xs font-medium transition cursor-pointer ${
                       isSettingsOpen
-                        ? 'bg-[var(--pata-brand)] text-white shadow-xs'
+                        ? 'bg-[var(--pata-accent)] text-[var(--pata-accent-foreground)] shadow-xs'
                         : 'text-stone-600 dark:text-stone-400 hover:text-stone-900 dark:hover:text-stone-100 hover:bg-stone-200/60 dark:hover:bg-stone-800/60'
                     }`}
                     title="设置 (⌘,)"

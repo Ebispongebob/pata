@@ -50,7 +50,7 @@
 采用 `background`、`surface`、`foreground`、`muted-foreground`、`border`、`accent` / `accent-foreground`、`focus-ring`、`destructive`、`warning`、`success`、`brand` 等**必要**的语义名。
 
 - `background / surface / border` 维持 Pata 已有暖灰、低对比、安静风格；浅/深色分别定义，原型 `#fafaf8` 等**仅供参考，不是必须逐像素照搬**。
-- `accent` 是系统交互强调色，不等于 `brand`。导航选中、主按钮、交互焦点不应继续无条件使用 `emerald-700`。
+- `accent` 是系统交互强调色，不等于 `brand`。导航选中、操作按钮、链接、输入焦点和列表选中态共用 `--pata-accent` 派生的交互色阶；已完成、保存成功和服务已连接保留状态绿。
 - `brand` 仅品牌识别；与 `success`（完成/保存成功）区分；`warning` 和 `destructive` 用于真实风险。
 - 选中与错误状态不能只靠颜色，还需文字、图标或形状辅助区分；确保深浅色及高对比设置下可读。
 

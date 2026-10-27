@@ -122,7 +122,7 @@ export function TagView({
   if (loading && items.length === 0) {
     return (
       <div className="max-w-[900px] mx-auto py-16 flex items-center justify-center text-stone-400 text-xs">
-        <Loader2 className="w-5 h-5 animate-spin mr-2 text-emerald-600" />
+        <Loader2 className="w-5 h-5 animate-spin mr-2 text-interaction-600" />
         <span>{formatTagLoadingText(selectedTag)}</span>
       </div>
     );
@@ -143,7 +143,7 @@ export function TagView({
         {/* Header with Tag Chip & Counts */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 border-b border-stone-200/80 dark:border-stone-800 pb-3">
           <div className="flex items-center space-x-2">
-            <div className="flex items-center space-x-1.5 px-2.5 py-1 rounded-md bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-200/60 dark:border-emerald-800/60 text-emerald-800 dark:text-emerald-300 font-medium text-sm">
+            <div className="flex items-center space-x-1.5 px-2.5 py-1 rounded-md bg-interaction-50 dark:bg-interaction-950/50 border border-interaction-200/60 dark:border-interaction-800/60 text-interaction-800 dark:text-interaction-300 font-medium text-sm">
               <Hash className="w-4 h-4" />
               <span>{formatTagViewHeader(selectedTag)}</span>
             </div>
@@ -178,14 +178,14 @@ export function TagView({
                     }}
                     className={`w-full p-3.5 rounded-xl border transition text-left cursor-pointer group bg-white dark:bg-stone-900/90 ${
                       isSelected
-                        ? 'border-emerald-500 ring-1 ring-emerald-500/30'
-                        : 'border-stone-200/80 dark:border-stone-800 hover:border-emerald-500/50 hover:bg-stone-50/80 dark:hover:bg-stone-800/50'
+                        ? 'border-interaction-500 ring-1 ring-interaction-500/30'
+                        : 'border-stone-200/80 dark:border-stone-800 hover:border-interaction-500/50 hover:bg-stone-50/80 dark:hover:bg-stone-800/50'
                     }`}
                     title={`在右栏查看任务: ${item.title || item.id}`}
                   >
                     <div className="flex items-center justify-between text-xs mb-1.5">
                       <div className="flex items-center space-x-1.5">
-                        <span className="inline-flex items-center space-x-1 text-[10px] px-1.5 py-0.5 rounded bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 border border-emerald-200/60 dark:border-emerald-800/60 font-medium">
+                        <span className="inline-flex items-center space-x-1 text-[10px] px-1.5 py-0.5 rounded bg-interaction-50 dark:bg-interaction-950/40 text-interaction-700 dark:text-interaction-400 border border-interaction-200/60 dark:border-interaction-800/60 font-medium">
                           <CheckSquare className="w-3 h-3" />
                           <span>任务</span>
                         </span>
@@ -202,7 +202,7 @@ export function TagView({
 
                     <div className="flex items-center justify-between gap-2">
                       <div className="min-w-0 flex-1">
-                        <div className="text-xs font-medium text-stone-800 dark:text-stone-200 group-hover:text-emerald-700 dark:group-hover:text-emerald-400 truncate">
+                        <div className="text-xs font-medium text-stone-800 dark:text-stone-200 group-hover:text-interaction-700 dark:group-hover:text-interaction-400 truncate">
                           {item.title || item.id}
                         </div>
                         {item.snippet && (
@@ -211,7 +211,7 @@ export function TagView({
                           </p>
                         )}
                       </div>
-                      <span className="text-[10px] text-stone-400 flex items-center space-x-0.5 shrink-0 group-hover:text-emerald-600 transition">
+                      <span className="text-[10px] text-stone-400 flex items-center space-x-0.5 shrink-0 group-hover:text-interaction-600 transition">
                         <span>查看任务</span>
                         <ChevronRight className="w-3.5 h-3.5" />
                       </span>
@@ -275,7 +275,7 @@ export function TagView({
                   key={`activity-${item.id}`}
                   className={`w-full p-3.5 rounded-xl border transition text-left bg-white dark:bg-stone-900/90 space-y-2 ${
                     isTaskSelected
-                      ? 'border-emerald-500/70 ring-1 ring-emerald-500/20'
+                      ? 'border-interaction-500/70 ring-1 ring-interaction-500/20'
                       : 'border-stone-200/80 dark:border-stone-800'
                   }`}
                 >
@@ -313,7 +313,7 @@ export function TagView({
                     <div className="pt-1.5 border-t border-stone-100 dark:border-stone-800/60 flex justify-end">
                       <button
                         onClick={() => void openTask(item.task_id!)}
-                        className="text-[11px] text-stone-500 hover:text-emerald-700 dark:hover:text-emerald-400 flex items-center space-x-1 transition min-h-[28px] px-1 cursor-pointer"
+                        className="text-[11px] text-stone-500 hover:text-interaction-700 dark:hover:text-interaction-400 flex items-center space-x-1 transition min-h-[28px] px-1 cursor-pointer"
                         title="在右栏查看任务详情"
                       >
                         <span>查看任务</span>

@@ -1,36 +1,71 @@
-# Pata · 啪嗒
+<p align="center">
+  <a href="https://github.com/yukange/pata">
+    <img src="assets/branding/logo.svg" width="96" alt="Pata logo">
+  </a>
+</p>
+<h1 align="center">Pata · 啪嗒</h1>
+<p align="center">A local-first macOS workspace for tasks, daily records, and notes.</p>
+<p align="center">
+  <a href="https://github.com/yukange/pata/releases/latest"><img src="https://img.shields.io/github/v/release/yukange/pata?style=flat-square&label=release" alt="Latest release"></a>
+  <img src="https://img.shields.io/badge/platform-macOS-181717?style=flat-square" alt="macOS">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-181717?style=flat-square" alt="MIT License"></a>
+  <a href="#your-files-stay-yours"><img src="https://img.shields.io/badge/storage-Markdown-181717?style=flat-square" alt="Local Markdown files"></a>
+</p>
+<p align="center">
+  English · <a href="README.zh-CN.md">简体中文</a>
+</p>
 
-**English | [简体中文](README.zh-CN.md)**
+[![Pata on macOS: today's plan and activity timeline with sample data](docs/05-release/screenshots/workspace.png)](https://github.com/yukange/pata/releases/latest)
 
-**Capture a thought. Finish a task.**
+---
 
-Pata is a local-first macOS app for personal work. **Today keeps you focused, Tasks tracks what needs doing, Notes holds what you learn, Activity preserves what happened, and tags connect it all.**
+### Installation
 
-Instead of adding layers of project management, Pata brings your tasks, daily records, and notes into one lightweight workspace.
+Download the latest app from [**GitHub Releases**](https://github.com/yukange/pata/releases/latest).
 
-## Features
+| Platform | Download |
+| --- | --- |
+| macOS · Apple Silicon | [pata.dmg](https://github.com/yukange/pata/releases/latest/download/pata.dmg) |
 
-- **Today**: Plan your day and capture what happened. A task's due date is independent of the days you plan to work on it.
-- **Tasks**: Keep tasks either open or completed, with a running activity history. No complex workflow states or priorities.
-- **Notes**: Browse a single-column note list, write in Markdown, and connect ideas with tags and `[[note references]]`.
-- **Activity**: Record comments on tasks or standalone daily entries. Task activity appears consistently in both the task details and the Today timeline.
-- **Search and attachments**: Search tasks, notes, activity, and attachment filenames. Import and reference files, with native macOS preview support.
-- **Audio transcripts**: Turn an imported MP3 into a Markdown transcript with speakers and millisecond timestamps using your own API key. Jump between the transcript and its audio player.
-- **Local MCP**: Let an external agent search, read, and create tasks and notes, append activity to a task or day plan, and complete or reopen tasks. Activity and creation details show whether an action came from you or an agent.
+Open the disk image, drag Pata into Applications, and launch it. Choose a folder for your Vault when prompted. Current release packages target Apple Silicon Macs.
 
-## Principles
+### One workspace. Three places to start.
+
+- **Today** — Pick the tasks you want to work on and jot down what happens. A daily plan is separate from a task's due date.
+- **Tasks** — Keep the task and its progress together. Add activity as you work; the same record also appears in your daily timeline.
+- **Notes** — Start with an untitled draft. Give it a name when it is ready. Browse notes and write Markdown side by side, with tags and `[[note references]]` to connect ideas.
+
+Search across tasks, notes, and activity. Drop in attachments and preview them with macOS. Import an MP3 to create a transcript with speakers, timestamps, and audio playback.
 
 **Less is More · Record Once · Local First**
 
-- Just **Today / Tasks / Notes** as the three main destinations. No Projects or Inbox.
-- **Markdown + YAML frontmatter** is the source of truth. No separate application database is required. The Vault stores records in `notes/`, `tasks/`, and `plans/`, and original attachments in `files/`.
-- Activity belongs to a Task or DayPlan, so the same record does not need to be stored twice.
-- There is no built-in general-purpose AI chat workspace. Agents connect through the optional local MCP server. Audio transcription is explicitly initiated by the user and uses a cloud ASR service; the API key is stored in macOS Keychain.
-- Keep the experience pleasant and practical for individual use without adding complexity just for future extensibility.
+### Connect your agent
 
-## Run and develop
+Enable **Settings → MCP** in Pata and copy the connection instructions into your MCP-compatible client.
 
-Pata is currently run from source or packaged locally on macOS. See [CONTRIBUTING.md](CONTRIBUTING.md) for setup and the full development workflow. You will need Go, Node.js, Xcode Command Line Tools, and the Wails v3 CLI version matching this repository.
+Your agent can find and create tasks and notes, append activity, and complete or reopen tasks. Pata marks agent-created records so you can see who did what.
+
+The service is off by default, listens only on `127.0.0.1`, and runs while Pata is open. See the [MCP reference](docs/10-settings/proposal.md#mcp) for details.
+
+### Your files stay yours
+
+Your Vault is a local folder. Tasks, day plans, and notes are Markdown files; original attachments stay alongside them.
+
+```text
+vault/
+├── tasks/    Tasks and their activity
+├── plans/    Daily plans and daily records
+├── notes/    Notes, drafts, and transcripts
+└── files/    Original attachments
+```
+
+Back up the whole folder, including `plans/` and `files/`. Notes remain readable in other Markdown tools; use Pata to manage the structured task and day-plan files.
+
+Tasks and notes work offline. Optional audio transcription sends the selected recording to Alibaba Cloud Bailian and requires your own API key, stored in macOS Keychain. An external agent's data handling depends on the client and model you connect.
+
+### Run from source
+
+Prepare Go, Node.js, Xcode Command Line Tools, and the matching Wails v3 CLI as described in [CONTRIBUTING.md](CONTRIBUTING.md#prerequisites), then:
 
 ```bash
 git clone https://github.com/yukange/pata.git
@@ -40,20 +75,16 @@ npm --prefix frontend ci
 wails3 task dev
 ```
 
-Run `wails3 task package` to build a local app package. When changing Go service interfaces, follow the [development instructions](CONTRIBUTING.md#create-new-files) for generating Wails bindings; do not hand-edit generated files.
+Build a local macOS app with `wails3 task package`.
 
-## Connect an agent (MCP)
+### Documentation
 
-In Pata, open **Settings → MCP**, enable the local service, and copy its connection instructions into your agent. The service listens only on `127.0.0.1` and requires Pata to stay running. It is disabled by default and stays disabled after you manually stop it.
+[Product decisions](docs/01-validate/decisions.md) · [Data format](docs/02-foundation/schema.md) · [Design and implementation](docs/README.md)
 
-The seven tools cover search, list, read, create task, create note, append activity, and set task status. See the [MCP reference](docs/10-settings/proposal.md#mcp) for their behavior and limitations.
+### Contributing
 
-## Documentation
+Found a bug or have an idea? [Open an issue](https://github.com/yukange/pata/issues). Before sending a pull request, read the [contribution guide](CONTRIBUTING.md).
 
-- [Design and implementation history](docs/README.md): Delivery stages 01–13 and their documents (Chinese).
-- [Data schema](docs/02-foundation/schema.md): Authoritative Markdown data model (Chinese).
-- [Product decisions](docs/01-validate/decisions.md): Agreed design choices and boundaries (Chinese).
-- [AGENTS.md](AGENTS.md): Project instructions for development agents (Chinese).
-- [Early interaction prototype](docs/01-validate/prototype/index.html): A browser-viewable historical prototype, **not a representation of the complete current macOS app**.
+### License
 
-Stages 01–13 have been implemented and validated on macOS. Future changes will follow actual usage needs rather than a predetermined series of feature stages.
+[MIT](LICENSE) · Copyright © 2026 Pata contributors.

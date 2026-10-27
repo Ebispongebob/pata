@@ -102,7 +102,7 @@ export function ActivityItem({
                   e.stopPropagation();
                   taskContext.onOpenTask(taskContext.taskId);
                 }}
-                className="ml-2 text-xs font-medium text-emerald-700 dark:text-emerald-400 hover:underline cursor-pointer align-baseline break-words text-left"
+                className="ml-2 text-xs font-medium text-interaction-700 dark:text-interaction-400 hover:underline cursor-pointer align-baseline break-words text-left"
                 title="在右侧打开任务详情"
               >
                 {taskContext.taskTitle || taskContext.taskId}
@@ -148,7 +148,7 @@ export function ActivityItem({
                   e.stopPropagation();
                   taskContext.onOpenTask(taskContext.taskId);
                 }}
-                className="text-xs font-medium text-emerald-700 dark:text-emerald-400 hover:underline cursor-pointer text-left break-words"
+                className="text-xs font-medium text-interaction-700 dark:text-interaction-400 hover:underline cursor-pointer text-left break-words"
                 title="在右侧打开任务详情"
               >
                 {taskContext.taskTitle || taskContext.taskId}
@@ -206,7 +206,7 @@ export function ActivityItem({
               onMouseDown={(e) => e.preventDefault()}
               onClick={onSaveEdit}
               disabled={editSaving || !editBody.trim()}
-              className="px-2.5 py-1 rounded-md bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-medium disabled:opacity-40 transition cursor-pointer"
+              className="px-2.5 py-1 rounded-md bg-interaction-700 hover:bg-interaction-800 text-white text-xs font-medium disabled:opacity-40 transition cursor-pointer"
             >
               {editSaving ? '保存中' : '保存'}
             </button>

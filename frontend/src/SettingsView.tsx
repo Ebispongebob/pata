@@ -253,7 +253,7 @@ export function SettingsView({
                 onClick={() => onThemeChange('system')}
                 className={`flex items-center justify-center space-x-2 px-3 py-2.5 rounded-lg border text-xs font-medium transition cursor-pointer ${
                   themeMode === 'system'
-                    ? 'border-emerald-600 bg-emerald-50/80 text-emerald-900 dark:bg-emerald-950/50 dark:border-emerald-500 dark:text-emerald-200 shadow-2xs font-semibold'
+                    ? 'border-interaction-600 bg-interaction-50/80 text-interaction-900 dark:bg-interaction-950/50 dark:border-interaction-500 dark:text-interaction-200 shadow-2xs font-semibold'
                     : 'border-stone-200 dark:border-stone-800 hover:bg-stone-100 dark:hover:bg-stone-800 text-stone-600 dark:text-stone-400'
                 }`}
               >
@@ -266,7 +266,7 @@ export function SettingsView({
                 onClick={() => onThemeChange('light')}
                 className={`flex items-center justify-center space-x-2 px-3 py-2.5 rounded-lg border text-xs font-medium transition cursor-pointer ${
                   themeMode === 'light'
-                    ? 'border-emerald-600 bg-emerald-50/80 text-emerald-900 dark:bg-emerald-950/50 dark:border-emerald-500 dark:text-emerald-200 shadow-2xs font-semibold'
+                    ? 'border-interaction-600 bg-interaction-50/80 text-interaction-900 dark:bg-interaction-950/50 dark:border-interaction-500 dark:text-interaction-200 shadow-2xs font-semibold'
                     : 'border-stone-200 dark:border-stone-800 hover:bg-stone-100 dark:hover:bg-stone-800 text-stone-600 dark:text-stone-400'
                 }`}
               >
@@ -279,7 +279,7 @@ export function SettingsView({
                 onClick={() => onThemeChange('dark')}
                 className={`flex items-center justify-center space-x-2 px-3 py-2.5 rounded-lg border text-xs font-medium transition cursor-pointer ${
                   themeMode === 'dark'
-                    ? 'border-emerald-600 bg-emerald-50/80 text-emerald-900 dark:bg-emerald-950/50 dark:border-emerald-500 dark:text-emerald-200 shadow-2xs font-semibold'
+                    ? 'border-interaction-600 bg-interaction-50/80 text-interaction-900 dark:bg-interaction-950/50 dark:border-interaction-500 dark:text-interaction-200 shadow-2xs font-semibold'
                     : 'border-stone-200 dark:border-stone-800 hover:bg-stone-100 dark:hover:bg-stone-800 text-stone-600 dark:text-stone-400'
                 }`}
               >
@@ -430,7 +430,7 @@ export function SettingsView({
               <button
                 type="button"
                 onClick={handleOpenConsole}
-                className="text-xs text-emerald-700 dark:text-emerald-400 hover:underline flex items-center space-x-1 cursor-pointer"
+                className="text-xs text-interaction-700 dark:text-interaction-400 hover:underline flex items-center space-x-1 cursor-pointer"
               >
                 <span>获取 API Key</span>
                 <ExternalLink className="w-3 h-3" />
@@ -472,14 +472,14 @@ export function SettingsView({
                       onChange={(e) => setApiKeyInput(e.target.value)}
                       placeholder="sk-..."
                       autoFocus
-                      className="w-full pl-9 pr-3 py-2 rounded-lg bg-white dark:bg-stone-950 border border-stone-200 dark:border-stone-800 font-mono text-xs text-stone-900 dark:text-stone-100 placeholder-stone-400 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition"
+                      className="w-full pl-9 pr-3 py-2 rounded-lg bg-white dark:bg-stone-950 border border-stone-200 dark:border-stone-800 font-mono text-xs text-stone-900 dark:text-stone-100 placeholder-stone-400 focus:outline-none focus:border-interaction-500 focus:ring-1 focus:ring-interaction-500 transition"
                     />
                   </div>
 
                   <button
                     type="submit"
                     disabled={asrSaving || !apiKeyInput.trim()}
-                    className="px-3.5 py-2 rounded-lg bg-emerald-700 hover:bg-emerald-800 disabled:opacity-50 text-white text-xs font-medium transition shadow-2xs shrink-0 cursor-pointer"
+                    className="px-3.5 py-2 rounded-lg bg-interaction-700 hover:bg-interaction-800 disabled:opacity-50 text-white text-xs font-medium transition shadow-2xs shrink-0 cursor-pointer"
                   >
                     {asrSaving ? '保存中...' : '保存到 Keychain'}
                   </button>
@@ -549,7 +549,7 @@ export function SettingsView({
               disabled={autoCheckLoading || !isOfficialBuild}
               onClick={handleToggleAutoCheck}
               className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--pata-focus-ring)] disabled:opacity-50 ${
-                autoCheckUpdates && isOfficialBuild ? 'bg-[var(--pata-brand)]' : 'bg-stone-300 dark:bg-stone-700'
+                autoCheckUpdates && isOfficialBuild ? 'bg-[var(--pata-accent)]' : 'bg-stone-300 dark:bg-stone-700'
               }`}
             >
               <span

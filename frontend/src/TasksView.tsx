@@ -135,7 +135,7 @@ export function TasksView({
     return (
       <div className="h-full overflow-y-auto p-6">
       <div className="py-16 text-center space-y-4 max-w-md mx-auto">
-        <FolderOpen className="w-12 h-12 text-emerald-600 mx-auto opacity-75" />
+        <FolderOpen className="w-12 h-12 text-interaction-600 mx-auto opacity-75" />
         <h2 className="text-base font-semibold text-stone-800 dark:text-stone-200">尚未配置 Vault 目录</h2>
         <p className="text-xs text-stone-500 leading-relaxed">
           Pata 以本地纯文本 Markdown 作为唯一数据真相源（Local First）。请先选择一个本地目录。
@@ -143,7 +143,7 @@ export function TasksView({
         <button
           onClick={onSelectVault}
           disabled={vaultBusy}
-          className="mx-auto flex items-center space-x-1.5 px-4 py-2 rounded-md bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-medium transition disabled:opacity-50 shadow-xs"
+          className="mx-auto flex items-center space-x-1.5 px-4 py-2 rounded-md bg-interaction-700 hover:bg-interaction-800 text-white text-xs font-medium transition disabled:opacity-50 shadow-xs"
         >
           <FolderOpen className="w-3.5 h-3.5" />
           <span>选择 Vault 目录</span>
@@ -165,7 +165,7 @@ export function TasksView({
         <button
           onClick={onSelectVault}
           disabled={vaultBusy}
-          className="px-3.5 py-1.5 rounded-md bg-emerald-700 hover:bg-emerald-800 text-white font-medium transition disabled:opacity-50"
+          className="px-3.5 py-1.5 rounded-md bg-interaction-700 hover:bg-interaction-800 text-white font-medium transition disabled:opacity-50"
         >
           重新选择目录
         </button>
@@ -321,7 +321,7 @@ export function TasksView({
                         {t.tags.map((tag) => (
                           <span
                             key={tag}
-                            className="inline-flex items-center text-[10px] px-1.5 py-0.2 rounded bg-stone-100 dark:bg-stone-800 text-emerald-700 dark:text-emerald-300"
+                            className="inline-flex items-center text-[10px] px-1.5 py-0.2 rounded bg-stone-100 dark:bg-stone-800 text-interaction-700 dark:text-interaction-300"
                           >
                             #{tag}
                           </span>
