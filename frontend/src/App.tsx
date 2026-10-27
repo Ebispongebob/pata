@@ -27,7 +27,7 @@ import { TagView } from './TagView';
 import { SettingsView } from './SettingsView';
 import { SearchOverlay } from './SearchOverlay';
 import { PataLogo } from './components/PataLogo';
-import { registerTitlebarLogo, playLogoLaunch } from './logoAnimation';
+import { registerTitlebarLogo, playLogoLaunch, playLogoClick } from './logoAnimation';
 import { isVirtualAllTag } from './tagAll';
 import { DetailSplit, useDetailOrigin } from './DetailSplit';
 import { TaskDetailPanel, TaskDetailHandle } from './TaskDetailPanel';
@@ -143,14 +143,15 @@ export default function App() {
   const [health, setHealth] = useState<VaultHealth | null>(null);
   const [showHealthModal, setShowHealthModal] = useState(false);
 
-  // Titlebar logo initialization: play launch animation once on initial app ready
+  // 侧栏切换会替换 SVG；重新绑定当前 Logo，启动动画仍只播放一次。
   useEffect(() => {
     const unregister = registerTitlebarLogo(titlebarLogoRef.current);
-    playLogoLaunch();
+    const launchFrame = requestAnimationFrame(playLogoLaunch);
     return () => {
+      cancelAnimationFrame(launchFrame);
       unregister();
     };
-  }, []);
+  }, [sidebarCollapsed]);
 
   // Global search overlay state
   const [isSearchOpen, setIsSearchOpen] = useState(false);
@@ -790,7 +791,14 @@ export default function App() {
           {/* Left: Traffic lights clearance (84px pl) -> Logo -> Sidebar toggle button on the right of Logo */}
           <div className="flex items-center gap-2 shrink-0">
             <div id="pata-brand" className="flex items-center gap-2">
-              <PataLogo ref={titlebarLogoRef} className="w-6 h-6 shrink-0" />
+              <button
+                type="button"
+                onClick={playLogoClick}
+                aria-label="播放 Pata Logo 动画"
+                className="pata-logo-button no-drag-region shrink-0 rounded-md cursor-pointer"
+              >
+                <PataLogo ref={titlebarLogoRef} className="w-6 h-6" aria-hidden="true" />
+              </button>
               <span className="text-sm font-medium text-stone-600 dark:text-stone-300">Pata</span>
             </div>
             <button
@@ -926,7 +934,14 @@ export default function App() {
           >
             <div className="h-[52px] shrink-0 drag-region flex items-center pl-[84px] pr-3 select-none overflow-hidden">
               <div id="pata-brand" className="flex items-center gap-2">
-                <PataLogo ref={titlebarLogoRef} className="w-6 h-6 shrink-0" />
+                <button
+                  type="button"
+                  onClick={playLogoClick}
+                  aria-label="播放 Pata Logo 动画"
+                  className="pata-logo-button no-drag-region shrink-0 rounded-md cursor-pointer"
+                >
+                  <PataLogo ref={titlebarLogoRef} className="w-6 h-6" aria-hidden="true" />
+                </button>
                 <span className="text-sm font-medium text-stone-600 dark:text-stone-300">Pata</span>
               </div>
               <button

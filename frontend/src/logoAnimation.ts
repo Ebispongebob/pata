@@ -1,14 +1,7 @@
 /**
- * Pata Logo Animation Controller (Stage 6 / P6-003)
- * Minimal wiring for titlebar logo launch & success animations.
- *
- * Rules:
- * 1. Launch: Played once when main UI is first ready; no replay on nav / vault switch / list refresh.
- * 2. Success: Played on TodayView quick activity and TasksView activity save success.
- * 3. Concurrent triggers merge (restarts cleanly without stacking).
- * 4. Ended via animationend or safety timeout, returning to static baseline.
- * 5. Paused/cleared on window hide or component unmount.
- * 6. Immediate static fallback on prefers-reduced-motion.
+ * 标题栏 Logo 的启动、保存成功与点击反馈共用一个播放状态。
+ * 启动仅播放一次，连续触发重新播放；结束、隐藏或卸载时恢复静态。
+ * 尊重系统减少动态效果设置。
  */
 
 let logoElement: SVGSVGElement | null = null;
@@ -17,15 +10,12 @@ let hasPlayedLaunch = false;
 let cleanupHandler: (() => void) | null = null;
 
 export function registerTitlebarLogo(el: SVGSVGElement | null): () => void {
-  logoElement = el;
-
-  // StrictMode 开发模式双挂载后允许重新播放一次；生产中 App 作为根组件仅挂载一次
-  hasPlayedLaunch = false;
-
   if (cleanupHandler) {
     cleanupHandler();
     cleanupHandler = null;
   }
+
+  logoElement = el;
 
   if (!el) {
     return () => {};
@@ -38,15 +28,12 @@ export function registerTitlebarLogo(el: SVGSVGElement | null): () => void {
   };
 
   const handleAnimationEnd = (e: AnimationEvent) => {
-    // Both choreographies have distinct settling elements:
-    // anim-success ends with pata-success-card-front (~750ms)
-    // anim-launch ends with pata-launch-sparkle on pata-sparkle-3 (~660ms)
-    const isLaunchEnd =
-      e.animationName === 'pata-launch-sparkle' &&
+    const isLaunchEnd = e.animationName === 'pata-launch-sparkle' &&
       (e.target as Element)?.classList?.contains('pata-sparkle-3');
     const isSuccessEnd = e.animationName === 'pata-success-card-front';
-
-    if (isLaunchEnd || isSuccessEnd) {
+    const isClickEnd = e.animationName === 'pata-click-sparkle-shoot' &&
+      (e.target as Element)?.classList?.contains('pata-sparkle-3');
+    if (isLaunchEnd || isSuccessEnd || isClickEnd) {
       stopLogoAnimation();
     }
   };
@@ -72,7 +59,7 @@ export function stopLogoAnimation(): void {
     safetyTimer = null;
   }
   if (!logoElement) return;
-  logoElement.classList.remove('anim-launch', 'anim-success');
+  logoElement.classList.remove('anim-launch', 'anim-success', 'anim-click');
 }
 
 export function playLogoLaunch(): void {
@@ -123,4 +110,16 @@ export function playLogoSuccess(): void {
   } catch (err) {
     console.error('Logo success animation failed:', err);
   }
+}
+
+/** 点击反馈与启动、保存反馈共用控制器，连续触发只重播当前一次。 */
+export function playLogoClick(): void {
+  if (!logoElement) return;
+  stopLogoAnimation();
+  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches ||
+      document.visibilityState === 'hidden') return;
+
+  void logoElement.getBoundingClientRect();
+  logoElement.classList.add('anim-click');
+  safetyTimer = window.setTimeout(stopLogoAnimation, 920);
 }
