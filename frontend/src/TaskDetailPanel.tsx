@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef, useImperativeHandle, forwardRef } from 'react';
-import { Events } from '@wailsio/runtime';
+import { Clipboard, Events } from '@wailsio/runtime';
 import {
   ArrowRight,
   MoreHorizontal,
@@ -11,6 +11,7 @@ import {
   AlertCircle,
   RefreshCw,
   Info,
+  Copy,
 } from 'lucide-react';
 import * as VaultService from '../bindings/pata/internal/app/vaultservice';
 import { Task, TaskStatus, Activity } from '../bindings/pata/internal/storage/markdown/models';
@@ -132,6 +133,7 @@ export const TaskDetailPanel = forwardRef<TaskDetailHandle, TaskDetailPanelProps
 
   // Popover / Menu dropdown states
   const [menuOpen, setMenuOpen] = useState(false);
+  const [copiedForAgent, setCopiedForAgent] = useState(false);
   const [dueOpen, setDueOpen] = useState(false);
 
   // Modals
@@ -170,6 +172,7 @@ export const TaskDetailPanel = forwardRef<TaskDetailHandle, TaskDetailPanelProps
 
   const titleTextareaRef = useRef<HTMLTextAreaElement>(null);
   const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const copyFeedbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const externalModifiedRef = useRef(false);
   const externalChangeVersionRef = useRef(0);
   const hasDraftRef = useRef(false);
@@ -283,6 +286,10 @@ export const TaskDetailPanel = forwardRef<TaskDetailHandle, TaskDetailPanelProps
     };
     window.addEventListener('mousedown', handleOutsideClick);
     return () => window.removeEventListener('mousedown', handleOutsideClick);
+  }, []);
+
+  useEffect(() => () => {
+    if (copyFeedbackTimerRef.current) window.clearTimeout(copyFeedbackTimerRef.current);
   }, []);
 
   // Escape key listener to dismiss open popovers
@@ -609,6 +616,18 @@ export const TaskDetailPanel = forwardRef<TaskDetailHandle, TaskDetailPanelProps
     setIsEditingBody(false);
   };
 
+  const handleCopyForAgent = async () => {
+    setMenuOpen(false);
+    try {
+      await Clipboard.SetText(`处理这个任务：pata://task/${taskId}`);
+      setCopiedForAgent(true);
+      if (copyFeedbackTimerRef.current) window.clearTimeout(copyFeedbackTimerRef.current);
+      copyFeedbackTimerRef.current = window.setTimeout(() => setCopiedForAgent(false), 2000);
+    } catch {
+      setDetailError('复制给 Agent 失败，请重试');
+    }
+  };
+
   const handleDeleteTask = async () => {
     setDeleting(true);
     try {
@@ -679,6 +698,11 @@ export const TaskDetailPanel = forwardRef<TaskDetailHandle, TaskDetailPanelProps
         </button>
 
         <div className="no-drag-region flex items-center space-x-1">
+          {copiedForAgent && (
+            <span role="status" className="text-[11px] text-stone-500 dark:text-stone-400 mr-1 select-none">
+              已复制
+            </span>
+          )}
           {saving && (
             <span className="text-[11px] text-stone-400 dark:text-stone-500 mr-1 select-none animate-pulse">
               保存中...
@@ -706,6 +730,14 @@ export const TaskDetailPanel = forwardRef<TaskDetailHandle, TaskDetailPanelProps
                 >
                   <Info className="w-3.5 h-3.5 text-stone-400 shrink-0" />
                   <span>任务信息</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void handleCopyForAgent()}
+                  className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-stone-800 dark:text-stone-200 hover:bg-stone-100 dark:hover:bg-stone-800 transition text-left"
+                >
+                  <Copy className="w-3.5 h-3.5 text-stone-400 shrink-0" />
+                  <span>复制给 Agent</span>
                 </button>
                 {planDateContext && (
                   <button
