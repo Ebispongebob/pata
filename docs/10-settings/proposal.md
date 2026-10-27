@@ -112,7 +112,7 @@
 
 ### Task URI 与 Agent 协作
 
-任务详情的「··· → 复制给 Agent」复制 `处理这个任务：pata://task/{id}`；不要求用户再次输入任务标题、描述或 MCP 名称。这个 URI 是稳定的 Task 引用，不依赖文件路径；**不是** macOS URL Scheme，也不负责启动 Agent。
+任务详情仅在 **MCP 已启用、服务运行中且 Vault 未切换** 时显示「··· → 复制给 Agent」，复制 `处理这个任务：pata://task/{id}`；菜单打开时刷新状态，执行复制前再次验证服务可用，避免刚停止服务时复制出无法使用的指令。不要求用户再次输入任务标题、描述或 MCP 名称。这个 URI 是稳定的 Task 引用，不依赖文件路径；**不是** macOS URL Scheme，也不负责启动 Agent。
 
 MCP 注册只读 Resource Template `pata://task/{id}`（JSON），同时兼容通过 `pata_read({kind: "task", id: "pata://task/..."})` 读取；原有 Task ID 仍可用。两种读法均经过同一个 Core、当前 Vault 与 MCP 的访问检查。不存在的 Task 返回读取错误，不自动按名称重定向；Vault 切换后需重新启用 MCP。
 
