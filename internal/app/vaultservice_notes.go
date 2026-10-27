@@ -10,6 +10,7 @@ import (
 
 // CreateNoteInput defines parameters for creating a new Note.
 type CreateNoteInput struct {
+	Draft bool     `json:"draft,omitempty"`
 	Title string   `json:"title"`
 	Tags  []string `json:"tags,omitempty"`
 	Body  string   `json:"body,omitempty"`
@@ -19,6 +20,7 @@ type CreateNoteInput struct {
 // Note: tags and body follow full-replacement semantics (not partial patch).
 type UpdateNoteInput struct {
 	ID    string   `json:"id"`
+	Draft *bool    `json:"draft,omitempty"`
 	Title string   `json:"title"`
 	Tags  []string `json:"tags,omitempty"`
 	Body  string   `json:"body"`
@@ -130,16 +132,25 @@ func (s *VaultService) createNote(input CreateNoteInput, by string) (*markdown.N
 	defer v.MutationMu.Unlock()
 
 	title := strings.TrimSpace(input.Title)
-	if title == "" {
+	if !input.Draft && title == "" {
 		return nil, fmt.Errorf("笔记标题不能为空")
+	}
+	if input.Draft {
+		title = ""
+	}
+
+	var tags []string
+	if !input.Draft {
+		tags = cleanTags(input.Tags)
 	}
 
 	now := time.Now()
 	note := &markdown.Note{
 		Type:      markdown.EntityTypeNote,
 		ID:        markdown.GenerateEntityID(markdown.EntityTypeNote),
+		Draft:     input.Draft,
 		Title:     title,
-		Tags:      cleanTags(input.Tags),
+		Tags:      tags,
 		CreatedAt: now,
 		CreatedBy: by,
 		UpdatedAt: now,
@@ -169,19 +180,37 @@ func (s *VaultService) UpdateNote(input UpdateNoteInput) (*markdown.Note, error)
 		return nil, fmt.Errorf("笔记 ID 不能为空")
 	}
 
-	title := strings.TrimSpace(input.Title)
-	if title == "" {
-		return nil, fmt.Errorf("笔记标题不能为空")
-	}
-
 	existing, ok := v.Index.GetNote(trimmedID)
 	if !ok {
 		return nil, fmt.Errorf("笔记不存在: %s", trimmedID)
 	}
 
+	// Formal notes cannot be reverted back to draft
+	if !existing.Draft && input.Draft != nil && *input.Draft {
+		return nil, fmt.Errorf("正式笔记不可退回为草稿")
+	}
+
+	targetDraft := existing.Draft
+	if input.Draft != nil {
+		targetDraft = *input.Draft
+	}
+
+	title := strings.TrimSpace(input.Title)
+	if !targetDraft && title == "" {
+		return nil, fmt.Errorf("笔记标题不能为空")
+	}
+	if targetDraft {
+		title = ""
+	}
+
 	now := time.Now()
+	existing.Draft = targetDraft
 	existing.Title = title
-	existing.Tags = cleanTags(input.Tags)
+	if targetDraft {
+		existing.Tags = nil
+	} else {
+		existing.Tags = cleanTags(input.Tags)
+	}
 	if !(existing.AudioTranscript && strings.TrimSpace(existing.AudioFile) != "") {
 		existing.Body = input.Body
 	}

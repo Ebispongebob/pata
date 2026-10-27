@@ -120,13 +120,6 @@ export default function App() {
 
   // Global search overlay state
   const [isSearchOpen, setIsSearchOpen] = useState(false);
-  const [isEditingNote, setIsEditingNote] = useState(false);
-
-  useEffect(() => {
-    if (activeNav !== 'notes') {
-      setIsEditingNote(false);
-    }
-  }, [activeNav]);
 
   // 只保护页面内的草稿；右侧 Inspector 的草稿由它自己保护。
   const leaveGuardRef = useRef<(() => Promise<boolean>) | null>(null);
@@ -561,7 +554,6 @@ export default function App() {
         setNoteOrigin(null);
         setTodayDate(null);
         setSelectedTag(null);
-        setIsEditingNote(false);
       }
     } catch (err: any) {
       console.error('Select vault failed:', err);
@@ -875,10 +867,10 @@ export default function App() {
           key={vaultStatus?.path ?? 'unconfigured'}
           className={`flex-1 min-h-0 flex flex-col ${isSettingsOpen ? 'hidden' : ''}`}
         >
-          <DetailSplit panel={detailPanel}>
+          <DetailSplit panel={detailPanel} hidden={activeNav === 'notes'}>
           <div
             className={
-              activeNav === 'today' || activeNav === 'tasks' || activeNav === 'tag' || (activeNav === 'notes' && isEditingNote)
+              activeNav === 'today' || activeNav === 'tasks' || activeNav === 'tag' || activeNav === 'notes'
                 ? 'h-full min-h-0 overflow-hidden'
                 : 'h-full overflow-y-auto p-6'
             }
@@ -932,7 +924,6 @@ export default function App() {
                 onClearFocusNote={() => setFocusNoteId(null)}
                 returnToTask={noteOrigin ? { label: '返回任务', go: returnToOrigin } : null}
                 onOpenTask={handleOpenTask}
-                onEditingChange={setIsEditingNote}
                 leaveGuardRef={leaveGuardRef}
                 onDraftCheck={handleNotesDraftCheck}
                 onOpenSettings={handleOpenSettings}

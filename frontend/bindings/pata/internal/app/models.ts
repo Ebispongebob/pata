@@ -44,6 +44,7 @@ export interface CreateActivityInput {
  * CreateNoteInput defines parameters for creating a new Note.
  */
 export interface CreateNoteInput {
+    "draft"?: boolean;
     "title": string;
     "tags"?: string[] | null;
     "body"?: string;
@@ -119,6 +120,7 @@ export interface UpdateCheckResult {
  */
 export interface UpdateNoteInput {
     "id": string;
+    "draft"?: boolean | null;
     "title": string;
     "tags"?: string[] | null;
     "body": string;

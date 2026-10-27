@@ -122,6 +122,7 @@ export interface LinkSource {
 export interface Note {
     "type": EntityType;
     "id": string;
+    "draft"?: boolean;
     "title": string;
     "tags"?: string[] | null;
     "audio_file"?: string;

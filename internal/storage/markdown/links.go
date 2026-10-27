@@ -132,12 +132,15 @@ func relSlash(root, abs string) string {
 	return abs
 }
 
-// ListNoteRefs returns all notes as candidates, sorted by title then path.
+// ListNoteRefs returns all formal notes as candidates (drafts excluded), sorted by title then path.
 func (idx *MemoryIndex) ListNoteRefs(root string) []NoteRef {
 	idx.mu.RLock()
 	defer idx.mu.RUnlock()
 	out := make([]NoteRef, 0, len(idx.notes))
 	for id, n := range idx.notes {
+		if n.Draft {
+			continue
+		}
 		out = append(out, NoteRef{ID: id, Title: n.Title, Path: relSlash(root, idx.idToFile[id])})
 	}
 	sort.Slice(out, func(i, j int) bool {

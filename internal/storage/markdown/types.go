@@ -154,7 +154,8 @@ func (t *Task) Clone() Entity {
 type Note struct {
 	Type            EntityType           `yaml:"type" json:"type"`
 	ID              string               `yaml:"id" json:"id"`
-	Title           string               `yaml:"title" json:"title"`
+	Draft           bool                 `yaml:"draft,omitempty" json:"draft,omitempty"`
+	Title           string               `yaml:"title,omitempty" json:"title"`
 	Tags            []string             `yaml:"tags,omitempty" json:"tags,omitempty"`
 	AudioFile       string               `yaml:"audio_file,omitempty" json:"audio_file,omitempty"`
 	AudioTranscript bool                 `yaml:"audio_transcript,omitempty" json:"audio_transcript,omitempty"`
