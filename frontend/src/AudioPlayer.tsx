@@ -192,7 +192,7 @@ export function AudioPlayer({
       {/* Top File & Status Header */}
       <div className="flex items-center justify-between gap-3 text-xs">
         <div className="flex items-center space-x-2 min-w-0">
-          <Volume2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+          <Volume2 className="w-4 h-4 text-interaction-600 dark:text-interaction-400 shrink-0" />
           <span className="font-medium text-stone-800 dark:text-stone-200 truncate" title={fileName}>
             {fileName}
           </span>
@@ -207,7 +207,7 @@ export function AudioPlayer({
         {/* Task progress badge or dropdown menu */}
         <div className="flex items-center space-x-2 shrink-0">
           {isUploadingOrTranscribing && (
-            <div className="inline-flex items-center space-x-1 text-[11px] text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/50 px-2 py-0.5 rounded-full border border-emerald-200 dark:border-emerald-900 animate-pulse">
+            <div className="inline-flex items-center space-x-1 text-[11px] text-interaction-700 dark:text-interaction-400 bg-interaction-50 dark:bg-interaction-950/50 px-2 py-0.5 rounded-full border border-interaction-200 dark:border-interaction-900 animate-pulse">
               <Loader2 className="w-3 h-3 animate-spin shrink-0" />
               <span>{taskStatus?.stage_message || '处理中...'}</span>
             </div>
@@ -222,7 +222,7 @@ export function AudioPlayer({
               <button
                 type="button"
                 onClick={onRetranscribe}
-                className="text-emerald-700 dark:text-emerald-400 font-semibold hover:underline ml-1 cursor-pointer"
+                className="text-interaction-700 dark:text-interaction-400 font-semibold hover:underline ml-1 cursor-pointer"
               >
                 重试
               </button>
@@ -304,8 +304,8 @@ export function AudioPlayer({
             !audioSrc || audioLoadError
               ? 'bg-stone-200 dark:bg-stone-800 text-stone-400 cursor-not-allowed'
               : isPlaying
-              ? 'bg-emerald-700 hover:bg-emerald-800 text-white'
-              : 'bg-emerald-600 hover:bg-emerald-700 text-white'
+              ? 'bg-interaction-700 hover:bg-interaction-800 text-white'
+              : 'bg-interaction-600 hover:bg-interaction-700 text-white'
           }`}
           title={isPlaying ? '暂停' : '播放'}
         >
@@ -351,7 +351,7 @@ export function AudioPlayer({
               }
             }}
             disabled={!audioSrc || !!audioLoadError}
-            className="w-full h-1.5 bg-stone-200 dark:bg-stone-800 rounded-lg appearance-none cursor-pointer accent-emerald-600 dark:accent-emerald-500 disabled:cursor-not-allowed select-none"
+            className="w-full h-1.5 bg-stone-200 dark:bg-stone-800 rounded-lg appearance-none cursor-pointer accent-interaction-600 dark:accent-interaction-500 disabled:cursor-not-allowed select-none"
           />
         </div>
 

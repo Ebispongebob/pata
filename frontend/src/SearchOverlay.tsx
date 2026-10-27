@@ -306,7 +306,7 @@ export function SearchOverlay({
                 <div>
                   <div className="flex items-center justify-between px-3.5 py-1.5 text-[11px] font-semibold text-stone-500 dark:text-stone-400 bg-stone-100/60 dark:bg-stone-800/40">
                     <div className="flex items-center space-x-1.5">
-                      <CheckSquare className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                      <CheckSquare className="w-3.5 h-3.5 text-interaction-600 dark:text-interaction-400" />
                       <span>任务</span>
                     </div>
                     <span className="font-mono text-[10px] text-stone-400">
@@ -335,7 +335,7 @@ export function SearchOverlay({
                           }`}
                         >
                           <div className="flex items-center space-x-2.5 min-w-0 mr-2 flex-1">
-                            <CheckSquare className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 shrink-0 opacity-80" />
+                            <CheckSquare className="w-3.5 h-3.5 text-interaction-600 dark:text-interaction-400 shrink-0 opacity-80" />
                             <div className="min-w-0 flex-1">
                               <div className="font-medium truncate">{task.title || '(无标题任务)'}</div>
                               {task.snippet && (
@@ -473,7 +473,7 @@ export function SearchOverlay({
                               </div>
                               <div className="flex items-center space-x-1.5 mt-0.5">
                                 {hasTaskId ? (
-                                  <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-mono">
+                                  <span className="text-[10px] text-interaction-600 dark:text-interaction-400 font-mono">
                                     关联任务评论
                                   </span>
                                 ) : hasDate ? (

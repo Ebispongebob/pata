@@ -1,36 +1,71 @@
-# 啪嗒 · Pata
+<p align="center">
+  <a href="https://github.com/yukange/pata">
+    <img src="assets/branding/logo.svg" width="96" alt="Pata 标识">
+  </a>
+</p>
+<h1 align="center">啪嗒 · Pata</h1>
+<p align="center">把待办、日常记录和笔记，放进一个本地优先的 macOS 工作区。</p>
+<p align="center">
+  <a href="https://github.com/yukange/pata/releases/latest"><img src="https://img.shields.io/github/v/release/yukange/pata?style=flat-square&label=release" alt="最新版本"></a>
+  <img src="https://img.shields.io/badge/platform-macOS-181717?style=flat-square" alt="macOS">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-181717?style=flat-square" alt="MIT License"></a>
+  <a href="#文件留在自己手里"><img src="https://img.shields.io/badge/storage-Markdown-181717?style=flat-square" alt="本地 Markdown 文件"></a>
+</p>
+<p align="center">
+  <a href="README.md">English</a> · 简体中文
+</p>
 
-**[English](README.md) | 简体中文**
+[![Pata macOS 实际界面：今日计划与活动时间线，使用示例数据](docs/05-release/screenshots/workspace.png)](https://github.com/yukange/pata/releases/latest)
 
-**记下一点，完成一件。**
+---
 
-Pata 是一款为个人日常工作打造的 macOS 本地优先应用：**Today 管当下，Tasks 管进展，Notes 管沉淀，Activity 负责留痕，标签负责关联。**
+### 安装
 
-不追求复杂的项目管理流程，而是把要做的事、已经做过的事和随手记下的内容自然地放在一起。
+从 [**GitHub Releases**](https://github.com/yukange/pata/releases/latest) 下载最新版本。
 
-## 主要功能
+| 平台 | 下载 |
+| --- | --- |
+| macOS · Apple Silicon | [pata.dmg](https://github.com/yukange/pata/releases/latest/download/pata.dmg) |
 
-- **Today**：安排当天任务，记录当天发生的事；日计划与任务到期日相互独立。
-- **Tasks**：用「未完成 / 已完成」管理任务，任务下可以持续追加活动记录；不引入复杂状态或优先级。
-- **Notes**：单列浏览笔记，用 Markdown 编辑内容，支持标签与 `[[笔记引用]]`。
-- **Activity**：把任务评论和每日独立记录统一为活动；任务中的记录在任务详情与 Today 时间线中保持一致。
-- **搜索与附件**：跨任务、笔记、活动和附件名称搜索；支持导入、引用文件并使用 macOS 原生预览。
-- **音频逐字稿**：导入 MP3，使用自备 API Key 转写为带说话人和毫秒时间戳的 Markdown 笔记，可在播放器与逐字稿之间定位。
-- **本机 MCP**：让外部 Agent 搜索、读取和新建任务/笔记，向任务或每日计划追加 Activity，以及完成或重新打开任务；记录和创建信息区分「我 / Agent」来源。
+打开安装镜像，将 Pata 拖入「应用程序」并启动。首次打开时，选择一个文件夹作为 Vault。当前发布的安装包面向 Apple Silicon Mac。
 
-## 设计原则
+### 一个工作区，三个入口
 
-**Less is More · Record Once · Local First**
+- **Today** — 安排今天要做的事，随手记下当天的进展。日计划与任务截止日期相互独立。
+- **Tasks** — 把任务和过程放在一起。随时追加活动记录，同一条记录也会出现在当天的时间线中。
+- **Notes** — 从无标题草稿开始，想好后再命名为笔记。左边浏览，右边编辑 Markdown，用标签和 `[[笔记引用]]` 连接想法。
 
-- 只保留 **Today / Tasks / Notes** 三个主入口，不设 Projects 或 Inbox。
-- 以本地 **Markdown + YAML Frontmatter** 为业务数据源，不依赖独立的业务数据库。Vault 中的 `notes/`、`tasks/`、`plans/` 保存记录，`files/` 保存原始附件。
-- Activity 归属于 Task 或 DayPlan，避免一条记录在多处重复存储。
-- 不内置通用 AI 聊天工作台；Agent 通过可选的本机 MCP 接入。音频转写按用户操作调用云端 ASR，API Key 保存在 macOS Keychain。
-- 界面和功能优先服务顺畅的个人使用体验，不为扩展性增加不必要的复杂度。
+统一搜索任务、笔记和活动。拖入附件，用 macOS 原生预览打开。导入 MP3，生成带说话人、时间戳和音频播放的逐字稿。
 
-## 运行与开发
+**少即是多 · 只记录一次 · 本地优先**
 
-当前主要通过源码运行或在 macOS 上本地打包。环境准备和完整开发流程见 [CONTRIBUTING.md](CONTRIBUTING.md)；需要 Go、Node.js、Xcode Command Line Tools，以及与项目依赖版本匹配的 Wails v3 CLI。
+### 连接你的 Agent
+
+在 Pata 的「**设置 → MCP**」中启用服务，将接入说明复制到支持 MCP 的客户端。
+
+Agent 可以查找和新建任务、笔记，追加活动记录，完成或重新打开任务。由 Agent 创建的记录会标明来源，方便区分是谁做了什么。
+
+服务默认关闭，只监听本机 `127.0.0.1`，使用时需要 Pata 保持运行。详细行为见 [MCP 功能说明](docs/10-settings/proposal.md#mcp)。
+
+### 文件留在自己手里
+
+Vault 就是一个本地文件夹。任务、日计划和笔记保存为 Markdown，原始附件也保存在其中。
+
+```text
+vault/
+├── tasks/    任务及其活动记录
+├── plans/    日计划和每日记录
+├── notes/    笔记、草稿和逐字稿
+└── files/    原始附件
+```
+
+备份时保留整个文件夹，包括 `plans/` 和 `files/`。笔记可在其他 Markdown 工具中阅读；任务和日计划包含结构化数据，日常操作通过 Pata 完成。
+
+任务和笔记可离线使用。可选的音频转写会将所选录音发送到阿里云百炼，需要自备 API Key，密钥保存在 macOS Keychain。外部 Agent 如何处理数据，取决于你接入的客户端和模型。
+
+### 从源码运行
+
+按 [开发指南](CONTRIBUTING.md#prerequisites) 准备 Go、Node.js、Xcode Command Line Tools 和匹配的 Wails v3 CLI，然后运行：
 
 ```bash
 git clone https://github.com/yukange/pata.git
@@ -40,20 +75,16 @@ npm --prefix frontend ci
 wails3 task dev
 ```
 
-本地打包使用 `wails3 task package`。修改 Go 服务接口后，请按 [开发说明](CONTRIBUTING.md#create-new-files) 中的约定处理 Wails bindings，不要直接编辑生成文件。
+使用 `wails3 task package` 构建本地 macOS 应用。
 
-## 连接 Agent（MCP）
+### 文档
 
-在 Pata 的「设置 → MCP」中启用本机服务，复制接入说明供 Agent 使用。服务只监听本机 `127.0.0.1`，需要 Pata 保持运行；首次默认关闭，手动停止后不会在下次启动时自动开启。
+[产品取舍](docs/01-validate/decisions.md) · [数据格式](docs/02-foundation/schema.md) · [设计与实施记录](docs/README.md)
 
-目前提供搜索、列表、读取、新建任务、新建笔记、追加 Activity 和设置任务状态七项工具。更多行为与限制见 [MCP 功能说明](docs/10-settings/proposal.md#mcp)。
+### 参与贡献
 
-## 项目文档
+发现问题或有新想法，可以 [提交 Issue](https://github.com/yukange/pata/issues)。提交 PR 前，请先阅读 [贡献指南](CONTRIBUTING.md)。
 
-- [设计与实施记录](docs/README.md)：阶段 01～13 的交付记录及文档入口。
-- [数据格式（Schema）](docs/02-foundation/schema.md)：Markdown 数据结构的权威定义。
-- [产品设计取舍](docs/01-validate/decisions.md)：已确认的交互与范围决策。
-- [AGENTS.md](AGENTS.md)：面向开发 Agent 的工程约束。
-- [早期交互原型](docs/01-validate/prototype/index.html)：无需构建即可在浏览器查看，**不代表当前应用的完整界面**。
+### 许可证
 
-Pata 的阶段 01～13 已完成代码与 macOS 实机验收；后续改进以实际使用体验为依据，不预设新的大型功能阶段。
+采用 [MIT 许可证](LICENSE)。版权所有 © 2026 Pata 贡献者。

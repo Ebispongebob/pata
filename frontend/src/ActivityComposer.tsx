@@ -47,7 +47,7 @@ export function ActivityComposer({
 }: ActivityComposerProps) {
   return (
     <div className={`space-y-1.5 ${className}`.trim()}>
-      <div className="rounded-xl border border-stone-200 dark:border-stone-800 bg-white dark:bg-stone-950 p-2.5 focus-within:border-emerald-600/80 dark:focus-within:border-emerald-500/80 focus-within:ring-2 focus-within:ring-emerald-500/20 transition shadow-2xs">
+      <div className="rounded-xl border border-stone-200 dark:border-stone-800 bg-white dark:bg-stone-950 p-2.5 focus-within:border-interaction-600/80 dark:focus-within:border-interaction-500/80 focus-within:ring-2 focus-within:ring-interaction-500/20 transition shadow-2xs">
         <NoteRefTextarea
           value={value}
           onChange={onChange}
@@ -82,7 +82,7 @@ export function ActivityComposer({
             onMouseDown={(e) => e.preventDefault()}
             onClick={onSubmit}
             disabled={submitting || !value.trim()}
-            className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-medium transition shadow-2xs disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+            className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-interaction-700 hover:bg-interaction-800 text-white text-xs font-medium transition shadow-2xs disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
             title="发送 (⌘+Enter)"
           >
             {submitting ? (

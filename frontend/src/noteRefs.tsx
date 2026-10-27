@@ -128,7 +128,7 @@ export function NotePicker({
               onMouseEnter={() => onHover(i)}
               className={`px-3 py-1.5 cursor-pointer flex items-center gap-2 ${
                 i === index
-                  ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-200'
+                  ? 'bg-interaction-50 dark:bg-interaction-950/40 text-interaction-800 dark:text-interaction-200'
                   : 'text-stone-700 dark:text-stone-300'
               }`}
             >
@@ -238,7 +238,7 @@ export function NoteRefText({
               onOpenNote?.(note.id);
             }}
             title={note.path}
-            className="text-emerald-700 dark:text-emerald-400 underline decoration-dotted underline-offset-2 hover:decoration-solid cursor-pointer text-left"
+            className="text-interaction-700 dark:text-interaction-400 underline decoration-dotted underline-offset-2 hover:decoration-solid cursor-pointer text-left"
           >
             {t.name}
           </button>
@@ -278,7 +278,7 @@ export function NoteRefText({
                 });
               }}
               title={`点击预览 ${t.title}`}
-              className="hover:underline text-emerald-700 dark:text-emerald-400 font-medium cursor-pointer leading-none"
+              className="hover:underline text-interaction-700 dark:text-interaction-400 font-medium cursor-pointer leading-none"
             >
               {t.title}
             </button>

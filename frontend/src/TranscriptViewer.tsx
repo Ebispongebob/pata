@@ -55,7 +55,7 @@ export const TranscriptViewer = forwardRef<TranscriptViewerRef, TranscriptViewer
         <div className="py-20 text-center rounded-xl border border-dashed border-stone-200 dark:border-stone-800 text-stone-400 space-y-2 select-none">
           {isTranscribing ? (
             <div className="flex flex-col items-center space-y-2">
-              <Loader2 className="w-6 h-6 animate-spin text-emerald-600 dark:text-emerald-400" />
+              <Loader2 className="w-6 h-6 animate-spin text-interaction-600 dark:text-interaction-400" />
               <div className="text-xs font-medium text-stone-600 dark:text-stone-300">
                 正在后台转写逐字稿...
               </div>
@@ -92,7 +92,7 @@ export const TranscriptViewer = forwardRef<TranscriptViewerRef, TranscriptViewer
               }}
               className={`p-3 rounded-xl transition-all duration-500 border ${
                 isHighlighted
-                  ? 'bg-emerald-50/90 dark:bg-emerald-950/40 border-emerald-500/40 shadow-xs ring-1 ring-emerald-500/20'
+                  ? 'bg-interaction-50/90 dark:bg-interaction-950/40 border-interaction-500/40 shadow-xs ring-1 ring-interaction-500/20'
                   : 'bg-transparent border-transparent hover:bg-stone-50/60 dark:hover:bg-stone-900/40'
               }`}
             >
@@ -103,7 +103,7 @@ export const TranscriptViewer = forwardRef<TranscriptViewerRef, TranscriptViewer
                     <button
                       type="button"
                       onClick={() => b.timestampMs !== undefined && onJumpToTime(b.timestampMs)}
-                      className="font-mono text-xs px-1.5 py-0.5 rounded bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-100 dark:hover:bg-emerald-900/60 border border-emerald-200/80 dark:border-emerald-800/60 transition cursor-pointer"
+                      className="font-mono text-xs px-1.5 py-0.5 rounded bg-interaction-50 dark:bg-interaction-950/60 text-interaction-700 dark:text-interaction-400 hover:bg-interaction-100 dark:hover:bg-interaction-900/60 border border-interaction-200/80 dark:border-interaction-800/60 transition cursor-pointer"
                       title="点击跳到该时间播放"
                     >
                       [{b.timestampStr}]

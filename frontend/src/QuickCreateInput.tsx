@@ -148,7 +148,7 @@ export function QuickCreateInput({ placeholder, submitLabel, tagNames, onSubmit,
                   onMouseEnter={() => setActive(i)}
                   className={`px-3 py-1.5 cursor-pointer ${
                     i === activeIdx
-                      ? 'bg-emerald-100/70 dark:bg-emerald-950/60 text-emerald-900 dark:text-emerald-200'
+                      ? 'bg-interaction-100/70 dark:bg-interaction-950/60 text-interaction-900 dark:text-interaction-200'
                       : 'text-stone-700 dark:text-stone-300'
                   }`}
                 >
@@ -165,7 +165,7 @@ export function QuickCreateInput({ placeholder, submitLabel, tagNames, onSubmit,
           }}
           onClick={() => void submit()}
           disabled={busy || disabled || !value.trim()}
-          className="flex items-center space-x-1 px-3 py-2 h-[34px] rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-medium transition disabled:opacity-40 shadow-2xs shrink-0"
+          className="flex items-center space-x-1 px-3 py-2 h-[34px] rounded-lg bg-interaction-700 hover:bg-interaction-800 text-white text-xs font-medium transition disabled:opacity-40 shadow-2xs shrink-0"
         >
           <Plus className="w-3.5 h-3.5" />
           <span>{busy ? '创建中' : submitLabel}</span>

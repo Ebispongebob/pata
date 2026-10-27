@@ -1481,7 +1481,7 @@ function NoteEditor({
   if (loadingNote) {
     return (
       <div className="flex-1 flex items-center justify-center py-24 text-xs text-stone-400">
-        <Loader2 className="w-5 h-5 animate-spin mr-2 text-emerald-600" />
+        <Loader2 className="w-5 h-5 animate-spin mr-2 text-interaction-600" />
         <span>加载笔记中...</span>
       </div>
     );
@@ -1502,7 +1502,7 @@ function NoteEditor({
     <>
       {saveStatus === 'saving' && (
         <span className="text-stone-400 flex items-center space-x-1.5">
-          <Loader2 className="w-3 h-3 animate-spin text-emerald-600" />
+          <Loader2 className="w-3 h-3 animate-spin text-interaction-600" />
           <span>保存中...</span>
         </span>
       )}
@@ -1623,7 +1623,7 @@ function NoteEditor({
             <button
               type="button"
               onClick={handleStartNaming}
-              className="flex items-center space-x-1 px-2.5 py-1 rounded-md border border-stone-200/80 dark:border-stone-700/80 bg-white/90 dark:bg-stone-800/90 backdrop-blur-xs text-stone-700 dark:text-stone-200 hover:border-emerald-500/70 hover:text-emerald-700 dark:hover:text-emerald-400 text-xs font-medium transition cursor-pointer shadow-2xs"
+              className="flex items-center space-x-1 px-2.5 py-1 rounded-md border border-stone-200/80 dark:border-stone-700/80 bg-white/90 dark:bg-stone-800/90 backdrop-blur-xs text-stone-700 dark:text-stone-200 hover:border-interaction-500/70 hover:text-interaction-700 dark:hover:text-interaction-400 text-xs font-medium transition cursor-pointer shadow-2xs"
               title="原地输入标题并转为正式笔记"
             >
               <span>转为笔记</span>
@@ -1816,7 +1816,7 @@ function NoteEditor({
                     <button
                       type="button"
                       onClick={() => void leaveThen(() => (b.type === EntityType.EntityTypeTask ? onOpenTaskRef.current?.(b.id) : onOpenNoteRef.current(b.id)))}
-                      className="text-emerald-700 dark:text-emerald-400 hover:underline"
+                      className="text-interaction-700 dark:text-interaction-400 hover:underline"
                     >
                       {b.type === EntityType.EntityTypeTask ? '任务 · ' : ''}
                       {b.title}
@@ -2455,7 +2455,7 @@ export function NotesView({
   if (!vaultStatus?.configured) {
     return (
       <div className="py-16 text-center space-y-4 max-w-md mx-auto">
-        <FolderOpen className="w-12 h-12 text-emerald-600 mx-auto opacity-75" />
+        <FolderOpen className="w-12 h-12 text-interaction-600 mx-auto opacity-75" />
         <h2 className="text-base font-semibold text-stone-800 dark:text-stone-200">尚未配置 Vault 目录</h2>
         <p className="text-xs text-stone-500 leading-relaxed">
           Pata 以本地纯文本 Markdown 作为唯一数据真相源（Local First）。请先选择一个本地目录。
@@ -2463,7 +2463,7 @@ export function NotesView({
         <button
           onClick={onSelectVault}
           disabled={vaultBusy}
-          className="mx-auto flex items-center space-x-1.5 px-4 py-2 rounded-md bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-medium transition disabled:opacity-50 shadow-xs cursor-pointer"
+          className="mx-auto flex items-center space-x-1.5 px-4 py-2 rounded-md bg-interaction-700 hover:bg-interaction-800 text-white text-xs font-medium transition disabled:opacity-50 shadow-xs cursor-pointer"
         >
           <FolderOpen className="w-3.5 h-3.5" />
           <span>选择 Vault 目录</span>
@@ -2482,7 +2482,7 @@ export function NotesView({
         <button
           onClick={onSelectVault}
           disabled={vaultBusy}
-          className="px-3.5 py-1.5 rounded-md bg-emerald-700 hover:bg-emerald-800 text-white font-medium transition disabled:opacity-50 cursor-pointer"
+          className="px-3.5 py-1.5 rounded-md bg-interaction-700 hover:bg-interaction-800 text-white font-medium transition disabled:opacity-50 cursor-pointer"
         >
           重新选择目录
         </button>
@@ -2517,7 +2517,7 @@ export function NotesView({
                 <button
                   type="button"
                   onClick={handleStartCreateDraft}
-                  className="flex items-center space-x-1 px-2.5 py-1 rounded-l-md bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-medium transition cursor-pointer"
+                  className="flex items-center space-x-1 px-2.5 py-1 rounded-l-md bg-interaction-700 hover:bg-interaction-800 text-white text-xs font-medium transition cursor-pointer"
                   title="新建草稿"
                 >
                   <Plus className="w-3.5 h-3.5" />
@@ -2526,7 +2526,7 @@ export function NotesView({
                 <button
                   type="button"
                   onClick={() => setCreateMenuOpen((v) => !v)}
-                  className="flex items-center justify-center px-1 py-1 rounded-r-md bg-emerald-700 hover:bg-emerald-800 border-l border-emerald-600 text-white text-xs transition cursor-pointer"
+                  className="flex items-center justify-center px-1 py-1 rounded-r-md bg-interaction-700 hover:bg-interaction-800 border-l border-white/20 text-white text-xs transition cursor-pointer"
                   title="更多新建选项"
                 >
                   <ChevronDown className="w-3.5 h-3.5" />
@@ -2552,7 +2552,7 @@ export function NotesView({
                       }}
                       className="w-full flex items-center space-x-2 px-3 py-1.5 text-xs text-stone-700 dark:text-stone-300 hover:bg-stone-100 dark:hover:bg-stone-800 transition text-left cursor-pointer"
                     >
-                      <FileText className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                      <FileText className="w-3.5 h-3.5 text-interaction-600 dark:text-interaction-400" />
                       <span>新建笔记</span>
                     </button>
                     <button
@@ -2563,7 +2563,7 @@ export function NotesView({
                       }}
                       className="w-full flex items-center space-x-2 px-3 py-1.5 text-xs text-stone-700 dark:text-stone-300 hover:bg-stone-100 dark:hover:bg-stone-800 transition text-left cursor-pointer"
                     >
-                      <Volume2 className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                      <Volume2 className="w-3.5 h-3.5 text-interaction-600 dark:text-interaction-400" />
                       <span>从音频创建逐字稿</span>
                     </button>
                   </div>
@@ -2720,7 +2720,7 @@ export function NotesView({
                           }`}
                         >
                           {isAudioTranscriptNote(n) && (
-                            <Volume2 className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                            <Volume2 className="w-3.5 h-3.5 text-interaction-600 dark:text-interaction-400 shrink-0" />
                           )}
                           <span className="truncate">{n.title || '未命名笔记'}</span>
                         </div>
@@ -2814,7 +2814,7 @@ export function NotesView({
       {creatingAudioNote && createPortal(
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-xs p-4">
           <div className="rounded-xl border border-stone-200 dark:border-stone-800 bg-white dark:bg-stone-900 px-6 py-4 shadow-xl flex items-center space-x-3 text-xs font-medium text-stone-700 dark:text-stone-200">
-            <Loader2 className="w-4 h-4 animate-spin text-emerald-600" />
+            <Loader2 className="w-4 h-4 animate-spin text-interaction-600" />
             <span>正在导入音频并创建逐字稿笔记...</span>
           </div>
         </div>,
