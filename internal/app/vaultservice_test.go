@@ -1418,16 +1418,12 @@ func TestVaultService_GetNotePathAndRevealInFinder(t *testing.T) {
 }
 
 func TestVaultService_UpdateNote_PreserveCreatedAtAndBaselineConflict(t *testing.T) {
-	vaultDir := t.TempDir()
-	s := &VaultService{}
-	if _, err := s.openVault(vaultDir); err != nil {
-		t.Fatalf("openVault failed: %v", err)
+	// Keep the saved baseline unchanged until UpdateNote checks the external edit.
+	v, err := markdown.NewVault(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
 	}
-	defer func() {
-		if s.stopWatcher != nil {
-			s.stopWatcher()
-		}
-	}()
+	s := &VaultService{vault: v}
 
 	created, err := s.CreateNote(CreateNoteInput{
 		Title: "原始笔记标题",
@@ -1472,10 +1468,6 @@ func TestVaultService_UpdateNote_PreserveCreatedAtAndBaselineConflict(t *testing
 	}
 
 	// 3. Baseline conflict: external tampering without rescan
-	if s.stopWatcher != nil {
-		s.stopWatcher()
-		s.stopWatcher = nil
-	}
 	tampered := strings.Replace(string(diskBytes), "修改后的笔记标题", "外部冲突标题", 1)
 	if err := os.WriteFile(notePath, []byte(tampered), 0644); err != nil {
 		t.Fatalf("write tampered file failed: %v", err)
