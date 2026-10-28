@@ -39,11 +39,12 @@ type Vault struct {
 	// MutationMu guards complete read-modify-save operations, watcher updates, and rescans.
 	MutationMu sync.Mutex
 
-	mu      sync.Mutex
-	watcher *fsnotify.Watcher
-	events  chan VaultEvent
-	stopCh  chan struct{}
-	running bool
+	mu        sync.Mutex
+	watcher   *fsnotify.Watcher
+	events    chan VaultEvent
+	stopCh    chan struct{}
+	watchDone chan struct{}
+	running   bool
 }
 
 // NewVault initializes a Vault with root path and builds the initial index.
@@ -212,6 +213,7 @@ func (v *Vault) StartWatcher() error {
 		return err
 	}
 
+	v.watchDone = make(chan struct{})
 	go v.watchLoop()
 
 	return nil
@@ -236,6 +238,7 @@ func (v *Vault) watchSubtree(root string) error {
 }
 
 func (v *Vault) watchLoop() {
+	defer close(v.watchDone)
 	for {
 		select {
 		case <-v.stopCh:
@@ -493,7 +496,8 @@ func (v *Vault) dispatch(ev VaultEvent) {
 	}
 }
 
-// StopWatcher terminates the fsnotify event loop.
+// StopWatcher waits for the fsnotify event loop and its active handler to exit.
+// Callers must not hold MutationMu.
 func (v *Vault) StopWatcher() error {
 	v.mu.Lock()
 	defer v.mu.Unlock()
@@ -504,6 +508,7 @@ func (v *Vault) StopWatcher() error {
 
 	close(v.stopCh)
 	err := v.watcher.Close()
+	<-v.watchDone
 	v.running = false
 	return err
 }

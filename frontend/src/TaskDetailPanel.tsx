@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef, useImperativeHandle, forwardRef } from 'react';
-import { Events } from '@wailsio/runtime';
+import { Clipboard, Events } from '@wailsio/runtime';
 import {
   ArrowRight,
   MoreHorizontal,
@@ -11,8 +11,11 @@ import {
   AlertCircle,
   RefreshCw,
   Info,
+  Copy,
 } from 'lucide-react';
 import * as VaultService from '../bindings/pata/internal/app/vaultservice';
+import * as MCPService from '../bindings/pata/internal/app/mcpservice';
+import type { MCPStatus } from '../bindings/pata/internal/app/models';
 import { Task, TaskStatus, Activity } from '../bindings/pata/internal/storage/markdown/models';
 import { UpdateTaskInput, CreateActivityInput } from '../bindings/pata/internal/app/models';
 import { playLogoSuccess } from './logoAnimation';
@@ -105,6 +108,9 @@ interface TaskDetailPanelProps {
   planDateContext?: PlanDateContext;
 }
 
+const isMCPReadyForAgent = (status: Pick<MCPStatus, 'enabled' | 'running' | 'vaultChanged'>) =>
+  status.enabled && status.running && !status.vaultChanged;
+
 const isConflictErr = (err: any) =>
   typeof err?.message === 'string' &&
   (err.message.includes('write conflict') || err.message.includes('conflict at'));
@@ -132,6 +138,8 @@ export const TaskDetailPanel = forwardRef<TaskDetailHandle, TaskDetailPanelProps
 
   // Popover / Menu dropdown states
   const [menuOpen, setMenuOpen] = useState(false);
+  const [copiedForAgent, setCopiedForAgent] = useState(false);
+  const [canCopyForAgent, setCanCopyForAgent] = useState(false);
   const [dueOpen, setDueOpen] = useState(false);
 
   // Modals
@@ -170,6 +178,7 @@ export const TaskDetailPanel = forwardRef<TaskDetailHandle, TaskDetailPanelProps
 
   const titleTextareaRef = useRef<HTMLTextAreaElement>(null);
   const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const copyFeedbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const externalModifiedRef = useRef(false);
   const externalChangeVersionRef = useRef(0);
   const hasDraftRef = useRef(false);
@@ -284,6 +293,26 @@ export const TaskDetailPanel = forwardRef<TaskDetailHandle, TaskDetailPanelProps
     window.addEventListener('mousedown', handleOutsideClick);
     return () => window.removeEventListener('mousedown', handleOutsideClick);
   }, []);
+
+  useEffect(() => () => {
+    if (copyFeedbackTimerRef.current) window.clearTimeout(copyFeedbackTimerRef.current);
+  }, []);
+
+  // Refresh availability only when the task menu opens; ignore stale responses.
+  useEffect(() => {
+    if (!menuOpen) {
+      setCanCopyForAgent(false);
+      return;
+    }
+    let active = true;
+    setCanCopyForAgent(false);
+    void MCPService.GetStatus().then((status) => {
+      if (active) setCanCopyForAgent(isMCPReadyForAgent(status));
+    }).catch(() => {
+      if (active) setCanCopyForAgent(false);
+    });
+    return () => { active = false; };
+  }, [menuOpen]);
 
   // Escape key listener to dismiss open popovers
   useEffect(() => {
@@ -609,6 +638,28 @@ export const TaskDetailPanel = forwardRef<TaskDetailHandle, TaskDetailPanelProps
     setIsEditingBody(false);
   };
 
+  const handleCopyForAgent = async () => {
+    setMenuOpen(false);
+    try {
+      if (formDirty) {
+        if (!(await saveTask())) return;
+      } else if (saving && !(await taskSaveRef.current)) {
+        return;
+      }
+      const status = await MCPService.GetStatus();
+      if (!isMCPReadyForAgent(status)) {
+        setDetailError('MCP 服务未就绪，请先在设置中启动或重启服务');
+        return;
+      }
+      await Clipboard.SetText(`处理这个 Pata 任务：pata://task/${taskId}`);
+      setCopiedForAgent(true);
+      if (copyFeedbackTimerRef.current) window.clearTimeout(copyFeedbackTimerRef.current);
+      copyFeedbackTimerRef.current = window.setTimeout(() => setCopiedForAgent(false), 2000);
+    } catch {
+      setDetailError('检查 MCP 状态或复制失败，请重试');
+    }
+  };
+
   const handleDeleteTask = async () => {
     setDeleting(true);
     try {
@@ -679,6 +730,11 @@ export const TaskDetailPanel = forwardRef<TaskDetailHandle, TaskDetailPanelProps
         </button>
 
         <div className="no-drag-region flex items-center space-x-1">
+          {copiedForAgent && (
+            <span role="status" className="text-[11px] text-stone-500 dark:text-stone-400 mr-1 select-none">
+              已复制
+            </span>
+          )}
           {saving && (
             <span className="text-[11px] text-stone-400 dark:text-stone-500 mr-1 select-none animate-pulse">
               保存中...
@@ -707,6 +763,16 @@ export const TaskDetailPanel = forwardRef<TaskDetailHandle, TaskDetailPanelProps
                   <Info className="w-3.5 h-3.5 text-stone-400 shrink-0" />
                   <span>任务信息</span>
                 </button>
+                {canCopyForAgent && (
+                  <button
+                    type="button"
+                    onClick={() => void handleCopyForAgent()}
+                    className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-stone-800 dark:text-stone-200 hover:bg-stone-100 dark:hover:bg-stone-800 transition text-left"
+                  >
+                    <Copy className="w-3.5 h-3.5 text-stone-400 shrink-0" />
+                    <span>复制给 Agent</span>
+                  </button>
+                )}
                 {planDateContext && (
                   <button
                     type="button"

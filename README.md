@@ -45,6 +45,8 @@ Enable **Settings → MCP** in Pata and copy the connection instructions into yo
 
 Your agent can find and create tasks and notes, append activity, and complete or reopen tasks. Pata marks agent-created records so you can see who did what.
 
+From a task's details menu, choose **Copy for Agent** and paste the short reference (`pata://task/{id}`) into an agent already connected to Pata MCP. Agents can fetch a referenced Note by its stable ID from an Activity's `note_refs` via `pata_read`.
+
 The service is off by default, listens only on `127.0.0.1`, and runs while Pata is open. See the [MCP reference](docs/10-settings/proposal.md#mcp) for details.
 
 ### Your files stay yours

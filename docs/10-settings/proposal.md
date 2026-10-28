@@ -104,11 +104,21 @@
 |---|---|
 | `pata_search` | 搜索任务、笔记、记录和附件名称 |
 | `pata_list` | 列出任务或笔记的 ID、标题和标签 |
-| `pata_read` | 按 ID 读取任务或笔记，按日期读取每日计划 |
+| `pata_read` | 按 Task ID 或 `pata://task/{id}` 读取任务，按 Note ID 读取笔记，按日期读取每日计划 |
 | `pata_create_note` | 创建笔记，设置标题、正文和标签 |
 | `pata_create_task` | 创建任务，设置标题、状态、到期日和标签 |
 | `pata_append_activity` | 向任务或指定日期追加记录 |
 | `pata_set_task_status` | 输入 `{id, status: "done" 或 "todo"}`，完成或重新打开既有任务，返回当前 Task |
+
+### Task URI 与 Agent 协作
+
+任务详情仅在 **MCP 已启用、服务运行中且 Vault 未切换** 时显示「··· → 复制给 Agent」，复制 `处理这个 Pata 任务：pata://task/{id}`；复制前会先保存任务属性与描述的未保存修改，并等待正在进行的任务保存；保存失败或发生冲突时保留草稿与原有错误，停止复制。菜单打开时刷新 MCP 状态，保存完成后再次验证服务可用，避免刚停止服务时复制出无法使用的指令。不要求用户再次输入任务标题、描述或 MCP 名称。这个 URI 是稳定的 Task 引用，不依赖文件路径；**不是** macOS URL Scheme，也不负责启动 Agent。
+
+MCP 注册只读 Resource Template `pata://task/{id}`（JSON），同时兼容通过 `pata_read({kind: "task", id: "pata://task/..."})` 读取；原有 Task ID 仍可用。两种读法均经过同一个 Core、当前 Vault 与 MCP 的访问检查。不存在的 Task 返回读取错误，不自动按名称重定向；Vault 切换后需重新启用 MCP。
+
+`pata_read(kind=task)` 返回完整 Task（包括 Activity 的 `note_refs`）；Agent 可以按需用 `pata_read({kind: "note", id: "n-..."})` 继续读取被引用笔记的正文。Note 引用由稳定 Note ID 绑定；PDF/PPT 等附件使用相对路径，**本次不新增二进制附件读取**。没有显式 `note_refs` 绑定的 `[[名称]]` 不能臆测为某个 ID，应另行查询。
+
+Server Instructions 轻量指导 Agent：发现阶段只看摘要、一个执行 Session 聚焦一个 Task、按需读取关联笔记、Activity 记录结果与后续步骤而不是聊天日志。它是软约束；Pata 不托管 Session、调度 Agent 或强制限制 Activity 长度，不新增 Agent 设置页面或任务字段。没有要求时不自动将任务标记完成。
 
 MCP 创建 Task / Note、追加 Activity 和变更 Task 状态均由 Core 标记 Agent 来源，调用参数不能指定 `created_by` / `by`。来源格式以 [Schema](../02-foundation/schema.md#操作来源阶段-14) 为准。`pata_set_task_status` 重复设置相同状态不写盘、不新增事件；非法状态、缺失任务及未打开或已切换的资料库均返回错误，成功后通知 GUI 刷新。
 
