@@ -39,7 +39,7 @@ test('Copy for Agent uses the stable task URI, without MCP setup prose', async (
     },
   };
   await callback('handleCopyForAgent', context)();
-  assert.deepEqual(copied, ['处理这个任务：pata://task/t-01abc']);
+  assert.deepEqual(copied, ['处理这个 Pata 任务：pata://task/t-01abc']);
   assert.deepEqual(menu, [false]);
   assert.deepEqual(feedback, [true]);
   assert.deepEqual(errors, []);

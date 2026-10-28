@@ -651,7 +651,7 @@ export const TaskDetailPanel = forwardRef<TaskDetailHandle, TaskDetailPanelProps
         setDetailError('MCP 服务未就绪，请先在设置中启动或重启服务');
         return;
       }
-      await Clipboard.SetText(`处理这个任务：pata://task/${taskId}`);
+      await Clipboard.SetText(`处理这个 Pata 任务：pata://task/${taskId}`);
       setCopiedForAgent(true);
       if (copyFeedbackTimerRef.current) window.clearTimeout(copyFeedbackTimerRef.current);
       copyFeedbackTimerRef.current = window.setTimeout(() => setCopiedForAgent(false), 2000);
