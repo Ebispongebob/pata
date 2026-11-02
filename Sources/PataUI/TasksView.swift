@@ -114,6 +114,7 @@ public struct TasksView: View {
             .padding(.top, 24)
             .padding(.bottom, 64)
             .frame(maxWidth: 860)
+            .frame(maxWidth: .infinity)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .onAppear {

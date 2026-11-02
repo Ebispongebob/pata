@@ -81,6 +81,7 @@ public struct TagView: View {
             }
             .padding(24)
             .frame(maxWidth: 900)
+            .frame(maxWidth: .infinity)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
