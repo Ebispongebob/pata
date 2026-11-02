@@ -12,7 +12,6 @@ public struct NotesView: View {
     @ObservedObject private var editor: NoteEditingSession
 
     @State private var isDraftsCollapsed: Bool = false
-    @State private var isNotesCollapsed: Bool = false
     @State private var isDividerHovered: Bool = false
     @State private var isDividerDragging: Bool = false
     @State private var hasPushedCursor: Bool = false
@@ -44,6 +43,14 @@ public struct NotesView: View {
     @State private var hoveredNoteId: String? = nil
     @State private var notePendingDeletion: Note? = nil
     @State private var showDeleteNoteConfirm: Bool = false
+    @State private var notebookNames: [String] = []
+    @State private var notebookLocation: NotebookLocation = .all
+    @State private var expandedNotebooks: Set<String> = []
+    @State private var notebookError: String?
+    @State private var showNotebookNameSheet = false
+    @State private var notebookBeingRenamed: String?
+    @State private var notebookPendingDeletion: String?
+    @State private var showDeleteNotebookConfirm = false
 
     public init(state: AppState) {
         self.state = state
@@ -86,8 +93,15 @@ public struct NotesView: View {
                 dividerHandle
             }
 
-            // Right Column: Note Editor or Empty State
+            // 右侧复用同一个区域显示笔记本列表或编辑器。
             VStack(spacing: 0) {
+                if let notebookError {
+                    HStack {
+                        Text(notebookError).font(.callout).foregroundStyle(.red).textSelection(.enabled)
+                        Spacer()
+                        Button("关闭") { self.notebookError = nil }
+                    }.padding(12)
+                }
                 if let error = editor.error {
                     HStack {
                         Text(error).font(.callout).foregroundStyle(.red).textSelection(.enabled)
@@ -104,10 +118,24 @@ public struct NotesView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .onAppear {
+            refreshNotebooks()
             syncCurrentNoteState()
+            revealSelectedNotebook()
         }
         .onChange(of: state.selectedNoteId) {
             syncCurrentNoteState()
+            revealSelectedNotebook()
+        }
+        .onChange(of: state.vault?.rootPath) {
+            notebookLocation = .all
+            expandedNotebooks = []
+            refreshNotebooks()
+        }
+        .onChange(of: currentNote?.notebook) {
+            revealSelectedNotebook()
+        }
+        .onReceive(state.objectWillChange) { _ in
+            DispatchQueue.main.async { refreshNotebooks() }
         }
         .onDisappear {
             editor.save()
@@ -124,6 +152,15 @@ public struct NotesView: View {
                 state.selectedNoteId = nil
             }
             Button("取消", role: .cancel) {}
+        }
+        .sheet(isPresented: $showNotebookNameSheet) {
+            NotebookNameSheet(originalName: notebookBeingRenamed, onSave: saveNotebookName)
+        }
+        .alert("删除笔记本？", isPresented: $showDeleteNotebookConfirm, presenting: notebookPendingDeletion) { name in
+            Button("删除笔记本", role: .destructive) { removeNotebook(name) }
+            Button("取消", role: .cancel) {}
+        } message: { name in
+            Text("「\(name)」中的笔记将移到“未分类”，正文、标签和附件保留。")
         }
         .alert("需配置语音转写 API Key", isPresented: $showMissingKeyAlert) {
             Button("前往设置") {
@@ -161,6 +198,104 @@ public struct NotesView: View {
         state.selectedNoteId = note.id
     }
 
+    private func refreshNotebooks() {
+        guard let vault = state.vault else { notebookNames = []; return }
+        do {
+            notebookNames = try vault.listNotebooks()
+        } catch {
+            notebookNames = Array(Set(formalNotes.compactMap(\.notebook))).sorted()
+            notebookError = "无法读取笔记本目录：\(error.localizedDescription)"
+        }
+    }
+
+    private func revealSelectedNotebook() {
+        guard let note = currentNote, !note.draft else { return }
+        if let name = note.notebook {
+            let canonical = notebookNames.first { $0.caseInsensitiveCompare(name) == .orderedSame } ?? name
+            expandedNotebooks.insert(canonical)
+            notebookLocation = .notebook(canonical)
+        } else {
+            expandedNotebooks.insert("")
+            notebookLocation = .unfiled
+        }
+    }
+
+    @discardableResult
+    private func browseNotebook(_ location: NotebookLocation) -> Bool {
+        guard editor.save() else { return false }
+        notebookLocation = location
+        state.selectedNoteId = nil
+        return true
+    }
+
+    private func beginNotebookName(_ name: String? = nil) {
+        notebookBeingRenamed = name
+        showNotebookNameSheet = true
+    }
+
+    private func saveNotebookName(_ name: String) -> String? {
+        guard let vault = state.vault else { return "请先打开资料库" }
+        guard editor.save() else { return editor.error ?? "请先保存当前笔记" }
+        do {
+            if let oldName = notebookBeingRenamed {
+                try vault.renameNotebook(name: oldName, newName: name)
+                expandedNotebooks.remove(oldName)
+            } else {
+                try vault.createNotebook(name: name)
+            }
+            let name = name.trimmingCharacters(in: .whitespacesAndNewlines)
+            refreshNotebooks()
+            expandedNotebooks.insert(name)
+            notebookError = nil
+            _ = browseNotebook(.notebook(name))
+            return nil
+        } catch {
+            refreshNotebooks()
+            return error.localizedDescription
+        }
+    }
+
+    private func requestDeleteNotebook(_ name: String) {
+        notebookPendingDeletion = name
+        showDeleteNotebookConfirm = true
+    }
+
+    private func removeNotebook(_ name: String) {
+        guard let vault = state.vault, editor.save() else { return }
+        do {
+            try vault.deleteNotebook(name: name)
+            expandedNotebooks.remove(name)
+            refreshNotebooks()
+            notebookError = nil
+            _ = browseNotebook(.unfiled)
+        } catch {
+            refreshNotebooks()
+            notebookError = error.localizedDescription
+        }
+    }
+
+    private func moveNote(_ note: Note, to name: String?) {
+        guard let vault = state.vault, editor.save() else { return }
+        do {
+            let saved = try vault.moveNote(id: note.id, toNotebook: name)
+            editor.acceptSavedNote(saved, in: vault)
+            notebookError = nil
+            refreshNotebooks()
+            if state.selectedNoteId == saved.id { revealSelectedNotebook() }
+        } catch {
+            notebookError = error.localizedDescription
+        }
+    }
+
+    private func notebookMoveMenu(_ note: Note) -> some View {
+        Menu {
+            Button("未分类") { moveNote(note, to: nil) }
+            ForEach(notebookNames, id: \.self) { name in
+                Button(name) { moveNote(note, to: name) }
+            }
+        } label: { Label("移到笔记本", systemImage: "folder") }
+    }
+
     private func syncCurrentNoteState() {
         let selected = state.selectedNoteId.flatMap { state.vault?.index.getNote($0) }
         guard editor.select(selected, in: state.vault) else { return }
@@ -189,7 +324,7 @@ public struct NotesView: View {
             // Top Action Bar
             HStack {
                 HStack(spacing: 6) {
-                    Text("全部笔记")
+                    Text("笔记")
                         .font(.system(size: 12, weight: .semibold))
                         .foregroundColor(.primary)
 
@@ -199,6 +334,12 @@ public struct NotesView: View {
                 }
 
                 Spacer()
+
+                Menu {
+                    Button("新建笔记", action: handleCreateFormalNote)
+                    Button("从音频创建逐字稿", action: handleCreateAudioNote)
+                } label: { Image(systemName: "plus").frame(width: 22, height: 22) }
+                .menuStyle(.borderlessButton).fixedSize().accessibilityLabel("新建笔记")
 
                 // Collapse sidebar button
                 NotesSidebarToggleButton(collapsed: false) {
@@ -269,70 +410,21 @@ public struct NotesView: View {
                         }
                     }
 
-                    // Group 2: 笔记
-                    VStack(spacing: 2) {
-                        HStack {
-                            Button {
-                                isNotesCollapsed.toggle()
-                            } label: {
-                                HStack(spacing: 5) {
-                                    Image(systemName: isNotesCollapsed ? "chevron.right" : "chevron.down")
-                                        .font(.system(size: 10, weight: .semibold))
-                                        .foregroundColor(.secondary)
-
-                                    Text("笔记")
-                                        .font(.system(size: 12, weight: .semibold))
-                                        .foregroundColor(.secondary)
-
-                                    Text("\(currentFormalNotes.count)")
-                                        .font(.system(size: 11, design: .monospaced))
-                                        .padding(.horizontal, 5)
-                                        .padding(.vertical, 1)
-                                        .background(RoundedRectangle(cornerRadius: 10).fill(Color.stoneBadgeBg))
-                                        .foregroundColor(.secondary)
-                                }
-                            }
-                            .buttonStyle(.plain)
-
-                            Spacer()
-
-                            Menu {
-                                Button(action: handleCreateFormalNote) {
-                                    Label("新建笔记", systemImage: "doc.text")
-                                }
-                                Button(action: handleCreateAudioNote) {
-                                    Label("从音频创建逐字稿", systemImage: "waveform")
-                                }
-                            } label: {
-                                Image(systemName: "plus")
-                                    .font(.system(size: 11))
-                                    .foregroundColor(.secondary)
-                                    .frame(width: 20, height: 20)
-                                    .contentShape(Rectangle())
-                            }
-                            .menuStyle(.borderlessButton)
-                            .fixedSize()
-                            .help("新建笔记...")
-                        }
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
-
-                        if !isNotesCollapsed {
-                            if currentFormalNotes.isEmpty {
-                                Text("暂无笔记")
-                                    .font(.system(size: 12))
-                                    .foregroundColor(.secondary)
-                                    .italic()
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                                    .padding(.horizontal, 12)
-                                    .padding(.vertical, 6)
-                            } else {
-                                ForEach(currentFormalNotes) { note in
-                                    formalNoteRow(note)
-                                }
-                            }
-                        }
-                    }
+                    NotebookDirectory(
+                        notebooks: notebookNames,
+                        notes: currentFormalNotes,
+                        location: notebookLocation,
+                        selectedNoteID: state.selectedNoteId,
+                        expanded: $expandedNotebooks,
+                        onBrowse: browseNotebook,
+                        onCreate: { beginNotebookName() },
+                        onRename: { beginNotebookName($0) },
+                        onDelete: requestDeleteNotebook,
+                        onCreateNote: { name in
+                            if browseNotebook(.notebook(name)) { handleCreateFormalNote() }
+                        },
+                        noteRow: formalNoteRow
+                    )
                 }
                 .padding(8)
             }
@@ -434,6 +526,8 @@ public struct NotesView: View {
             }
         }
         .contextMenu {
+            notebookMoveMenu(note)
+            Divider()
             Button("复制绝对路径") {
                 copyNotePath(note)
             }
@@ -455,55 +549,24 @@ public struct NotesView: View {
             if let note = currentNote {
                 noteEditorView(note)
             } else {
-                emptyStateView
+                VStack(spacing: 0) {
+                    if state.isNotesListCollapsed {
+                        HStack {
+                            NotesSidebarToggleButton(collapsed: true) { state.toggleNotesList() }
+                            Spacer()
+                        }.padding(.horizontal, 24).padding(.top, 16)
+                    }
+                    NotebookOverview(
+                        location: notebookLocation,
+                        notes: formalNotes.filter(notebookLocation.contains),
+                        onSelect: selectNote,
+                        onCreateNote: handleCreateFormalNote,
+                        onRename: { beginNotebookName($0) },
+                        onDelete: requestDeleteNotebook
+                    )
+                }
             }
         }
-    }
-
-    private var emptyStateView: some View {
-        VStack(spacing: 0) {
-            if state.isNotesListCollapsed {
-                HStack {
-                    NotesSidebarToggleButton(collapsed: true) {
-                        state.toggleNotesList()
-                    }
-                    Spacer()
-                }
-                .padding(.horizontal, 20)
-                .padding(.top, 16)
-            }
-
-            VStack(spacing: 8) {
-                Image(systemName: "doc.text")
-                    .font(.system(size: 38))
-                    .foregroundColor(Color.secondary.opacity(0.4))
-                    .padding(.bottom, 4)
-
-                Text("选择笔记开始阅读或编辑")
-                    .font(.system(size: 14, weight: .medium))
-                    .foregroundColor(.primary)
-
-                Text("或者直接创建新草稿随手记录")
-                    .font(.system(size: 12))
-                    .foregroundColor(.secondary)
-
-                Button(action: handleCreateDraft) {
-                    HStack(spacing: 4) {
-                        Image(systemName: "plus")
-                            .font(.system(size: 11))
-                        Text("新建草稿")
-                            .font(.system(size: 12, weight: .medium))
-                    }
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 6)
-                    .background(RoundedRectangle(cornerRadius: 6).stroke(Color(nsColor: .separatorColor), lineWidth: 1))
-                }
-                .buttonStyle(.plain)
-                .padding(.top, 8)
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     private func noteEditorView(_ note: Note) -> some View {
@@ -511,6 +574,18 @@ public struct NotesView: View {
             if !note.draft || isNamingDraft {
                 // Formal Note Mode or Draft Naming Header
                 VStack(alignment: .leading, spacing: 8) {
+                    if !note.draft {
+                        HStack {
+                            Button {
+                                _ = browseNotebook(note.notebook.map(NotebookLocation.notebook) ?? .unfiled)
+                            } label: { Label(note.notebook ?? "未分类", systemImage: "folder") }
+                            Spacer()
+                            notebookMoveMenu(note)
+                        }
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                        .buttonStyle(.plain)
+                    }
                     HStack(alignment: .center, spacing: 10) {
                         if state.isNotesListCollapsed {
                             NotesSidebarToggleButton(collapsed: true) {
@@ -809,6 +884,10 @@ public struct NotesView: View {
         let isTranscribing = taskStatus.state == .uploading || taskStatus.state == .transcribing || taskStatus.state == .writing
 
         return Menu {
+            if !note.draft {
+                notebookMoveMenu(note)
+                Divider()
+            }
             if note.audioTranscript {
                 Button(currentBody.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "开始转写 / 重试" : "重新转写") {
                     triggerTranscription(for: note, isRetranscribe: !currentBody.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
@@ -904,7 +983,6 @@ public struct NotesView: View {
 
     private func handleCreateAudioNote() {
         guard let v = state.vault, editor.save() else { return }
-        isNotesCollapsed = false
         if state.isNotesListCollapsed {
             state.isNotesListCollapsed = false
             state.savePreferences()
@@ -940,13 +1018,13 @@ public struct NotesView: View {
                     title: title,
                     body: "",
                     tags: [],
+                    notebook: notebookLocation.notebookName,
                     draft: false,
                     audioFile: relPath,
                     audioTranscript: true
                 )
 
                 state.selectedNoteId = note.id
-                isNotesCollapsed = false
                 state.rescanVault()
 
                 let fullAudioURL = URL(fileURLWithPath: (v.rootPath as NSString).appendingPathComponent(relPath))
@@ -1010,13 +1088,12 @@ public struct NotesView: View {
 
     private func handleCreateFormalNote() {
         guard let v = state.vault, editor.save() else { return }
-        isNotesCollapsed = false
         if state.isNotesListCollapsed {
             state.isNotesListCollapsed = false
             state.savePreferences()
         }
         do {
-            let note = try v.createNote(title: "未命名笔记", body: "", tags: [], draft: false)
+            let note = try v.createNote(title: "未命名笔记", body: "", tags: [], notebook: notebookLocation.notebookName, draft: false)
             state.selectedNoteId = note.id
             state.rescanVault()
         } catch {
@@ -1030,6 +1107,7 @@ public struct NotesView: View {
             let converted = try v.convertDraftToNote(id: note.id, newTitle: currentTitle.isEmpty ? "未命名笔记" : currentTitle, tags: currentTags)
             editor.acceptSavedNote(converted, in: v)
             isNamingDraft = false
+            revealSelectedNotebook()
             state.rescanVault()
         } catch {
             print("Convert draft error: \(error)")

@@ -33,7 +33,7 @@ Open the disk image, drag Pata into Applications, and launch it. Choose a folder
 
 - **Today** — Pick the tasks you want to work on and jot down what happens. A daily plan is separate from a task's due date.
 - **Tasks** — Keep the task and its progress together. Add activity as you work; the same record also appears in your daily timeline.
-- **Notes** — Start with an untitled draft. Give it a name when it is ready. Browse notes and write Markdown side by side, with tags and `[[note references]]` to connect ideas.
+- **Notes** — Start with an untitled draft. Give it a name when it is ready. Expand single-level notebooks on the left and write Markdown on the right, with tags and `[[note references]]` to connect ideas.
 
 Search across tasks, notes, and activity. Drop in attachments and preview them with macOS. Import an MP3 to create a transcript with speakers, timestamps, and audio playback.
 
@@ -61,7 +61,7 @@ vault/
 └── files/    Original attachments
 ```
 
-Back up the whole folder, including `plans/` and `files/`. Notes remain readable in other Markdown tools; use Pata to manage the structured task and day-plan files.
+Back up the whole folder, including `plans/`, `files/`, and `.pata/`, which retains empty notebooks. Notes remain readable in other Markdown tools; use Pata to manage the structured task and day-plan files.
 
 Tasks and notes work offline. Optional audio transcription sends the selected recording to Alibaba Cloud Bailian and requires your own API key, stored in macOS Keychain. An external agent's data handling depends on the client and model you connect.
 

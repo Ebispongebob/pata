@@ -253,6 +253,10 @@ public struct Frontmatter {
         let id = (dict["id"] as? String) ?? ""
         let draft = (dict["draft"] as? Bool) ?? false
         let title = (dict["title"] as? String) ?? ""
+        if let notebook = dict["notebook"], !(notebook is String), !(notebook is NSNull) {
+            throw SchemaError.validationError(field: "notebook", reason: "必须为笔记本名称", path: filePath)
+        }
+        let notebook = (dict["notebook"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
 
         var tags: [String] = []
         if let rawTags = dict["tags"] as? [Any] {
@@ -280,7 +284,7 @@ public struct Frontmatter {
 
         var extra: [String: String] = [:]
         let knownKeys: Set<String> = [
-            "type", "id", "draft", "title", "tags", "audio_file", "audio_transcript",
+            "type", "id", "draft", "title", "tags", "notebook", "audio_file", "audio_transcript",
             "created_at", "created_by", "updated_at"
         ]
         for (k, v) in dict {
@@ -294,6 +298,7 @@ public struct Frontmatter {
             draft: draft,
             title: title,
             tags: tags,
+            notebook: notebook?.isEmpty == false ? notebook : nil,
             audioFile: audioFile,
             audioTranscript: audioTranscript,
             createdAt: createdAt,
@@ -400,6 +405,9 @@ public struct Frontmatter {
         case .note:
             guard let n = entity as? Note else { break }
             dict["id"] = n.id
+            if let notebook = n.notebook, !notebook.isEmpty {
+                dict["notebook"] = notebook
+            }
             if n.draft {
                 dict["draft"] = true
             }

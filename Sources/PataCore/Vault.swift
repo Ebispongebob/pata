@@ -24,7 +24,7 @@ public final class Vault: @unchecked Sendable {
 
     public var onEvent: (@Sendable (VaultEvent) -> Void)?
 
-    private let mutationLock = NSRecursiveLock()
+    let mutationLock = NSRecursiveLock()
     private let watcherLock = NSLock()
     private var watcherStream: FSEventStreamRef?
     private let watcherQueue = DispatchQueue(label: "com.pata.vault-watcher", qos: .utility)
@@ -333,6 +333,7 @@ public final class Vault: @unchecked Sendable {
         title: String = "",
         body: String = "",
         tags: [String] = [],
+        notebook: String? = nil,
         draft: Bool = false,
         audioFile: String? = nil,
         audioTranscript: Bool = false,
@@ -349,6 +350,7 @@ public final class Vault: @unchecked Sendable {
             draft: draft,
             title: title,
             tags: draft ? [] : tags,
+            notebook: draft ? nil : notebook,
             audioFile: audioFile,
             audioTranscript: audioTranscript,
             createdAt: now,

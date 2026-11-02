@@ -151,13 +151,14 @@ public struct Task: Entity, Codable, Sendable, Identifiable, Equatable {
 public struct Note: Entity, Codable, Sendable, Identifiable, Equatable {
     public var baseline: FileBaseline? = nil
     private enum CodingKeys: String, CodingKey {
-        case id, draft, title, tags, audioFile, audioTranscript, createdAt, createdBy, updatedAt, extra, body
+        case id, draft, title, tags, notebook, audioFile, audioTranscript, createdAt, createdBy, updatedAt, extra, body
     }
     public var type: EntityType { .note }
     public var id: String
     public var draft: Bool
     public var title: String
     public var tags: [String]
+    public var notebook: String?
     public var audioFile: String?
     public var audioTranscript: Bool
     public var createdAt: Date
@@ -171,6 +172,7 @@ public struct Note: Entity, Codable, Sendable, Identifiable, Equatable {
         draft: Bool = false,
         title: String = "",
         tags: [String] = [],
+        notebook: String? = nil,
         audioFile: String? = nil,
         audioTranscript: Bool = false,
         createdAt: Date = Date(),
@@ -183,6 +185,7 @@ public struct Note: Entity, Codable, Sendable, Identifiable, Equatable {
         self.draft = draft
         self.title = title
         self.tags = tags
+        self.notebook = notebook
         self.audioFile = audioFile
         self.audioTranscript = audioTranscript
         self.createdAt = createdAt

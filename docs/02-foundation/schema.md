@@ -34,7 +34,7 @@ vault/
   notes/                         # 每 Note 一个 Markdown，可有子目录
   plans/YYYY-MM-DD.md            # 每日期一个 DayPlan，独立 Activity 内嵌
   files/                         # 原始 PDF、Office、图片等，无 Frontmatter
-  .pata/                         # 内部状态，可重建；不保存唯一业务数据
+  .pata/                         # 内部状态与空笔记本目录，随 Vault 备份
 ~~~
 
 `memos/YYYY/MM/*.md` 不再是业务写入路径，不做自动兼容迁移，不得静默删除旧文件。DayPlan 使用根 `plans/`；该目录与 `files/` 都是用户数据，不能当缓存清理。
@@ -172,6 +172,7 @@ type: note
 id: n-001
 title: 编辑器设计方案
 tags: [Pata]
+notebook: 工作                       # 可选：所属单层笔记本；省略表示未分类
 audio_file: files/recording.mp3      # 可选：主录音关联（相对 Vault 根路径）
 audio_transcript: true               # 可选：标记为自动生成的只读逐字稿 Note
 created_at: 2026-10-15T09:00:00+08:00
@@ -186,6 +187,15 @@ updated_at: 2026-10-15T09:20:00+08:00
 ### Note 创建来源
 
 Frontmatter 可选 `created_by: agent`，省略表示我；正文不存来源。改标题、标签、正文或重新转写均不改变创建来源。GUI 发起 MP3 导入的逐字稿 Note 归我，不因使用云端 ASR 而标记 Agent。
+
+### 单层笔记本
+
+- 正式 Note 可带可选字符串 `notebook`，每篇最多属于一个笔记本；省略或空值表示未分类。旧笔记无需迁移，打开、重扫不回填该字段。标签继续独立保存和聚合。
+- 笔记本成员关系仅以 Note Frontmatter 为准；归类、重命名和移出分类均不移动 Markdown 文件，不改变 ID、正文、创建来源、附件或相对链接。
+- `.pata/notebooks.json` 保存 `{"notebooks": ["工作", "学习"]}`，用于保留空笔记本。目录取该列表与正式 Note 的 `notebook` 名称并集，重扫可从 Note 恢复非空笔记本；备份整个 Vault 时保留 `.pata/`。
+- 新建名称去除首尾空白，限 1–80 字，大小写不敏感地判重；单层名称不含换行、空字符、`/` 或 `\`，不使用“全部笔记 / 未分类 / 草稿”等保留名称。
+- 删除笔记本只清除成员的 `notebook` 字段，笔记回到未分类，不删除笔记或附件。批量重命名/删除按单文件基线保护逐篇保存；失败时保留已完成部分，剩余成员仍可从原目录访问并重试，不做跨文件事务。
+- 草稿继续独立显示，不在笔记本中分组；转换为正式笔记后默认进入未分类。MCP 读取 Note 可返回 `notebook`；现有创建操作默认未分类，`pata_update_note` 保留已有笔记本归属。
 
 ### 草稿 Note（阶段 16 规范）
 
